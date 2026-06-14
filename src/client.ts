@@ -16,7 +16,7 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6e9ef; }
-  #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
 
   /* ---- Login overlay ---- */
   #login {
@@ -51,7 +51,9 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     width: 64px; height: 64px; border-radius: 12px; position: relative; overflow: hidden;
     background: #141b2b; border: 1px solid #2c3a59; box-shadow: 0 6px 18px #0006;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    pointer-events: auto; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   }
+  .slot:active { border-color: #4f7cff; filter: brightness(1.15); }
   .slot .key { position: absolute; top: 3px; left: 6px; font-size: 11px; color: #9fb0d0; }
   .slot .name { font-size: 11px; color: #cdd6e8; }
   .slot .icon { font-size: 22px; line-height: 1; }
@@ -67,9 +69,9 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
 
 <div id="status"></div>
 <div id="help">
-  <div><b>Left-click ground</b> to move</div>
-  <div><b>Left-click enemy</b> to target</div>
-  <div><b>1-4</b> cast ability on target</div>
+  <div><b>WASD / arrows</b> or <b>click/tap ground</b> to move</div>
+  <div><b>Click/tap enemy</b> to target</div>
+  <div><b>1-4</b> or <b>tap a slot</b> to cast on target</div>
 </div>
 
 <div id="hud"><div id="abilities"></div></div>
@@ -126,6 +128,11 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
       '<div class="cd"></div>';
     abilitiesEl.appendChild(slot);
     cdEls.push(slot.querySelector(".cd"));
+    // Tappable on mobile / clickable on desktop. preventDefault on touchstart
+    // stops the synthetic click so we don't double-cast.
+    const castThis = (ev) => { ev.preventDefault(); send({ t: "cast", ability: i, target: targetId }); };
+    slot.addEventListener("touchstart", castThis, { passive: false });
+    slot.addEventListener("click", castThis);
   });
 
   // ---- Networking ----
@@ -186,22 +193,58 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     return best;
   }
 
-  canvas.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || !cur) return;
-    const w = screenToWorld(e.clientX, e.clientY);
+  // Tap/click on the world: target an entity if one is under the point,
+  // otherwise move there. Shared by mouse and touch so mobile works too.
+  function handleTap(clientX, clientY) {
+    if (!cur) return;
+    const w = screenToWorld(clientX, clientY);
     const hit = pickEntity(w.x, w.y);
     if (hit) {
       targetId = hit.id;
     } else {
       send({ t: "move", x: Math.round(w.x), y: Math.round(w.y) });
     }
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    handleTap(e.clientX, e.clientY);
   });
+  canvas.addEventListener("touchstart", (e) => {
+    const t = e.changedTouches[0];
+    if (t) handleTap(t.clientX, t.clientY);
+    e.preventDefault();
+  }, { passive: false });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
+  // WASD / arrow keys: continuous directional movement. We track held keys and
+  // send a direction vector whenever it changes; the server moves us each tick.
+  const MOVE_KEYS = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"];
+  const held = new Set();
+  function sendDir() {
+    let dx = 0, dy = 0;
+    if (held.has("w") || held.has("arrowup")) dy -= 1;
+    if (held.has("s") || held.has("arrowdown")) dy += 1;
+    if (held.has("a") || held.has("arrowleft")) dx -= 1;
+    if (held.has("d") || held.has("arrowright")) dx += 1;
+    send({ t: "dir", dx, dy });
+  }
+
   window.addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
     const idx = ["1", "2", "3", "4"].indexOf(e.key);
-    if (idx >= 0) { send({ t: "cast", ability: idx, target: targetId }); }
+    if (idx >= 0) { send({ t: "cast", ability: idx, target: targetId }); return; }
+    if (MOVE_KEYS.includes(k)) {
+      if (k.startsWith("arrow")) e.preventDefault();
+      if (!held.has(k)) { held.add(k); sendDir(); }
+    }
   });
+  window.addEventListener("keyup", (e) => {
+    const k = e.key.toLowerCase();
+    if (held.has(k)) { held.delete(k); sendDir(); }
+  });
+  // Releasing focus (alt-tab, etc.) shouldn't leave us walking forever.
+  window.addEventListener("blur", () => { if (held.size) { held.clear(); sendDir(); } });
 
   // ---- Floating combat text / cast FX ----
   const fx = [];

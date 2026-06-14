@@ -53,8 +53,10 @@ interface Player {
   name: string;
   x: number;
   y: number;
-  tx: number; // move target
+  tx: number; // click-to-move target
   ty: number;
+  dirx: number; // WASD direction (unit vector, 0 when idle)
+  diry: number;
   hp: number;
   dead: boolean;
   respawnAt: number;
@@ -146,6 +148,8 @@ export class MyDurableObject extends DurableObject<Env> {
       y: WORLD.h / 2 + (Math.random() - 0.5) * 200,
       tx: 0,
       ty: 0,
+      dirx: 0,
+      diry: 0,
       hp: PLAYER_MAX_HP,
       dead: false,
       respawnAt: 0,
@@ -186,8 +190,22 @@ export class MyDurableObject extends DurableObject<Env> {
     }
     if (player.dead) return;
     if (msg.t === "move") {
+      // Click/tap-to-move: head for a point, and cancel any held WASD direction.
       player.tx = clamp(Number(msg.x) || 0, 0, WORLD.w);
       player.ty = clamp(Number(msg.y) || 0, 0, WORLD.h);
+      player.dirx = 0;
+      player.diry = 0;
+    } else if (msg.t === "dir") {
+      // WASD/held-direction input: store a normalized unit vector (0,0 = idle).
+      let dx = clamp(Number(msg.dx) || 0, -1, 1);
+      let dy = clamp(Number(msg.dy) || 0, -1, 1);
+      const mag = Math.hypot(dx, dy);
+      if (mag > 0) {
+        dx /= mag;
+        dy /= mag;
+      }
+      player.dirx = dx;
+      player.diry = dy;
     } else if (msg.t === "cast") {
       this.castAbility(player, Number(msg.ability), msg.target ? String(msg.target) : null);
     }
@@ -293,11 +311,22 @@ export class MyDurableObject extends DurableObject<Env> {
           p.y = WORLD.h / 2 + (Math.random() - 0.5) * 200;
           p.tx = p.x;
           p.ty = p.y;
+          p.dirx = 0;
+          p.diry = 0;
         }
         continue;
       }
       const speed = PLAYER_SPEED * (p.slowUntil > this.now ? 0.5 : 1);
-      moveToward(p, p.tx, p.ty, speed * dt);
+      if (p.dirx !== 0 || p.diry !== 0) {
+        // WASD takes priority; keep the click target pinned to the player so
+        // releasing the keys stops them rather than resuming an old path.
+        p.x = clamp(p.x + p.dirx * speed * dt, 0, WORLD.w);
+        p.y = clamp(p.y + p.diry * speed * dt, 0, WORLD.h);
+        p.tx = p.x;
+        p.ty = p.y;
+      } else {
+        moveToward(p, p.tx, p.ty, speed * dt);
+      }
     }
 
     // Monsters: respawn, AI, attack.
