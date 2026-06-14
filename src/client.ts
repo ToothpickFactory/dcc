@@ -62,12 +62,36 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
   #status b { color: #e6e9ef; }
   #help { position: fixed; top: 12px; right: 12px; z-index: 10; font-size: 12px; color: #6b7790; text-align: right; line-height: 1.6; }
   #help b { color: #aab6cf; }
+
+  /* ---- Boss banner ---- */
+  #bossbar {
+    display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    width: min(80vw, 560px); z-index: 11; text-align: center; pointer-events: none;
+  }
+  #bossname { font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #e7b3ff; text-shadow: 0 2px 8px #000a; margin-bottom: 5px; }
+  #bosshp { height: 14px; border-radius: 8px; overflow: hidden; background: #1a1020; border: 1px solid #7b1fa2; box-shadow: 0 4px 16px #0008; }
+  #bossfill { height: 100%; width: 100%; background: linear-gradient(180deg, #d05cff, #8e24aa); transition: width 0.12s linear; }
+
+  /* ---- Center toast ---- */
+  #toast {
+    position: fixed; top: 22%; left: 50%; transform: translateX(-50%);
+    z-index: 12; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;
+    text-align: center; pointer-events: none; opacity: 0; transition: opacity 0.4s ease;
+    text-shadow: 0 2px 12px #000c, 0 0 24px #0008;
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 
 <div id="status"></div>
+
+<div id="bossbar">
+  <div id="bossname">Boss</div>
+  <div id="bosshp"><div id="bossfill"></div></div>
+</div>
+<div id="toast"></div>
+
 <div id="help">
   <div><b>WASD / arrows</b> to move &middot; <b>tap ground</b> on mobile</div>
   <div><b>Click/tap enemy</b> to target</div>
@@ -104,6 +128,10 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
   const nameInput = document.getElementById("name");
   const statusEl = document.getElementById("status");
   const abilitiesEl = document.getElementById("abilities");
+  const bossbarEl = document.getElementById("bossbar");
+  const bossNameEl = document.getElementById("bossname");
+  const bossFillEl = document.getElementById("bossfill");
+  const toastEl = document.getElementById("toast");
 
   let dpr = 1;
   function resize() {
@@ -190,6 +218,11 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     };
     for (const mo of cur.monsters) consider(mo, "monster");
     for (const p of cur.players) consider(p, "player");
+    if (cur.boss) {
+      // The boss is big; allow a generous click radius.
+      const dx = cur.boss.x - wx, dy = cur.boss.y - wy, d = dx * dx + dy * dy;
+      if (d < 46 * 46) best = { id: cur.boss.id, kind: "monster" };
+    }
     return best;
   }
 
@@ -257,17 +290,36 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     else if (e.type === "heal") fx.push({ kind: "text", x: e.x, y: e.y, vy: -34, life: 0, ttl: 0.9, text: "+" + e.amount, color: "#5dff9b" });
     else if (e.type === "death") fx.push({ kind: "ring", x: e.x, y: e.y, life: 0, ttl: 0.5, color: "#ffffff" });
     else if (e.type === "cast") fx.push({ kind: "ring", x: e.x, y: e.y, life: 0, ttl: 0.35, color: e.color || "#8aa0ff" });
+    else if (e.type === "boss") {
+      if (e.state === "spawn") {
+        fx.push({ kind: "ring", x: e.x, y: e.y, life: 0, ttl: 0.9, color: "#c850ff" });
+        showToast("⚠ A BOSS has awoken — dodge its bolts! ⚠", "#e7b3ff");
+      } else {
+        showToast("☠ The boss has been slain! ☠", "#ffd34d");
+      }
+    }
+  }
+
+  // ---- Transient center toast ----
+  let toastHideAt = 0;
+  function showToast(text, color) {
+    toastEl.textContent = text;
+    toastEl.style.color = color || "#fff";
+    toastEl.style.opacity = "1";
+    toastHideAt = performance.now() + 3500;
   }
 
   // ---- Interpolated lookups ----
+  function lerpAlpha() {
+    if (prev && cur && curRecv > prevRecv) {
+      return Math.min(1, (performance.now() - curRecv) / (curRecv - prevRecv));
+    }
+    return 1;
+  }
   function lerpEntities(list) {
     // Build id -> prev pos for smoothing
     const out = [];
-    let alpha = 1;
-    if (prev && cur && curRecv > prevRecv) {
-      const dt = curRecv - prevRecv;
-      alpha = Math.min(1, (performance.now() - curRecv) / dt);
-    }
+    const alpha = lerpAlpha();
     const prevMap = {};
     if (prev) for (const e of prev[list]) prevMap[e.id] = e;
     for (const e of cur[list]) {
@@ -345,19 +397,44 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
 
     drawGrid();
 
+    // Boss (interpolated separately since it's a single optional entity).
+    let boss = null;
+    if (cur.boss) {
+      const b = cur.boss;
+      const pb = prev && prev.boss && prev.boss.id === b.id ? prev.boss : null;
+      const a = lerpAlpha();
+      boss = Object.assign({}, b, {
+        x: pb ? pb.x + (b.x - pb.x) * a : b.x,
+        y: pb ? pb.y + (b.y - pb.y) * a : b.y,
+      });
+    }
+
     // Projectiles
     for (const pr of cur.projectiles) {
       const sx = pr.x - camX + window.innerWidth / 2;
       const sy = pr.y - camY + window.innerHeight / 2;
-      const ab = ABILITIES[pr.ability] || ABILITIES[0];
-      ctx.fillStyle = ab.color;
-      ctx.shadowColor = ab.color; ctx.shadowBlur = 14;
-      ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
+      if (pr.boss) {
+        // Boss bolt — big and ominous, with a bright core.
+        ctx.fillStyle = "#c850ff";
+        ctx.shadowColor = "#c850ff"; ctx.shadowBlur = 22;
+        ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(sx, sy, 4.5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const ab = ABILITIES[pr.ability] || ABILITIES[0];
+        ctx.fillStyle = ab.color;
+        ctx.shadowColor = ab.color; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
     }
 
     for (const mo of monsters) {
       drawActor(mo, { r: 20, color: "#b6433d", stroke: "#e0635c", hp: "#ff5a4d", label: "Monster", labelColor: "#e89a93" });
+    }
+    if (boss) {
+      drawActor(boss, { r: 38, color: "#6a1b9a", stroke: "#d05cff", hp: "#c850ff", label: boss.name, labelColor: "#e7b3ff" });
     }
     for (const p of players) {
       const isSelf = p.id === selfId;
@@ -412,6 +489,21 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
         "<b>" + me.name + "</b> &nbsp; HP " + Math.max(0, Math.round(me.hp)) + "/" + me.maxHp +
         " &nbsp; Kills <b>" + (me.kills || 0) + "</b> &nbsp; Players <b>" + players.length + "</b>" +
         (me.dead ? ' &nbsp; <span style="color:#ff6a6a">Respawning…</span>' : "");
+    }
+
+    // Boss HP banner.
+    if (cur.boss) {
+      bossbarEl.style.display = "block";
+      bossNameEl.textContent = cur.boss.name;
+      bossFillEl.style.width = (100 * cur.boss.hp / cur.boss.maxHp) + "%";
+    } else {
+      bossbarEl.style.display = "none";
+    }
+
+    // Toast fade.
+    if (toastHideAt && performance.now() > toastHideAt) {
+      toastEl.style.opacity = "0";
+      toastHideAt = 0;
     }
   }
   requestAnimationFrame(render);

@@ -32,6 +32,21 @@ const PLAYER_RESPAWN_MS = 4000;
 const MONSTER_RESPAWN_MS = 6000;
 const PROJECTILE_SPEED = 620;
 
+// ---- Boss ----
+const BOSS_KILL_THRESHOLD = 12; // monsters killed (collectively) before a boss appears
+const BOSS_MAX_HP = 700;
+const BOSS_SPEED = 78; // slower than players so it can be kited
+const BOSS_MELEE_RANGE = 78;
+const BOSS_MELEE_CD = 1200;
+const BOSS_MELEE_DMG = 14;
+const BOSS_CAST_CD = 1500; // ms between spell volleys
+const BOSS_PROJ_SPEED = 340; // px/sec, straight-line (NOT homing)
+const BOSS_PROJ_DMG = 16;
+const BOSS_PROJ_LIFE = 4500; // ms before a stray bolt despawns
+const BOSS_PROJ_SPREAD = 0.2; // radians between the bolts in a volley
+const BOSS_PROJ_HIT = 30; // collision radius vs players
+const BOSS_NAME = "Gorehollow, the Devourer";
+
 interface Ability {
   cd: number; // cooldown ms
   range: number; // max cast range (0 = self)
@@ -79,28 +94,47 @@ interface Monster {
   wanderAt: number;
 }
 
+interface Boss {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  hp: number;
+  dead: boolean;
+  castReadyAt: number;
+  meleeReadyAt: number;
+}
+
 interface Projectile {
   id: string;
   x: number;
   y: number;
   ownerId: string;
-  targetId: string;
+  targetId: string; // homing player shots track this entity; "" for boss bolts
   ability: number;
   dmg: number;
   slowMs: number;
+  // Boss bolts are directional (fixed velocity), not homing:
+  vx: number;
+  vy: number;
+  life: number; // ms remaining (boss bolts only)
+  boss: boolean; // damages players on contact + distinct visual
 }
 
 type GameEvent =
   | { type: "dmg"; x: number; y: number; amount: number }
   | { type: "heal"; x: number; y: number; amount: number }
   | { type: "death"; x: number; y: number }
-  | { type: "cast"; x: number; y: number; color: string };
+  | { type: "cast"; x: number; y: number; color: string }
+  | { type: "boss"; x: number; y: number; state: "spawn" | "dead" };
 
 export class MyDurableObject extends DurableObject<Env> {
   private players = new Map<string, Player>();
   private monsters: Monster[] = [];
   private projectiles: Projectile[] = [];
   private events: GameEvent[] = [];
+  private boss: Boss | null = null;
+  private killsSinceBoss = 0;
   private now = 0; // logical clock (ms), advances by TICK_MS each tick
   private seq = 0; // id counter
   private loop: ReturnType<typeof setInterval> | null = null;
@@ -244,29 +278,46 @@ export class MyDurableObject extends DurableObject<Env> {
         ability: idx,
         dmg: ab.dmg,
         slowMs: ab.slowMs || 0,
+        vx: 0,
+        vy: 0,
+        life: 0,
+        boss: false,
       });
     } else {
       this.applyDamage(target, ab.dmg, caster, ab.slowMs || 0);
     }
   }
 
-  private findTarget(id: string | null): Player | Monster | null {
+  private findTarget(id: string | null): Player | Monster | Boss | null {
     if (!id) return null;
     const p = this.players.get(id);
     if (p && !p.dead) return p;
     const m = this.monsters.find((mo) => mo.id === id);
     if (m && !m.dead) return m;
+    if (this.boss && !this.boss.dead && this.boss.id === id) return this.boss;
     return null;
   }
 
-  private applyDamage(target: Player | Monster, dmg: number, source: Player, slowMs: number) {
+  private applyDamage(target: Player | Monster | Boss, dmg: number, source: Player, slowMs: number) {
+    if (this.boss && target === this.boss) {
+      this.boss.hp -= dmg;
+      this.events.push({ type: "dmg", x: target.x, y: target.y, amount: dmg });
+      if (this.boss.hp <= 0 && !this.boss.dead) {
+        this.boss.dead = true;
+        this.events.push({ type: "boss", x: target.x, y: target.y, state: "dead" });
+        this.events.push({ type: "death", x: target.x, y: target.y });
+        source.kills += 5; // bosses are worth a lot
+      }
+      return;
+    }
     if ("kills" in target) {
       // target is a player
       target.hp -= dmg;
       if (slowMs) target.slowUntil = Math.max(target.slowUntil, this.now + slowMs);
       this.events.push({ type: "dmg", x: target.x, y: target.y, amount: dmg });
       if (target.hp <= 0 && !target.dead) this.killPlayer(target, source);
-    } else {
+    } else if ("respawnAt" in target) {
+      // target is a monster (boss handled above by reference)
       target.hp -= dmg;
       this.events.push({ type: "dmg", x: target.x, y: target.y, amount: dmg });
       if (target.hp <= 0 && !target.dead) {
@@ -274,8 +325,52 @@ export class MyDurableObject extends DurableObject<Env> {
         target.respawnAt = this.now + MONSTER_RESPAWN_MS;
         this.events.push({ type: "death", x: target.x, y: target.y });
         source.kills += 1;
+        this.killsSinceBoss += 1;
+        this.maybeSpawnBoss();
       }
     }
+  }
+
+  private maybeSpawnBoss() {
+    if (this.boss && !this.boss.dead) return; // one boss at a time
+    if (this.killsSinceBoss < BOSS_KILL_THRESHOLD) return;
+    this.killsSinceBoss = 0;
+    const boss: Boss = {
+      id: this.nextId("boss"),
+      name: BOSS_NAME,
+      x: 300 + Math.random() * (WORLD.w - 600),
+      y: 300 + Math.random() * (WORLD.h - 600),
+      hp: BOSS_MAX_HP,
+      dead: false,
+      castReadyAt: this.now + 1500, // brief telegraph before first volley
+      meleeReadyAt: 0,
+    };
+    this.boss = boss;
+    this.events.push({ type: "boss", x: boss.x, y: boss.y, state: "spawn" });
+  }
+
+  // Boss spell: a spread of straight-line bolts aimed at where a player is NOW.
+  // They do not track — players dodge by stepping out of the line of fire.
+  private bossCast(boss: Boss, target: Player) {
+    const ang = Math.atan2(target.y - boss.y, target.x - boss.x);
+    for (const off of [-BOSS_PROJ_SPREAD, 0, BOSS_PROJ_SPREAD]) {
+      const a = ang + off;
+      this.projectiles.push({
+        id: this.nextId("bp"),
+        x: boss.x,
+        y: boss.y,
+        ownerId: boss.id,
+        targetId: "",
+        ability: 0,
+        dmg: BOSS_PROJ_DMG,
+        slowMs: 0,
+        vx: Math.cos(a) * BOSS_PROJ_SPEED,
+        vy: Math.sin(a) * BOSS_PROJ_SPEED,
+        life: BOSS_PROJ_LIFE,
+        boss: true,
+      });
+    }
+    this.events.push({ type: "cast", x: boss.x, y: boss.y, color: "#c850ff" });
   }
 
   private killPlayer(target: Player, source: Player) {
@@ -364,9 +459,51 @@ export class MyDurableObject extends DurableObject<Env> {
       }
     }
 
-    // Projectiles: home toward target's current position; apply on hit.
+    // Boss: chase the nearest player, melee in range, and cast bolt volleys.
+    if (this.boss) {
+      const boss = this.boss;
+      if (boss.dead) {
+        this.boss = null;
+      } else {
+        const prey = this.nearestPlayer(boss.x, boss.y, Infinity);
+        if (prey) {
+          const d = Math.hypot(prey.x - boss.x, prey.y - boss.y);
+          if (d > BOSS_MELEE_RANGE) {
+            moveToward(boss, prey.x, prey.y, BOSS_SPEED * dt);
+          } else if (this.now >= boss.meleeReadyAt) {
+            boss.meleeReadyAt = this.now + BOSS_MELEE_CD;
+            prey.hp -= BOSS_MELEE_DMG;
+            this.events.push({ type: "dmg", x: prey.x, y: prey.y, amount: BOSS_MELEE_DMG });
+            if (prey.hp <= 0 && !prey.dead) this.killPlayer(prey, prey);
+          }
+          if (this.now >= boss.castReadyAt) {
+            boss.castReadyAt = this.now + BOSS_CAST_CD;
+            this.bossCast(boss, prey);
+          }
+        }
+      }
+    }
+
+    // Projectiles: boss bolts fly straight and hit any player they touch;
+    // player shots home toward their target.
     const owners = this.players;
     this.projectiles = this.projectiles.filter((pr) => {
+      if (pr.boss) {
+        pr.x += pr.vx * dt;
+        pr.y += pr.vy * dt;
+        pr.life -= TICK_MS;
+        if (pr.life <= 0 || pr.x < 0 || pr.y < 0 || pr.x > WORLD.w || pr.y > WORLD.h) return false;
+        for (const p of this.players.values()) {
+          if (p.dead) continue;
+          if (Math.hypot(p.x - pr.x, p.y - pr.y) <= BOSS_PROJ_HIT) {
+            p.hp -= pr.dmg;
+            this.events.push({ type: "dmg", x: p.x, y: p.y, amount: pr.dmg });
+            if (p.hp <= 0 && !p.dead) this.killPlayer(p, p);
+            return false; // bolt consumed on hit
+          }
+        }
+        return true;
+      }
       const target = this.findTarget(pr.targetId);
       if (!target) return false; // target gone
       const dx = target.x - pr.x;
@@ -430,7 +567,19 @@ export class MyDurableObject extends DurableObject<Env> {
         x: Math.round(pr.x),
         y: Math.round(pr.y),
         ability: pr.ability,
+        boss: pr.boss,
       })),
+      boss:
+        this.boss && !this.boss.dead
+          ? {
+              id: this.boss.id,
+              name: this.boss.name,
+              x: Math.round(this.boss.x),
+              y: Math.round(this.boss.y),
+              hp: Math.max(0, Math.round(this.boss.hp)),
+              maxHp: BOSS_MAX_HP,
+            }
+          : null,
       events: this.events,
     };
     const data = JSON.stringify(snapshot);
