@@ -1,0 +1,16 @@
+{
+  "name": "young-frost-2be4",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "typescript": "^5.5.2",
+    "wrangler": "^4.100.0"
+  }
+}
