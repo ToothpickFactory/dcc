@@ -69,7 +69,7 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
 
 <div id="status"></div>
 <div id="help">
-  <div><b>WASD / arrows</b> or <b>click/tap ground</b> to move</div>
+  <div><b>WASD / arrows</b> to move &middot; <b>tap ground</b> on mobile</div>
   <div><b>Click/tap enemy</b> to target</div>
   <div><b>1-4</b> or <b>tap a slot</b> to cast on target</div>
 </div>
@@ -206,10 +206,14 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     }
   }
 
+  // Mouse (desktop): click only selects a target — movement is WASD/arrows.
   canvas.addEventListener("mousedown", (e) => {
-    if (e.button !== 0) return;
-    handleTap(e.clientX, e.clientY);
+    if (e.button !== 0 || !cur) return;
+    const w = screenToWorld(e.clientX, e.clientY);
+    const hit = pickEntity(w.x, w.y);
+    if (hit) targetId = hit.id;
   });
+  // Touch (mobile): tap an enemy to target, tap the ground to move.
   canvas.addEventListener("touchstart", (e) => {
     const t = e.changedTouches[0];
     if (t) handleTap(t.clientX, t.clientY);
