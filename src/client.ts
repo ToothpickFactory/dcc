@@ -93,9 +93,9 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
 <div id="toast"></div>
 
 <div id="help">
-  <div><b>WASD / arrows</b> to move &middot; <b>tap ground</b> on mobile</div>
-  <div><b>Click/tap enemy</b> to target</div>
-  <div><b>1-4</b> or <b>tap a slot</b> to cast on target</div>
+  <div><b>WASD / arrows</b> to move &middot; <b>tap</b> to move on mobile</div>
+  <div><b>Mouse aims</b> &middot; <b>click</b> or <b>1-4</b> to fire that way</div>
+  <div style="color:#e89a9a">⚠ Spells hit friend or foe — aim carefully!</div>
 </div>
 
 <div id="hud"><div id="abilities"></div></div>
@@ -158,7 +158,7 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     cdEls.push(slot.querySelector(".cd"));
     // Tappable on mobile / clickable on desktop. preventDefault on touchstart
     // stops the synthetic click so we don't double-cast.
-    const castThis = (ev) => { ev.preventDefault(); send({ t: "cast", ability: i, target: targetId }); };
+    const castThis = (ev) => { ev.preventDefault(); fire(i); };
     slot.addEventListener("touchstart", castThis, { passive: false });
     slot.addEventListener("click", castThis);
   });
@@ -200,56 +200,37 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
 
   // ---- Input ----
   let camX = 0, camY = 0;
-  let targetId = null;
+  // Aim is a unit vector in world space. Spells fire along it — there is no
+  // targeting; whatever the projectile hits (friend or foe) is affected.
+  let aimx = 1, aimy = 0;
 
   function screenToWorld(sx, sy) {
     return { x: sx - window.innerWidth / 2 + camX, y: sy - window.innerHeight / 2 + camY };
   }
-
-  // Find an entity (monster or other player) near a world point.
-  function pickEntity(wx, wy) {
-    if (!cur) return null;
-    let best = null, bestD = 34 * 34;
-    const consider = (ent, kind) => {
-      if (ent.dead) return;
-      if (kind === "player" && ent.id === selfId) return;
-      const dx = ent.x - wx, dy = ent.y - wy, d = dx * dx + dy * dy;
-      if (d < bestD) { bestD = d; best = { id: ent.id, kind }; }
-    };
-    for (const mo of cur.monsters) consider(mo, "monster");
-    for (const p of cur.players) consider(p, "player");
-    if (cur.boss) {
-      // The boss is big; allow a generous click radius.
-      const dx = cur.boss.x - wx, dy = cur.boss.y - wy, d = dx * dx + dy * dy;
-      if (d < 46 * 46) best = { id: cur.boss.id, kind: "monster" };
-    }
-    return best;
+  // Your hero is at screen center (camera follows you); aim from there.
+  function setAimFromScreen(sx, sy) {
+    const dx = sx - window.innerWidth / 2;
+    const dy = sy - window.innerHeight / 2;
+    const d = Math.hypot(dx, dy) || 1;
+    aimx = dx / d; aimy = dy / d;
   }
+  function fire(i) { send({ t: "cast", ability: i, dx: aimx, dy: aimy }); }
 
-  // Tap/click on the world: target an entity if one is under the point,
-  // otherwise move there. Shared by mouse and touch so mobile works too.
-  function handleTap(clientX, clientY) {
-    if (!cur) return;
-    const w = screenToWorld(clientX, clientY);
-    const hit = pickEntity(w.x, w.y);
-    if (hit) {
-      targetId = hit.id;
-    } else {
-      send({ t: "move", x: Math.round(w.x), y: Math.round(w.y) });
-    }
-  }
-
-  // Mouse (desktop): click only selects a target — movement is WASD/arrows.
+  // Mouse (desktop): move the mouse to aim; left-click fires Fireball.
+  canvas.addEventListener("mousemove", (e) => setAimFromScreen(e.clientX, e.clientY));
   canvas.addEventListener("mousedown", (e) => {
-    if (e.button !== 0 || !cur) return;
-    const w = screenToWorld(e.clientX, e.clientY);
-    const hit = pickEntity(w.x, w.y);
-    if (hit) targetId = hit.id;
+    if (e.button !== 0) return;
+    setAimFromScreen(e.clientX, e.clientY);
+    fire(0);
   });
-  // Touch (mobile): tap an enemy to target, tap the ground to move.
+  // Touch (mobile): tap to both aim and walk toward the tapped point.
   canvas.addEventListener("touchstart", (e) => {
     const t = e.changedTouches[0];
-    if (t) handleTap(t.clientX, t.clientY);
+    if (t && cur) {
+      setAimFromScreen(t.clientX, t.clientY);
+      const w = screenToWorld(t.clientX, t.clientY);
+      send({ t: "move", x: Math.round(w.x), y: Math.round(w.y) });
+    }
     e.preventDefault();
   }, { passive: false });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -270,7 +251,7 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     const idx = ["1", "2", "3", "4"].indexOf(e.key);
-    if (idx >= 0) { send({ t: "cast", ability: idx, target: targetId }); return; }
+    if (idx >= 0) { fire(idx); return; }
     if (MOVE_KEYS.includes(k)) {
       if (k.startsWith("arrow")) e.preventDefault();
       if (!held.has(k)) { held.add(k); sendDir(); }
@@ -361,11 +342,6 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
     const sx = e.x - camX + window.innerWidth / 2;
     const sy = e.y - camY + window.innerHeight / 2;
     const r = opts.r;
-    // Target ring
-    if (e.id === targetId) {
-      ctx.strokeStyle = "#ffd34d"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, r + 7, 0, Math.PI * 2); ctx.stroke();
-    }
     // Shadow
     ctx.fillStyle = "#0006";
     ctx.beginPath(); ctx.ellipse(sx, sy + r * 0.7, r, r * 0.4, 0, 0, Math.PI * 2); ctx.fill();
@@ -446,6 +422,25 @@ export const CLIENT_HTML = /* html */ `<!doctype html>
         label: p.name + (p.kills ? " (" + p.kills + ")" : ""),
         labelColor: isSelf ? "#bcd4ff" : "#cdc4ff",
       });
+    }
+
+    // Aim indicator — shows where your next spell will fly.
+    if (me && !me.dead) {
+      const cx = me.x - camX + window.innerWidth / 2;
+      const cy = me.y - camY + window.innerHeight / 2;
+      const ex = cx + aimx * 54, ey = cy + aimy * 54;
+      ctx.strokeStyle = "rgba(180,205,255,0.55)"; ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.moveTo(cx + aimx * 22, cy + aimy * 22); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.setLineDash([]);
+      // Arrowhead
+      const a = Math.atan2(aimy, aimx);
+      ctx.fillStyle = "rgba(200,220,255,0.8)";
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - 9 * Math.cos(a - 0.4), ey - 9 * Math.sin(a - 0.4));
+      ctx.lineTo(ex - 9 * Math.cos(a + 0.4), ey - 9 * Math.sin(a + 0.4));
+      ctx.closePath(); ctx.fill();
     }
 
     // FX layer

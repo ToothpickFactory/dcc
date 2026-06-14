@@ -30,7 +30,6 @@ const MONSTER_ATTACK_CD = 1200;
 const MONSTER_DMG = 6;
 const PLAYER_RESPAWN_MS = 4000;
 const MONSTER_RESPAWN_MS = 6000;
-const PROJECTILE_SPEED = 620;
 
 // ---- Boss ----
 const BOSS_KILL_THRESHOLD = 12; // monsters killed (collectively) before a boss appears
@@ -47,20 +46,31 @@ const BOSS_PROJ_SPREAD = 0.2; // radians between the bolts in a volley
 const BOSS_PROJ_HIT = 30; // collision radius vs players
 const BOSS_NAME = "Gorehollow, the Devourer";
 
+// ---- Aggro / threat ----
+const AGGRO_PER_DAMAGE = 1; // threat added per point of damage dealt to a foe
+const AGGRO_PER_HEAL = 1.2; // threat added (to nearby foes) per point healed
+const AGGRO_HEAL_RADIUS = 760; // a heal aggravates every foe on-screen within this
+const PROJ_HIT_PLAYER = 24; // spell collision radius vs a player
+const PROJ_HIT_MONSTER = 28; // ...vs a monster
+const PROJ_HIT_BOSS = 46; // ...vs the boss
+
 interface Ability {
   cd: number; // cooldown ms
-  range: number; // max cast range (0 = self)
-  dmg: number; // damage applied (negative = heal)
-  projectile: boolean;
+  amount: number; // damage, or heal amount when heal=true
+  speed: number; // projectile px/sec
+  life: number; // projectile lifetime ms (range = speed * life / 1000)
   slowMs?: number;
+  heal?: boolean; // heals whatever it hits instead of damaging it
 }
 
-// Index matches the client's ability bar (keys 1-4).
+// Index matches the client's ability bar (keys 1-4). Every spell is now a
+// DIRECTIONAL projectile: it flies straight and affects the first thing it
+// touches — monster, boss, or player (including allies). Aim carefully.
 const ABILITIES: Ability[] = [
-  { cd: 900, range: 460, dmg: 18, projectile: true }, // 1 Fireball
-  { cd: 1600, range: 420, dmg: 12, projectile: true, slowMs: 1500 }, // 2 Frostbolt
-  { cd: 5000, range: 0, dmg: -34, projectile: false }, // 3 Heal (self)
-  { cd: 600, range: 110, dmg: 11, projectile: false }, // 4 Smite (melee)
+  { cd: 900, amount: 18, speed: 560, life: 950 }, // 1 Fireball
+  { cd: 1600, amount: 12, speed: 480, life: 1000, slowMs: 1500 }, // 2 Frostbolt
+  { cd: 5000, amount: 34, speed: 520, life: 950, heal: true }, // 3 Heal
+  { cd: 600, amount: 16, speed: 720, life: 240 }, // 4 Smite (short range)
 ];
 
 interface Player {
@@ -72,6 +82,8 @@ interface Player {
   ty: number;
   dirx: number; // WASD direction (unit vector, 0 when idle)
   diry: number;
+  facingx: number; // last movement/aim direction (fallback aim for casts)
+  facingy: number;
   hp: number;
   dead: boolean;
   respawnAt: number;
@@ -92,6 +104,7 @@ interface Monster {
   respawnAt: number;
   attackReadyAt: number;
   wanderAt: number;
+  aggro: Record<string, number>; // playerId -> threat
 }
 
 interface Boss {
@@ -103,22 +116,22 @@ interface Boss {
   dead: boolean;
   castReadyAt: number;
   meleeReadyAt: number;
+  aggro: Record<string, number>; // playerId -> threat
 }
 
 interface Projectile {
   id: string;
   x: number;
   y: number;
-  ownerId: string;
-  targetId: string; // homing player shots track this entity; "" for boss bolts
-  ability: number;
-  dmg: number;
+  ownerId: string; // player id (or boss id for boss bolts)
+  ability: number; // for client coloring
+  dmg: number; // damage, or heal amount when heal=true
   slowMs: number;
-  // Boss bolts are directional (fixed velocity), not homing:
-  vx: number;
+  heal: boolean; // heals whatever it hits instead of damaging
+  vx: number; // straight-line velocity (all projectiles are directional now)
   vy: number;
-  life: number; // ms remaining (boss bolts only)
-  boss: boolean; // damages players on contact + distinct visual
+  life: number; // ms remaining
+  boss: boolean; // boss bolt: only affects players
 }
 
 type GameEvent =
@@ -161,6 +174,7 @@ export class MyDurableObject extends DurableObject<Env> {
         respawnAt: 0,
         attackReadyAt: 0,
         wanderAt: 0,
+        aggro: {},
       });
     }
   }
@@ -184,6 +198,8 @@ export class MyDurableObject extends DurableObject<Env> {
       ty: 0,
       dirx: 0,
       diry: 0,
+      facingx: 1,
+      facingy: 0,
       hp: PLAYER_MAX_HP,
       dead: false,
       respawnAt: 0,
@@ -205,6 +221,7 @@ export class MyDurableObject extends DurableObject<Env> {
     const drop = () => {
       this.players.delete(id);
       this.projectiles = this.projectiles.filter((p) => p.ownerId !== id);
+      this.clearPlayerAggro(id);
       if (this.players.size === 0) this.stopLoop();
     };
     server.addEventListener("close", drop);
@@ -241,72 +258,95 @@ export class MyDurableObject extends DurableObject<Env> {
       player.dirx = dx;
       player.diry = dy;
     } else if (msg.t === "cast") {
-      this.castAbility(player, Number(msg.ability), msg.target ? String(msg.target) : null);
+      this.castAbility(player, Number(msg.ability), Number(msg.dx) || 0, Number(msg.dy) || 0);
     }
   }
 
-  private castAbility(caster: Player, idx: number, targetId: string | null) {
+  private castAbility(caster: Player, idx: number, dx: number, dy: number) {
     const ab = ABILITIES[idx];
     if (!ab) return;
     if ((caster.cds[idx] || 0) > this.now) return; // on cooldown
 
-    // Self-target heal — no target needed.
-    if (ab.dmg < 0 && ab.range === 0) {
-      caster.cds[idx] = this.now + ab.cd;
-      caster.hp = Math.min(PLAYER_MAX_HP, caster.hp - ab.dmg);
-      this.events.push({ type: "cast", x: caster.x, y: caster.y, color: "#5dff9b" });
-      this.events.push({ type: "heal", x: caster.x, y: caster.y, amount: -ab.dmg });
-      return;
-    }
-
-    // Targeted abilities require a valid, in-range target before committing.
-    const target = this.findTarget(targetId);
-    if (!target) return;
-    const dist = Math.hypot(target.x - caster.x, target.y - caster.y);
-    if (dist > ab.range + 40) return; // out of range
-
-    caster.cds[idx] = this.now + ab.cd;
-    this.events.push({ type: "cast", x: caster.x, y: caster.y, color: "#8aa0ff" });
-
-    if (ab.projectile) {
-      this.projectiles.push({
-        id: this.nextId("pr"),
-        x: caster.x,
-        y: caster.y,
-        ownerId: caster.id,
-        targetId: target.id,
-        ability: idx,
-        dmg: ab.dmg,
-        slowMs: ab.slowMs || 0,
-        vx: 0,
-        vy: 0,
-        life: 0,
-        boss: false,
-      });
+    // Resolve aim: use the supplied direction, else fall back to facing.
+    let ax = dx;
+    let ay = dy;
+    const mag = Math.hypot(ax, ay);
+    if (mag > 0.001) {
+      ax /= mag;
+      ay /= mag;
     } else {
-      this.applyDamage(target, ab.dmg, caster, ab.slowMs || 0);
+      ax = caster.facingx;
+      ay = caster.facingy;
+    }
+    caster.cds[idx] = this.now + ab.cd;
+    caster.facingx = ax;
+    caster.facingy = ay;
+
+    this.projectiles.push({
+      id: this.nextId("pr"),
+      x: caster.x + ax * 22, // spawn just in front so it doesn't clip the caster
+      y: caster.y + ay * 22,
+      ownerId: caster.id,
+      ability: idx,
+      dmg: ab.amount,
+      slowMs: ab.slowMs || 0,
+      heal: !!ab.heal,
+      vx: ax * ab.speed,
+      vy: ay * ab.speed,
+      life: ab.life,
+      boss: false,
+    });
+    this.events.push({ type: "cast", x: caster.x, y: caster.y, color: ab.heal ? "#5dff9b" : "#8aa0ff" });
+
+    // Casting a heal generates threat on every foe on-screen around the caster.
+    if (ab.heal) {
+      const threat = ab.amount * AGGRO_PER_HEAL;
+      for (const m of this.monsters) {
+        if (!m.dead && Math.hypot(m.x - caster.x, m.y - caster.y) <= AGGRO_HEAL_RADIUS) {
+          this.addAggro(m.aggro, caster.id, threat);
+        }
+      }
+      if (this.boss && !this.boss.dead && Math.hypot(this.boss.x - caster.x, this.boss.y - caster.y) <= AGGRO_HEAL_RADIUS) {
+        this.addAggro(this.boss.aggro, caster.id, threat);
+      }
     }
   }
 
-  private findTarget(id: string | null): Player | Monster | Boss | null {
-    if (!id) return null;
-    const p = this.players.get(id);
-    if (p && !p.dead) return p;
-    const m = this.monsters.find((mo) => mo.id === id);
-    if (m && !m.dead) return m;
-    if (this.boss && !this.boss.dead && this.boss.id === id) return this.boss;
-    return null;
+  private addAggro(table: Record<string, number>, playerId: string, amount: number) {
+    table[playerId] = (table[playerId] || 0) + amount;
   }
 
-  private applyDamage(target: Player | Monster | Boss, dmg: number, source: Player, slowMs: number) {
+  private clearPlayerAggro(playerId: string) {
+    for (const m of this.monsters) delete m.aggro[playerId];
+    if (this.boss) delete this.boss.aggro[playerId];
+  }
+
+  // Pick the living player with the most threat; fall back to proximity so an
+  // un-aggroed foe still reacts to anyone wandering close.
+  private aggroTarget(table: Record<string, number>, x: number, y: number, range: number): Player | null {
+    let best: Player | null = null;
+    let bestThreat = 0;
+    for (const pid in table) {
+      const p = this.players.get(pid);
+      if (!p || p.dead) continue;
+      if (table[pid] > bestThreat) {
+        bestThreat = table[pid];
+        best = p;
+      }
+    }
+    return best || this.nearestPlayer(x, y, range);
+  }
+
+  private applyDamage(target: Player | Monster | Boss, dmg: number, source: Player | null, slowMs: number) {
     if (this.boss && target === this.boss) {
       this.boss.hp -= dmg;
+      if (source) this.addAggro(this.boss.aggro, source.id, dmg * AGGRO_PER_DAMAGE);
       this.events.push({ type: "dmg", x: target.x, y: target.y, amount: dmg });
       if (this.boss.hp <= 0 && !this.boss.dead) {
         this.boss.dead = true;
         this.events.push({ type: "boss", x: target.x, y: target.y, state: "dead" });
         this.events.push({ type: "death", x: target.x, y: target.y });
-        source.kills += 5; // bosses are worth a lot
+        if (source) source.kills += 5; // bosses are worth a lot
       }
       return;
     }
@@ -319,16 +359,25 @@ export class MyDurableObject extends DurableObject<Env> {
     } else if ("respawnAt" in target) {
       // target is a monster (boss handled above by reference)
       target.hp -= dmg;
+      if (source) this.addAggro(target.aggro, source.id, dmg * AGGRO_PER_DAMAGE);
       this.events.push({ type: "dmg", x: target.x, y: target.y, amount: dmg });
       if (target.hp <= 0 && !target.dead) {
         target.dead = true;
         target.respawnAt = this.now + MONSTER_RESPAWN_MS;
         this.events.push({ type: "death", x: target.x, y: target.y });
-        source.kills += 1;
+        if (source) source.kills += 1;
         this.killsSinceBoss += 1;
         this.maybeSpawnBoss();
       }
     }
+  }
+
+  // Heal whatever was struck — player OR monster OR boss (careful what you hit).
+  private applyHeal(target: Player | Monster | Boss, amount: number) {
+    if (target.dead) return;
+    const maxHp = this.boss && target === this.boss ? BOSS_MAX_HP : "kills" in target ? PLAYER_MAX_HP : MONSTER_MAX_HP;
+    target.hp = Math.min(maxHp, target.hp + amount);
+    this.events.push({ type: "heal", x: target.x, y: target.y, amount });
   }
 
   private maybeSpawnBoss() {
@@ -344,6 +393,7 @@ export class MyDurableObject extends DurableObject<Env> {
       dead: false,
       castReadyAt: this.now + 1500, // brief telegraph before first volley
       meleeReadyAt: 0,
+      aggro: {},
     };
     this.boss = boss;
     this.events.push({ type: "boss", x: boss.x, y: boss.y, state: "spawn" });
@@ -360,10 +410,10 @@ export class MyDurableObject extends DurableObject<Env> {
         x: boss.x,
         y: boss.y,
         ownerId: boss.id,
-        targetId: "",
         ability: 0,
         dmg: BOSS_PROJ_DMG,
         slowMs: 0,
+        heal: false,
         vx: Math.cos(a) * BOSS_PROJ_SPEED,
         vy: Math.sin(a) * BOSS_PROJ_SPEED,
         life: BOSS_PROJ_LIFE,
@@ -373,11 +423,12 @@ export class MyDurableObject extends DurableObject<Env> {
     this.events.push({ type: "cast", x: boss.x, y: boss.y, color: "#c850ff" });
   }
 
-  private killPlayer(target: Player, source: Player) {
+  private killPlayer(target: Player, source: Player | null) {
     target.dead = true;
     target.respawnAt = this.now + PLAYER_RESPAWN_MS;
     this.events.push({ type: "death", x: target.x, y: target.y });
-    if (source.id !== target.id) source.kills += 1;
+    if (source && source.id !== target.id) source.kills += 1;
+    this.clearPlayerAggro(target.id); // death wipes your threat
   }
 
   // ---- Simulation loop ----
@@ -419,7 +470,16 @@ export class MyDurableObject extends DurableObject<Env> {
         p.y = clamp(p.y + p.diry * speed * dt, 0, WORLD.h);
         p.tx = p.x;
         p.ty = p.y;
+        p.facingx = p.dirx;
+        p.facingy = p.diry;
       } else {
+        const fdx = p.tx - p.x;
+        const fdy = p.ty - p.y;
+        const fd = Math.hypot(fdx, fdy);
+        if (fd > 1) {
+          p.facingx = fdx / fd;
+          p.facingy = fdy / fd;
+        }
         moveToward(p, p.tx, p.ty, speed * dt);
       }
     }
@@ -432,10 +492,11 @@ export class MyDurableObject extends DurableObject<Env> {
           m.hp = MONSTER_MAX_HP;
           m.x = 200 + Math.random() * (WORLD.w - 400);
           m.y = 200 + Math.random() * (WORLD.h - 400);
+          m.aggro = {}; // forget threat after dying
         }
         continue;
       }
-      const prey = this.nearestPlayer(m.x, m.y, MONSTER_AGGRO);
+      const prey = this.aggroTarget(m.aggro, m.x, m.y, MONSTER_AGGRO);
       if (prey) {
         const d = Math.hypot(prey.x - m.x, prey.y - m.y);
         if (d <= MONSTER_MELEE_RANGE) {
@@ -465,7 +526,7 @@ export class MyDurableObject extends DurableObject<Env> {
       if (boss.dead) {
         this.boss = null;
       } else {
-        const prey = this.nearestPlayer(boss.x, boss.y, Infinity);
+        const prey = this.aggroTarget(boss.aggro, boss.x, boss.y, Infinity);
         if (prey) {
           const d = Math.hypot(prey.x - boss.x, prey.y - boss.y);
           if (d > BOSS_MELEE_RANGE) {
@@ -484,15 +545,16 @@ export class MyDurableObject extends DurableObject<Env> {
       }
     }
 
-    // Projectiles: boss bolts fly straight and hit any player they touch;
-    // player shots home toward their target.
-    const owners = this.players;
+    // Projectiles: everything flies straight now. Boss bolts only affect
+    // players; player spells affect the FIRST thing they touch — monster,
+    // boss, or another player — healing or damaging based on the spell.
     this.projectiles = this.projectiles.filter((pr) => {
+      pr.x += pr.vx * dt;
+      pr.y += pr.vy * dt;
+      pr.life -= TICK_MS;
+      if (pr.life <= 0 || pr.x < 0 || pr.y < 0 || pr.x > WORLD.w || pr.y > WORLD.h) return false;
+
       if (pr.boss) {
-        pr.x += pr.vx * dt;
-        pr.y += pr.vy * dt;
-        pr.life -= TICK_MS;
-        if (pr.life <= 0 || pr.x < 0 || pr.y < 0 || pr.x > WORLD.w || pr.y > WORLD.h) return false;
         for (const p of this.players.values()) {
           if (p.dead) continue;
           if (Math.hypot(p.x - pr.x, p.y - pr.y) <= BOSS_PROJ_HIT) {
@@ -504,19 +566,28 @@ export class MyDurableObject extends DurableObject<Env> {
         }
         return true;
       }
-      const target = this.findTarget(pr.targetId);
-      if (!target) return false; // target gone
-      const dx = target.x - pr.x;
-      const dy = target.y - pr.y;
-      const dist = Math.hypot(dx, dy);
-      const step = PROJECTILE_SPEED * dt;
-      if (dist <= step + 20) {
-        const owner = owners.get(pr.ownerId);
-        if (owner) this.applyDamage(target, pr.dmg, owner, pr.slowMs);
+
+      // Player spell — find the closest thing it overlaps this tick.
+      let hit: Player | Monster | Boss | null = null;
+      let hitDist = Infinity;
+      const consider = (ent: Player | Monster | Boss, radius: number) => {
+        const d = Math.hypot(ent.x - pr.x, ent.y - pr.y);
+        if (d <= radius && d < hitDist) {
+          hitDist = d;
+          hit = ent;
+        }
+      };
+      for (const m of this.monsters) if (!m.dead) consider(m, PROJ_HIT_MONSTER);
+      if (this.boss && !this.boss.dead) consider(this.boss, PROJ_HIT_BOSS);
+      for (const p of this.players.values()) {
+        if (p.dead || p.id === pr.ownerId) continue; // can't hit yourself
+        consider(p, PROJ_HIT_PLAYER);
+      }
+      if (hit) {
+        if (pr.heal) this.applyHeal(hit, pr.dmg);
+        else this.applyDamage(hit, pr.dmg, this.players.get(pr.ownerId) || null, pr.slowMs);
         return false;
       }
-      pr.x += (dx / dist) * step;
-      pr.y += (dy / dist) * step;
       return true;
     });
 
