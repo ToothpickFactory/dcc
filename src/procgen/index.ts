@@ -55,9 +55,10 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
     theme,
     w: WORLD.w,
     h: WORLD.h,
-    // Short dev timer so the floor loop (timeout + advance) is easy to exercise.
-    // Stream D (M4 gen) sets real, per-floor, theme-driven durations.
-    durationMs: 12000,
+    // Per-floor lethal timer — reach the stairs before it expires (decision #2).
+    // Stream D (M4 gen) will set real, per-floor, theme-driven durations; until
+    // then floor 1 gets a generous 5 min to learn the ropes, later floors 60s.
+    durationMs: depth <= 1 ? 300000 : 60000,
     collision,
     entrance,
     stairs,
