@@ -19,8 +19,8 @@ import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
 import { castAbility, stepProjectiles } from "./sim/projectiles";
-import { DevIdentity, type Identity } from "./identity";
-import { SqlRunStore, type RunCheckpoint } from "./persistence";
+import { HmacIdentity, type Identity } from "./identity";
+import { SqlRunStore, type PlayerRecord, type RunCheckpoint } from "./persistence";
 import { SCHEMA } from "./persistence/schema";
 import { StubProfileTracker, type ProfileTracker } from "./loot/profile";
 
@@ -28,7 +28,8 @@ const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 t
 const FIRST_SEED = 0xdcc;
 
 // The single global world. It IS the authoritative server: a fixed-rate tick over
-// in-memory state, persisted to the DO's SQLite so the run survives eviction (M0).
+// in-memory state, persisted to the DO's SQLite so the run AND identities survive
+// eviction/restart (M0 + M1).
 export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   now = 0;
   players = new Map<string, PlayerState>();
@@ -41,24 +42,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private killsSinceBoss = 0;
   private bossSeq = 0;
   private ticksSincePersist = 0;
+  private connected = 0; // open joined sockets; loop runs while > 0
 
-  private identity: Identity = new DevIdentity();
+  private identity: Identity;
   private profiles: ProfileTracker = new StubProfileTracker();
   private sql: SqlStorage;
   private store: SqlRunStore;
-  // Set during the constructor's blockConcurrencyWhile before any request runs.
-  private floor!: FloorDescriptor;
+  private floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile
   private runId = "run-dev";
   private phase: RunPhase = "running";
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.identity = new HmacIdentity(env.TOKEN_SIGNING_KEY);
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt); // idempotent CREATE TABLE IF NOT EXISTS
     this.store = new SqlRunStore(this.sql);
 
-    // Reload-on-construct: resume the persisted run, or bootstrap a fresh one.
-    // A throw here would reset the object (crash-loop), so fall back to bootstrap.
     ctx.blockConcurrencyWhile(async () => {
       try {
         const run = await this.store.loadRun();
@@ -68,8 +68,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         this.bootstrapRun();
       }
     });
-    // The sim loop starts lazily on first join, so an idle DO can be evicted and
-    // resume from SQLite on the next connection.
   }
 
   private bootstrapRun() {
@@ -82,9 +80,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
   private resumeRun(run: RunCheckpoint) {
     this.runId = run.runId;
-    // Don't trust a stored TEXT column as a typed enum — validate, else default.
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
-    // Floors are deterministic from (seed, depth) — no geometry is persisted.
     this.floor = generateFloor(run.seed, run.currentFloor);
     this.spawnMonsters();
   }
@@ -141,14 +137,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   // RPC: wipe to a fresh vanilla run (admin /admin/new-run; auth in the Worker).
-  // Matches decision #7 — manual run-start during dev; scheduled later.
   async newRun(): Promise<{ runId: string; seed: number }> {
     const seed = Math.floor(Math.random() * 0x7fffffff);
     const runId = `run-${Date.now().toString(36)}`;
     const ids = [...this.players.keys()];
 
-    // Persist FIRST — disk is the source of truth. If the write throws, the live
-    // world is left untouched and the Worker returns 500 (no half-switched run).
+    // Persist FIRST — disk is the source of truth; if it throws, the live world
+    // is untouched and the Worker returns 500 (no half-switched run).
     this.ctx.storage.transactionSync(() => {
       this.store.resetSync(runId, seed, Date.now());
       for (const id of ids) {
@@ -165,7 +160,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       }
     });
 
-    // Committed — now switch the in-memory world and tell connected clients.
     this.runId = runId;
     this.phase = "running";
     this.floor = generateFloor(seed, 1);
@@ -174,6 +168,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.boss = null;
     this.killsSinceBoss = 0;
     for (const p of this.players.values()) {
+      // Leave p.linkdead as-is: a disconnected character stays frozen/targetable
+      // in the new run and clears linkdead only when it reconnects.
       p.status = "alive";
       p.hp = PLAYER_MAX_HP;
       p.cds = {};
@@ -182,8 +178,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.abilities = DEFAULT_ABILITIES.map((a) => ({ ...a }));
       p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
       p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;
-      this.send(p.ws, this.floorMsg());
-      this.send(p.ws, this.runMsg());
+      if (!p.linkdead) {
+        this.send(p.ws, this.floorMsg());
+        this.send(p.ws, this.runMsg());
+      }
     }
     return { runId, seed };
   }
@@ -198,24 +196,50 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     server.accept();
 
     let player: PlayerState | null = null;
-    server.addEventListener("message", (ev) => {
+    let joining = false;
+    let closed = false;
+    server.addEventListener("message", async (ev) => {
       let msg: ClientMsg;
       try {
         msg = JSON.parse(ev.data as string) as ClientMsg;
       } catch {
         return;
       }
-      player = this.onMessage(server, player, msg);
-    });
-    const drop = () => {
-      if (player) {
-        const id = player.id;
-        this.players.delete(id);
-        this.projectiles = this.projectiles.filter((p) => p.ownerId !== id);
-        if (this.boss) this.boss.threat.delete(id);
-        for (const m of this.monsters) m.threat.delete(id);
+      if (msg.t === "join") {
+        if (player || joining) return; // exactly one join per socket
+        joining = true;
+        try {
+          const ident = await this.resolveIdentity(msg.name, msg.token); // async: crypto + load
+          if (closed) return; // socket dropped during the async resolve — don't register a phantom
+          player = this.register(server, msg.name, ident); // synchronous => atomic alive/spectator decision
+        } finally {
+          joining = false;
+        }
+        return;
       }
-      if (this.players.size === 0) this.stopLoop();
+      if (player) this.handleInput(player, server, msg);
+    });
+    // Runs at most once — an abnormal disconnect fires BOTH error and close.
+    const drop = () => {
+      if (closed) return;
+      closed = true;
+      if (player) {
+        this.connected = Math.max(0, this.connected - 1);
+        if (player.ws === server) {
+          if (player.status === "alive") {
+            // Linkdead: a LIVING character stays in the world, frozen and
+            // targetable — it can die while you're gone (decision #8).
+            player.linkdead = true;
+            player.mvx = 0;
+            player.mvy = 0;
+            this.persistPlayer(player);
+          } else {
+            this.players.delete(player.id);
+          }
+          this.projectiles = this.projectiles.filter((p) => p.ownerId !== player!.id);
+        }
+      }
+      if (this.connected === 0) this.stopLoop();
     };
     server.addEventListener("close", drop);
     server.addEventListener("error", drop);
@@ -223,40 +247,99 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  private onMessage(ws: WebSocket, player: PlayerState | null, msg: ClientMsg): PlayerState | null {
-    if (msg.t === "join") {
-      const minted = this.identity.mint(msg.name);
-      const p: PlayerState = {
-        id: minted.playerId,
-        name: (msg.name || "Hero").slice(0, 16),
-        x: this.floor.entrance.x + (Math.random() - 0.5) * 200,
-        y: this.floor.entrance.y + (Math.random() - 0.5) * 200,
-        aim: 0,
-        mvx: 0,
-        mvy: 0,
-        hp: PLAYER_MAX_HP,
-        status: "alive",
-        cds: {},
-        lastSeq: 0,
-        abilities: DEFAULT_ABILITIES.map((a) => ({ ...a })),
-        ws,
-      };
-      this.players.set(p.id, p);
-      void this.store.savePlayer(this.recordOf(p));
-      this.send(ws, { t: "welcome", you: p.id, token: minted.token, world: WORLD, protocol: PROTOCOL_VERSION });
-      this.send(ws, this.floorMsg());
-      this.send(ws, this.runMsg());
+  // Async part of join: verify the token (or mint) and load the record. No state
+  // mutation here, so it's safe to run with the input gate open across awaits.
+  private async resolveIdentity(
+    name: string,
+    providedToken?: string,
+  ): Promise<{ playerId: string; token: string; rec: PlayerRecord | null }> {
+    const verified = providedToken ? await this.identity.verify(providedToken) : null;
+    if (verified) {
+      return { playerId: verified.playerId, token: providedToken!, rec: await this.store.loadPlayer(verified.playerId) };
+    }
+    const minted = await this.identity.mint(name);
+    return { playerId: minted.playerId, token: minted.token, rec: null };
+  }
+
+  // Synchronous so the alive/spectator decision is atomic w.r.t. the tick — there
+  // is NO await between reading this.players and committing the player. Do not add
+  // one, or a death landing mid-join could open a revive window.
+  private register(ws: WebSocket, name: string, ident: { playerId: string; token: string; rec: PlayerRecord | null }): PlayerState {
+    const { playerId, token, rec } = ident;
+    const finalName = (name || rec?.name || "Hero").slice(0, 16);
+
+    // Rebind a character already live in this run (reconnect / second tab).
+    const existing = this.players.get(playerId);
+    if (existing) {
+      const oldWs = existing.ws;
+      existing.ws = ws;
+      existing.linkdead = false;
+      if (name) existing.name = finalName;
+      this.connected++;
+      if (oldWs !== ws) {
+        try {
+          oldWs.close(); // displace a stale/second socket; its drop() will decrement
+        } catch {
+          /* already closed */
+        }
+      }
+      this.welcomeFlow(ws, playerId, token);
       this.startLoop();
-      return p;
+      return existing;
     }
 
-    if (!player) return null;
+    // Dead in this run -> spectator only. This is what makes permadeath stick
+    // across a reload: a valid token for a dead character cannot play.
+    if (rec && !rec.alive) {
+      const spec = this.makePlayer(playerId, finalName, ws, "spectator", rec);
+      this.players.set(playerId, spec);
+      this.connected++;
+      this.welcomeFlow(ws, playerId, token);
+      this.startLoop();
+      return spec;
+    }
+
+    // New player, or an alive player returning after the DO was evicted.
+    const p = this.makePlayer(playerId, finalName, ws, "alive", rec);
+    this.players.set(playerId, p);
+    this.connected++;
+    this.persistPlayer(p);
+    this.welcomeFlow(ws, playerId, token);
+    this.startLoop();
+    return p;
+  }
+
+  private makePlayer(id: string, name: string, ws: WebSocket, status: "alive" | "spectator", rec: PlayerRecord | null): PlayerState {
+    return {
+      id,
+      name,
+      x: this.floor.entrance.x + (Math.random() - 0.5) * 200,
+      y: this.floor.entrance.y + (Math.random() - 0.5) * 200,
+      aim: 0,
+      mvx: 0,
+      mvy: 0,
+      hp: PLAYER_MAX_HP,
+      status,
+      cds: {},
+      lastSeq: 0,
+      abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
+      ws,
+      linkdead: false,
+    };
+  }
+
+  private welcomeFlow(ws: WebSocket, playerId: string, token: string) {
+    this.send(ws, { t: "welcome", you: playerId, token, world: WORLD, protocol: PROTOCOL_VERSION });
+    this.send(ws, this.floorMsg());
+    this.send(ws, this.runMsg());
+  }
+
+  private handleInput(player: PlayerState, ws: WebSocket, msg: ClientMsg) {
     if (msg.t === "ping") {
       this.send(ws, { t: "pong", ts: msg.ts });
-      return player;
+      return;
     }
-    if (player.status !== "alive") return player;
-
+    if (player.status !== "alive") return; // spectators send no game input
     if (msg.t === "input") {
       player.mvx = clampUnit(msg.mv?.[0] ?? 0);
       player.mvy = clampUnit(msg.mv?.[1] ?? 0);
@@ -267,7 +350,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       player.lastSeq = msg.seq | 0;
       castAbility(this, player, msg.ability | 0, player.aim);
     }
-    return player;
   }
 
   // ---- Simulation loop ----
@@ -288,6 +370,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     updateMonsters(this, dt);
     updateBoss(this, dt);
     stepProjectiles(this, dt);
+
+    // Permadeath must be durable the instant it happens, not on the next
+    // heartbeat — persist any player who died this tick.
+    for (const e of this.events) {
+      if (e.e === "death") {
+        const dp = this.players.get(e.id);
+        if (dp && dp.status === "spectator") this.persistPlayer(dp);
+      }
+    }
+
     this.broadcast();
     this.events = [];
     if (++this.ticksSincePersist >= PERSIST_EVERY) {
@@ -296,8 +388,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
   }
 
-  // ~1 Hz durable checkpoint. Batched in one transaction; nothing in the tick
-  // depends on it, so a storage hiccup can't stall the sim.
   private persistHeartbeat() {
     try {
       this.ctx.storage.transactionSync(() => {
@@ -315,7 +405,15 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
   }
 
-  private recordOf(p: PlayerState) {
+  private persistPlayer(p: PlayerState) {
+    try {
+      this.ctx.storage.transactionSync(() => this.store.playerSync(this.recordOf(p)));
+    } catch {
+      /* never break the loop on a storage hiccup */
+    }
+  }
+
+  private recordOf(p: PlayerState): PlayerRecord {
     return {
       playerId: p.id,
       name: p.name,
@@ -330,7 +428,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private broadcast() {
     const ents: EntityDTO[] = [];
     for (const p of this.players.values()) {
-      if (p.status !== "alive") continue;
+      if (p.status !== "alive") continue; // linkdead alive players ARE entities (targetable)
       ents.push({
         id: p.id,
         kind: "player",
@@ -364,6 +462,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
 
     for (const p of this.players.values()) {
+      if (p.linkdead) continue; // no live socket to send to
       const self: SelfDTO = {
         x: r(p.x),
         y: r(p.y),
