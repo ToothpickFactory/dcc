@@ -13,6 +13,7 @@
     "start": "npm run dev",
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc --noEmit -p tsconfig.client.json",
+    "test:profile": "node --experimental-strip-types src/server/loot/profile.test.ts",
     "bot": "node --experimental-strip-types test/bot.ts",
     "cf-typegen": "wrangler types"
   },

@@ -6,6 +6,7 @@ import {
   BOSS_MELEE_RANGE,
   BOSS_PROJ_DMG,
   BOSS_PROJ_LIFE,
+  BOSS_PROJ_RADIUS,
   BOSS_PROJ_SPEED,
   BOSS_PROJ_SPREAD,
   BOSS_SPEED,
@@ -64,6 +65,7 @@ function bossCast(ctx: WorldCtx, boss: BossState, target: PlayerState): void {
       slowMs: 0,
       ability: BOSS_BOLT_SPRITE,
       ttl: BOSS_PROJ_LIFE,
+      hitR: BOSS_PROJ_RADIUS,
       boss: true,
     });
   }

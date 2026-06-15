@@ -1,6 +1,7 @@
 // Tunable constants shared by client prediction and the server simulation.
 // Keeping them in ONE place is what lets client-side prediction match the
 // authoritative server (see ROADMAP.md M3).
+import type { MonsterKind } from "./types";
 
 export const TICK_MS = 50; // server simulation step (20 Hz)
 export const INPUT_HZ = 10; // client -> server input rate (scale gate; see ROADMAP.md)
@@ -23,9 +24,30 @@ export const MONSTER_ATTACK_CD = 1200;
 export const MONSTER_DMG = 6;
 
 export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accruing (boss trigger)
+export const MONSTER_BOLT_SPRITE = 98; // EntityDTO.sprite for a ranged monster's bolt
+
+// Per-kind monster archetypes (Stream B). The grunt row mirrors the legacy
+// MONSTER_* constants so existing behavior is unchanged; the others diverge.
+// `ranged` kites and shoots instead of meleeing (dmg 0, fires bolts).
+export interface MonsterKindDef {
+  hp: number;
+  speed: number; // px/s
+  dmg: number; // melee damage (0 for ranged kiters)
+  attackCd: number; // ms between attacks/shots
+  meleeRange: number; // px
+  radius: number; // collision radius, px
+  ranged?: { shootRange: number; kite: number; projSpeed: number; projDmg: number };
+}
+export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
+  grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 20 },
+  brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 28 }, // slow tank, big hits
+  swarm: { hp: 24, speed: 158, dmg: 4, attackCd: 700, meleeRange: 42, radius: 13 }, // fast, fragile, weak
+  ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
+};
 
 export const PROJECTILE_RADIUS = 7;
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
+export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost) is active
 
 // Directional heal (ported): a heal projectile mends the first ally it hits, and
 // casting it draws aggro from nearby foes — so support play carries risk.
