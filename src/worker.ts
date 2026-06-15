@@ -31,9 +31,15 @@ export default {
     // Admin: wipe + start a fresh run (decision #7 — manual during dev).
     if (url.pathname === "/admin/new-run") {
       if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-      const provided = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-      if (!(await tokenMatches(provided, env.ADMIN_TOKEN))) {
-        return new Response("forbidden", { status: 403 });
+      // TEMP bypass: when ADMIN_OPEN="true" (wrangler.jsonc vars) the token check
+      // is skipped so the "Reset round" button works without a secret. The
+      // endpoint is PUBLIC while this is on. Set ADMIN_OPEN="false" (or remove it)
+      // and redeploy to require `Authorization: Bearer <ADMIN_TOKEN>` again.
+      if (env.ADMIN_OPEN !== "true") {
+        const provided = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+        if (!(await tokenMatches(provided, env.ADMIN_TOKEN))) {
+          return new Response("forbidden", { status: 403 });
+        }
       }
       const result = await env.MY_DURABLE_OBJECT.getByName("world").newRun();
       return Response.json({ ok: true, ...result });

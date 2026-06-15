@@ -4,6 +4,7 @@
 interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	ADMIN_TOKEN: string;
+	ADMIN_OPEN: string;
 	TOKEN_SIGNING_KEY: string;
 	MY_DURABLE_OBJECT: DurableObjectNamespace<import("./src/worker").MyDurableObject>;
 }

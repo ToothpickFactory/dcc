@@ -27,7 +27,6 @@ let connected = false;
 let toastHideAt = 0;
 let lastFloorKey = "";
 let lastRunPhase = "";
-let adminToken = "";
 
 if (adminUnlocked) resetRunBtn.style.display = "block";
 
@@ -95,22 +94,14 @@ playBtn.addEventListener("click", start);
 resetRunBtn.addEventListener("click", async () => {
   if (!confirm("Reset the current round for every connected player?")) return;
 
-  if (!adminToken) {
-    const entered = prompt("Admin token (ADMIN_TOKEN from .dev.vars / wrangler secret)", "dev-admin-token");
-    if (!entered) return;
-    adminToken = entered;
-  }
-
+  // TEMP: token prompt removed — the server bypasses auth while ADMIN_OPEN="true".
+  // Restore the prompt + Authorization header when re-securing the endpoint.
   resetRunBtn.disabled = true;
   resetRunBtn.textContent = "Resetting...";
   try {
-    const response = await fetch("/admin/new-run", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
+    const response = await fetch("/admin/new-run", { method: "POST" });
     if (!response.ok) {
-      if (response.status === 403) adminToken = "";
-      throw new Error(response.status === 403 ? "Invalid admin token." : `Reset failed (${response.status}).`);
+      throw new Error(response.status === 403 ? "Reset forbidden (token required)." : `Reset failed (${response.status}).`);
     }
     showToast("Round reset.", "#9be7ff");
   } catch (error) {

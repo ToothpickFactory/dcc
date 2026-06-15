@@ -39,7 +39,13 @@
 	"upload_source_maps": true,
 	"compatibility_flags": [
 		"nodejs_compat"
-	]
+	],
+	// TEMP: ADMIN_OPEN="true" makes POST /admin/new-run public (no token required)
+	// so the in-game "Reset round" button works. Set to "false" or remove this
+	// block and redeploy to require Bearer ADMIN_TOKEN again.
+	"vars": {
+		"ADMIN_OPEN": "true"
+	}
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
