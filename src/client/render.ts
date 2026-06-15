@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { BOSS_BOLT_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
-import type { EntityDTO } from "../protocol";
+import type { EntityDTO, GameEvent } from "../protocol";
 import { loadAtlasClip } from "./atlas";
 
 // Per-ability projectile colors (so a green heal bolt reads differently from a
@@ -18,7 +18,7 @@ const C = {
 
 const HERO_ROOT = "/assets/Heroes/Kevin";
 const ENEMY_ROOTS = ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"].map((n) => `/assets/Enemies/${n}`);
-const ANIM_NAMES = [
+const MOVE_ANIM_NAMES = [
   "iso_idle_up_right",
   "iso_idle_right_right",
   "iso_idle_down_right",
@@ -26,6 +26,9 @@ const ANIM_NAMES = [
   "iso_run_right_right",
   "iso_run_down_right",
 ];
+
+type FacingDir = "up" | "down" | "right";
+type ActionName = "cast" | "bolt" | "strike" | "punch" | "kick";
 
 interface LoadedClip {
   texture: THREE.Texture;
@@ -40,6 +43,10 @@ interface SpriteState {
   clipKey: string;
   frame: number;
   nextFrameAt: number;
+  facingDir: FacingDir;
+  flipX: boolean;
+  action: ActionName | null;
+  actionUntil: number;
 }
 
 export class Renderer {
@@ -53,6 +60,7 @@ export class Renderer {
   private clipPromises = new Map<string, Promise<LoadedClip | null>>();
   private lastPos = new Map<string, { x: number; y: number }>();
   private textureLoader = new THREE.TextureLoader();
+  private heroAttackToggle = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -82,9 +90,9 @@ export class Renderer {
 
   private async primeClipCache(): Promise<void> {
     const paths: string[] = [];
-    for (const a of ANIM_NAMES) paths.push(`${HERO_ROOT}/${a}`);
+    for (const a of MOVE_ANIM_NAMES) paths.push(`${HERO_ROOT}/${a}`);
     for (const root of ENEMY_ROOTS) {
-      for (const a of ANIM_NAMES) paths.push(`${root}/${a}`);
+      for (const a of MOVE_ANIM_NAMES) paths.push(`${root}/${a}`);
     }
     await Promise.all(paths.map((p) => this.ensureClip(p)));
   }
@@ -135,7 +143,7 @@ export class Renderer {
       const sprite = new THREE.Sprite(mat);
       sprite.scale.set(size, size, 1);
       this.scene.add(sprite);
-      s = { sprite, clipKey: "", frame: 0, nextFrameAt: 0 };
+      s = { sprite, clipKey: "", frame: 0, nextFrameAt: 0, facingDir: "down", flipX: false, action: null, actionUntil: 0 };
       this.sprites.set(id, s);
     }
     return s;
@@ -170,16 +178,94 @@ export class Renderer {
     return ENEMY_ROOTS[this.hash(id) % ENEMY_ROOTS.length] ?? ENEMY_ROOTS[0]!;
   }
 
-  private facingFromAngle(a: number): { dir: "up" | "down" | "right"; flipX: boolean } {
-    const angle = Math.atan2(Math.sin(a), Math.cos(a));
-    if (angle >= (3 * Math.PI) / 4 || angle <= (-3 * Math.PI) / 4) return { dir: "right", flipX: true };
-    if (angle > Math.PI / 4) return { dir: "down", flipX: false };
-    if (angle < -Math.PI / 4) return { dir: "up", flipX: false };
-    return { dir: "right", flipX: false };
+  private facingFromVector(dx: number, dy: number): { dir: FacingDir; flipX: boolean } {
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return { dir: "right", flipX: dx < 0 };
+    }
+    return { dir: dy < 0 ? "up" : "down", flipX: dx < 0 };
   }
 
-  private clipPath(root: string, moving: boolean, dir: "up" | "down" | "right"): string {
+  private facingFromAngle(a: number): { dir: FacingDir; flipX: boolean } {
+    return this.facingFromVector(Math.cos(a), Math.sin(a));
+  }
+
+  private clipPath(root: string, moving: boolean, dir: FacingDir): string {
     return `${root}/${moving ? "iso_run" : "iso_idle"}_${dir}_right`;
+  }
+
+  private actionClipPath(root: string, action: ActionName, dir: FacingDir): string {
+    const prefix = action === "cast" ? "Cast" : action === "bolt" ? "Bolt" : action === "strike" ? "Strike" : action === "punch" ? "Punch" : "Kick";
+    return `${root}/${prefix} ${dir[0].toUpperCase()}${dir.slice(1)}`;
+  }
+
+  private clipDurationMs(clip: LoadedClip | null): number {
+    if (!clip) return 220;
+    return Math.max(180, clip.frameMs * clip.frames.length);
+  }
+
+  private queueAction(id: string, root: string, action: ActionName, now: number): void {
+    const state = this.sprites.get(id);
+    if (!state) return;
+    const targetClip = this.actionClipPath(root, action, state.facingDir);
+    const loaded = this.clipCache.get(targetClip) ?? null;
+    if (this.clipCache.get(targetClip) === undefined) void this.ensureClip(targetClip);
+    state.action = action;
+    state.actionUntil = now + this.clipDurationMs(loaded);
+    state.clipKey = "";
+    state.frame = 0;
+    state.nextFrameAt = 0;
+  }
+
+  private nearestEntity(
+    ents: EntityDTO[],
+    x: number,
+    y: number,
+    kinds: EntityDTO["kind"][],
+    maxDistance: number,
+  ): EntityDTO | null {
+    let best: EntityDTO | null = null;
+    let bestDistSq = maxDistance * maxDistance;
+    for (const e of ents) {
+      if (!kinds.includes(e.kind)) continue;
+      const dx = e.x - x;
+      const dy = e.y - y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq <= bestDistSq) {
+        best = e;
+        bestDistSq = distSq;
+      }
+    }
+    return best;
+  }
+
+  handleEvents(events: GameEvent[], ents: EntityDTO[], selfId: string): void {
+    const now = performance.now();
+    for (const event of events) {
+      if (event.e === "cast") {
+        const caster = this.nearestEntity(ents, event.x, event.y, ["player", "monster"], 90);
+        if (!caster) continue;
+        const root = caster.kind === "player" ? HERO_ROOT : this.enemyRoot(caster.id);
+        if (caster.id === selfId) {
+          const ability = DEFAULT_ABILITIES[event.ability];
+          if (ability?.id === "mend") this.queueAction(caster.id, root, "cast", now);
+          else if (ability?.id === "cleave") {
+            this.heroAttackToggle = !this.heroAttackToggle;
+            this.queueAction(caster.id, root, this.heroAttackToggle ? "punch" : "kick", now);
+          } else {
+            this.queueAction(caster.id, root, "cast", now);
+          }
+          continue;
+        }
+        this.queueAction(caster.id, root, "bolt", now);
+        continue;
+      }
+
+      if (event.e === "dmg") {
+        const attacker = this.nearestEntity(ents, event.x, event.y, ["monster"], 140);
+        if (!attacker) continue;
+        this.queueAction(attacker.id, this.enemyRoot(attacker.id), "strike", now);
+      }
+    }
   }
 
   // World (x,y) maps to the ground plane (x, z).
@@ -218,15 +304,18 @@ export class Renderer {
       const dx = prev ? wx - prev.x : 0;
       const dy = prev ? wy - prev.y : 0;
       const moving = dx * dx + dy * dy > 0.5;
-      const face = this.facingFromAngle(moving ? Math.atan2(dy, dx) : (e.aim ?? 0));
+      const face = moving ? this.facingFromVector(dx, dy) : this.facingFromAngle(e.aim ?? 0);
+      s.facingDir = face.dir;
+      s.flipX = face.flipX;
+      if (s.action && now >= s.actionUntil) s.action = null;
 
       if (e.kind === "player" || e.kind === "monster") {
         const root = e.kind === "player" ? HERO_ROOT : this.enemyRoot(e.id);
-        const targetClip = this.clipPath(root, moving, face.dir);
+        const targetClip = s.action ? this.actionClipPath(root, s.action, s.facingDir) : this.clipPath(root, moving, s.facingDir);
 
         if (s.clipKey !== targetClip) {
           s.clipKey = targetClip;
-          s.frame = 0;
+          s.frame = s.action ? 0 : -1;
           s.nextFrameAt = 0;
         }
 
@@ -245,7 +334,7 @@ export class Renderer {
         this.setFallback(s.sprite.material as THREE.SpriteMaterial, color);
       }
 
-      const sx = (e.kind === "player" || e.kind === "monster") && face.flipX ? -size : size;
+      const sx = (e.kind === "player" || e.kind === "monster") && s.flipX ? -size : size;
       s.sprite.scale.set(sx, size, 1);
       s.sprite.position.set(wx, h, wy);
       this.lastPos.set(e.id, { x: wx, y: wy });
