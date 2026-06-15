@@ -168,3 +168,6 @@ dist
 
 # build output (esbuild client bundle)
 public/client.js
+
+# Local OpenAI key for the art generator (scripts/gen-art.mjs)
+.openai-key
