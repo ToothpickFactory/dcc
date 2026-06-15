@@ -11,6 +11,13 @@
         font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6e9ef; }
       #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
 
+      /* Fog of war — atmospheric darkness. The camera keeps the player at screen
+         center, so a static radial vignette tracks them. pointer-events:none so
+         mouse-aim/clicks pass through; z-index above the canvas, below the HUD. */
+      #fog { position: fixed; inset: 0; pointer-events: none; z-index: 5;
+        background: radial-gradient(circle at 50% 50%, transparent 0%, transparent 18%,
+          rgba(0,0,0,0.35) 34%, rgba(0,0,0,0.82) 52%, #04060c 70%); }
+
       #login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
         background: radial-gradient(1200px 800px at 50% -10%, #1a2233, #0b0e14 70%); z-index: 20; }
       #login .card { width: min(92vw, 420px); padding: 32px; border-radius: 16px;
@@ -63,6 +70,7 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+    <div id="fog"></div>
     <div id="status"></div>
     <div id="bossbar">
       <div id="bossname">Boss</div>

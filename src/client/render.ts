@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { BOSS_BOLT_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent } from "../protocol";
-import type { FloorDescriptor } from "../procgen/types";
+import type { CollisionGrid, FloorDescriptor } from "../procgen/types";
 import { loadAtlasClip } from "./atlas";
 
 // Per-ability projectile colors (so a green heal bolt reads differently from a
@@ -36,6 +36,11 @@ const DIR_SWITCH_BIAS = 1.2;
 const ENEMY_FRAME_SLOWDOWN = 1.6;
 const ACTION_FRAME_SPEED = 1.25;
 const MOVEMENT_HOLD_MS = 150;
+// Fog of war (client-cosmetic): monsters/boss/projectiles are only drawn within
+// this radius AND with clear line-of-sight to the player (walls block). Allies and
+// the local player are always drawn. Pairs with the #fog vignette in index.html.
+const VISION_RADIUS = 520;
+const VISION_RADIUS_SQ = VISION_RADIUS * VISION_RADIUS;
 
 interface LoadedClip {
   texture: THREE.Texture;
@@ -78,6 +83,7 @@ export class Renderer {
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
+  private collision: CollisionGrid | null = null; // current floor grid, for fog line-of-sight
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -464,6 +470,18 @@ export class Renderer {
       s.sprite.scale.set(size, size, 1);
       s.sprite.position.set(wx, h, wy);
       this.lastPos.set(e.id, { x: wx, y: wy });
+
+      // Fog of war: the local player + allies are always drawn; monsters, the
+      // boss, and projectiles only within VISION_RADIUS and with clear line-of-
+      // sight to the player (walls block). predicted = local player world pos.
+      const fogged = e.kind === "monster" || e.kind === "boss" || e.kind === "proj";
+      if (fogged && predicted) {
+        const ddx = wx - predicted.x;
+        const ddy = wy - predicted.y;
+        s.sprite.visible = ddx * ddx + ddy * ddy <= VISION_RADIUS_SQ && this.canSee(predicted.x, predicted.y, wx, wy);
+      } else {
+        s.sprite.visible = true;
+      }
     }
     for (const [id, s] of this.sprites) {
       if (!seen.has(id)) {
@@ -493,6 +511,7 @@ export class Renderer {
     }
 
     const grid = floor.collision;
+    this.collision = grid; // fog line-of-sight reads this each frame
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
     const walls = new THREE.InstancedMesh(
@@ -536,6 +555,43 @@ export class Renderer {
     const hit = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.plane, hit)) return Math.atan2(hit.z - py, hit.x - px);
     return 0;
+  }
+
+  // Fog line-of-sight: true if no solid cell lies between the player and the
+  // target. Amanatides–Woo grid traversal over the collision grid (cheap: a few
+  // cells per call). No grid yet → treat as visible (radius-only fallback).
+  private canSee(px: number, py: number, ex: number, ey: number): boolean {
+    const grid = this.collision;
+    if (!grid) return true;
+    const cell = grid.cell;
+    let cx = Math.floor(px / cell);
+    let cy = Math.floor(py / cell);
+    const ecx = Math.floor(ex / cell);
+    const ecy = Math.floor(ey / cell);
+    const dx = ex - px;
+    const dy = ey - py;
+    const stepX = Math.sign(dx);
+    const stepY = Math.sign(dy);
+    const invDx = dx !== 0 ? 1 / Math.abs(dx) : Infinity;
+    const invDy = dy !== 0 ? 1 / Math.abs(dy) : Infinity;
+    let tMaxX = dx !== 0 ? (stepX > 0 ? (cx + 1) * cell - px : px - cx * cell) * invDx : Infinity;
+    let tMaxY = dy !== 0 ? (stepY > 0 ? (cy + 1) * cell - py : py - cy * cell) * invDy : Infinity;
+    const tDeltaX = cell * invDx;
+    const tDeltaY = cell * invDy;
+    for (let guard = grid.w + grid.h + 2; guard > 0; guard--) {
+      if (cx === ecx && cy === ecy) return true; // reached the target cell, unobstructed
+      if (tMaxX < tMaxY) {
+        cx += stepX;
+        tMaxX += tDeltaX;
+      } else {
+        cy += stepY;
+        tMaxY += tDeltaY;
+      }
+      if (cx < 0 || cy < 0 || cx >= grid.w || cy >= grid.h) return true; // off-grid: don't over-hide
+      if (cx === ecx && cy === ecy) return true; // entity's own cell is open; stop before testing it
+      if (grid.solid[cy * grid.w + cx] === 1) return false; // a wall sits between
+    }
+    return true;
   }
 
   draw() {
