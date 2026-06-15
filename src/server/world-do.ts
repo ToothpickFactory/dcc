@@ -3,6 +3,7 @@ import {
   BOSS_KILL_THRESHOLD,
   BOSS_MAX_HP,
   BOSS_NAME,
+  BOSS_RADIUS,
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
@@ -14,6 +15,7 @@ import { DEFAULT_ABILITIES } from "../shared/abilities";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor } from "../procgen";
+import { randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
@@ -144,8 +146,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (this.boss && !this.boss.dead) return;
     if (this.killsSinceBoss < BOSS_KILL_THRESHOLD) return;
     this.killsSinceBoss = 0;
-    const x = 300 + Math.random() * (WORLD.w - 600);
-    const y = 300 + Math.random() * (WORLD.h - 600);
+    const { x, y } = randomWalkablePosition(this.floor.collision, BOSS_RADIUS);
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,

@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc --noEmit -p tsconfig.client.json",
     "test:profile": "node --experimental-strip-types src/server/loot/profile.test.ts",
+    "test:procgen": "esbuild src/procgen/index.test.ts --bundle --platform=node --format=esm --outfile=.tmp/procgen.test.mjs && node .tmp/procgen.test.mjs",
     "bot": "node --experimental-strip-types test/bot.ts",
     "cf-typegen": "wrangler types"
   },

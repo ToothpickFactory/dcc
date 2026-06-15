@@ -1,0 +1,30 @@
+
+> young-frost-2be4@0.0.0 predev
+> npm run build:client
+
+
+> young-frost-2be4@0.0.0 build:client
+> npm run sync:assets && esbuild src/client/main.ts --bundle --minify --format=iife --outfile=public/client.js
+
+
+> young-frost-2be4@0.0.0 sync:assets
+> node scripts/sync-atlases.mjs
+
+Synced sprite atlases to public/assets
+
+> young-frost-2be4@0.0.0 dev
+> wrangler dev --port 8795
+
+
+ ⛅️ wrangler 4.100.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                      Resource                  Mode
+env.MY_DURABLE_OBJECT (MyDurableObject)      Durable Object            local
+env.ASSETS                                   Assets                    local
+env.ADMIN_TOKEN ("(hidden)")                 Environment Variable      local
+
+❓ Your types might be out of date. Re-run `wrangler types` to ensure your types are correct.
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8795

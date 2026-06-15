@@ -7,8 +7,8 @@ import {
   PROJECTILE_RADIUS,
 } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
+import { blocked } from "../../procgen/collision";
 import { applyDamage, applyHeal } from "./combat";
-import { blocked } from "./movement";
 
 let seq = 0;
 

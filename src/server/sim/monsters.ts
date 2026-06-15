@@ -1,4 +1,5 @@
-import { MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY, WORLD } from "../../shared/constants";
+import { moveWithCollisions, randomWalkablePosition } from "../../procgen/collision";
+import { MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
 import type { MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage } from "./combat";
 
@@ -19,8 +20,9 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       if (ctx.now >= m.respawnAt) {
         m.dead = false;
         m.hp = m.maxHp;
-        m.x = 200 + Math.random() * (WORLD.w - 400);
-        m.y = 200 + Math.random() * (WORLD.h - 400);
+        const spawn = randomWalkablePosition(ctx.floor.collision, def.radius);
+        m.x = spawn.x;
+        m.y = spawn.y;
         m.slowUntil = 0;
         m.threat.clear();
       }
@@ -51,11 +53,9 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       // Kite: back off if too close, close in if out of shooting range, else hold.
       const r = def.ranged;
       if (d < r.kite) {
-        m.x -= (dx / d) * speed * dt;
-        m.y -= (dy / d) * speed * dt;
+        moveWithCollisions(ctx.floor.collision, m, -(dx / d) * speed * dt, -(dy / d) * speed * dt, def.radius);
       } else if (d > r.shootRange) {
-        m.x += (dx / d) * speed * dt;
-        m.y += (dy / d) * speed * dt;
+        moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
       }
       if (d <= r.shootRange && ctx.now >= m.attackReadyAt) {
         m.attackReadyAt = ctx.now + def.attackCd;
@@ -67,8 +67,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
         applyDamage(ctx, prey, def.dmg, m.id, false);
       }
     } else {
-      m.x += (dx / d) * speed * dt;
-      m.y += (dy / d) * speed * dt;
+      moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
     }
   }
 }
@@ -98,8 +97,13 @@ function wander(ctx: WorldCtx, m: MonsterState, speed: number, dt: number): void
     m.wanderAt = ctx.now + 2000 + Math.random() * 3000;
     m.aim = Math.random() * Math.PI * 2;
   }
-  m.x = clamp(m.x + Math.cos(m.aim) * speed * 0.5 * dt, 24, WORLD.w - 24);
-  m.y = clamp(m.y + Math.sin(m.aim) * speed * 0.5 * dt, 24, WORLD.h - 24);
+  moveWithCollisions(
+    ctx.floor.collision,
+    m,
+    Math.cos(m.aim) * speed * 0.5 * dt,
+    Math.sin(m.aim) * speed * 0.5 * dt,
+    MONSTER_KINDS[m.kind].radius,
+  );
 }
 
 // Threat-based aggro: chase whoever has hit it most, falling back to the nearest
@@ -131,6 +135,3 @@ function pickTarget(ctx: WorldCtx, m: MonsterState): PlayerState | null {
   return near;
 }
 
-function clamp(v: number, lo: number, hi: number) {
-  return v < lo ? lo : v > hi ? hi : v;
-}

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BOSS_BOLT_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent } from "../protocol";
+import type { FloorDescriptor } from "../procgen/types";
 import { loadAtlasClip } from "./atlas";
 
 // Per-ability projectile colors (so a green heal bolt reads differently from a
@@ -72,6 +73,7 @@ export class Renderer {
   private textureLoader = new THREE.TextureLoader();
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
+  private walls: THREE.InstancedMesh | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -451,6 +453,36 @@ export class Renderer {
       this.scene.add(this.stairs);
     }
     this.stairs.position.set(x, 30, y);
+  }
+
+  setFloor(floor: FloorDescriptor): void {
+    if (this.walls) {
+      this.scene.remove(this.walls);
+      this.walls.geometry.dispose();
+      (this.walls.material as THREE.Material).dispose();
+    }
+
+    const grid = floor.collision;
+    let wallCount = 0;
+    for (const value of grid.solid) wallCount += value;
+    const walls = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(grid.cell, 96, grid.cell),
+      new THREE.MeshBasicMaterial({ color: 0x39445e }),
+      wallCount,
+    );
+    const matrix = new THREE.Matrix4();
+    let instance = 0;
+    for (let y = 0; y < grid.h; y++) {
+      for (let x = 0; x < grid.w; x++) {
+        if (grid.solid[y * grid.w + x] !== 1) continue;
+        matrix.makeTranslation((x + 0.5) * grid.cell, 48, (y + 0.5) * grid.cell);
+        walls.setMatrixAt(instance++, matrix);
+      }
+    }
+    walls.instanceMatrix.needsUpdate = true;
+    this.scene.add(walls);
+    this.walls = walls;
+    this.setStairs(floor.stairs.x, floor.stairs.y);
   }
 
   clearStairs() {

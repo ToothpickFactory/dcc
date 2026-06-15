@@ -144,7 +144,8 @@ function frame(now: number) {
   if (net.floor && floorKey !== lastFloorKey && net.run?.phase !== "ended") {
     lastFloorKey = floorKey;
     const f = generateFloor(net.floor.info.seed, net.floor.info.depth);
-    renderer.setStairs(f.stairs.x, f.stairs.y);
+    predictor.setCollision(f.collision);
+    renderer.setFloor(f);
     showToast(`⬇ Floor ${net.floor.info.depth} — ${net.floor.info.theme}`, "#9be7ff");
   }
   if (net.run && net.run.phase !== lastRunPhase) {
