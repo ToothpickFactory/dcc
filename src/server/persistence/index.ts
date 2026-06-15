@@ -125,7 +125,7 @@ export class SqlRunStore implements RunStore {
     this.playerSync(rec);
   }
 
-  async recordFloorComplete(rec: FloorRecord): Promise<void> {
+  recordFloorCompleteSync(rec: FloorRecord): void {
     this.sql.exec(
       "INSERT INTO floor_record (run_id, floor, completed_at, survivors) VALUES (?, ?, ?, ?)",
       rec.runId,
@@ -133,6 +133,10 @@ export class SqlRunStore implements RunStore {
       rec.completedAt,
       rec.survivors,
     );
+  }
+
+  async recordFloorComplete(rec: FloorRecord): Promise<void> {
+    this.recordFloorCompleteSync(rec);
   }
 }
 

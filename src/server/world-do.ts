@@ -298,6 +298,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.endRun();
       return;
     }
+    // M4 floor_record: log the floor the survivors just cleared, before the depth
+    // advances below. Survivor count is the party that reached the stairs in time.
+    this.persistFloorComplete(this.floor.depth, survivors.length);
     // Floor-end reward — granted on the COMPLETED floor (its depth/theme/seed).
     for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
     this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
@@ -338,6 +341,18 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           phase: this.phase,
           savedAt: Date.now(),
         }),
+      );
+    } catch {
+      /* never break on a storage hiccup */
+    }
+  }
+
+  // M4 floor_record: persist a cleared floor + survivor count. Guarded like
+  // checkpoint() so a storage hiccup never breaks the run loop.
+  private persistFloorComplete(floor: number, survivors: number): void {
+    try {
+      this.ctx.storage.transactionSync(() =>
+        this.store.recordFloorCompleteSync({ runId: this.runId, floor, completedAt: Date.now(), survivors }),
       );
     } catch {
       /* never break on a storage hiccup */
