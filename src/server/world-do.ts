@@ -7,10 +7,13 @@ import {
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
+  PLAYER_SPEED,
   TICK_MS,
   WORLD,
 } from "../shared/constants";
 import type { Ability, MonsterKind, Rarity } from "../shared/types";
+import { deriveStats, emptyInventory, zeroAttrs } from "../shared/items";
+import { recomputePlayer } from "./sim/stats";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
@@ -156,6 +159,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.monsters = this.floor.spawns.map((s, i) => {
       const kind = homogeneousGrunt ? VARIETY[i % VARIETY.length] : s.kind;
       const def = MONSTER_KINDS[kind];
+      const base = zeroAttrs();
       return {
         id: `m_${i.toString(36)}`,
         kind,
@@ -169,6 +173,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         attackReadyAt: 0,
         wanderAt: 0,
         slowUntil: 0,
+        base,
+        inv: emptyInventory(),
+        derived: deriveStats(def.hp, def.speed, base),
         threat: new Map(),
       };
     });
@@ -234,13 +241,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       // Leave p.linkdead as-is: a disconnected character stays frozen/targetable
       // in the new run and clears linkdead only when it reconnects.
       p.status = "alive";
-      p.hp = PLAYER_MAX_HP;
       p.cds = {};
       p.mvx = 0;
       p.mvy = 0;
       p.slowUntil = 0;
       p.seen.clear();
       p.abilities = DEFAULT_ABILITIES.map((a) => ({ ...a }));
+      p.base = zeroAttrs(); // fresh run = fresh character: gear wiped
+      p.inv = emptyInventory();
+      recomputePlayer(p);
+      p.hp = p.derived.maxHp;
       p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
       p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;
       if (!p.linkdead) {
@@ -495,7 +505,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private makePlayer(id: string, name: string, ws: WebSocket, status: "alive" | "spectator", rec: PlayerRecord | null): PlayerState {
-    return {
+    const base = zeroAttrs(); // INV-5 will rehydrate base/inv from the record
+    const inv = emptyInventory();
+    const p: PlayerState = {
       id,
       name,
       x: this.floor.entrance.x + (Math.random() - 0.5) * 200,
@@ -510,9 +522,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
       slowUntil: 0,
       seen: new Set(),
+      base,
+      inv,
+      derived: deriveStats(PLAYER_MAX_HP, PLAYER_SPEED, base),
       ws,
       linkdead: false,
     };
+    recomputePlayer(p); // fold in any persisted gear; clamps hp to derived maxHp
+    return p;
   }
 
   private welcomeFlow(ws: WebSocket, playerId: string, token: string) {
@@ -724,7 +741,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         y: r(p.y),
         aim: r2(p.aim),
         hp: Math.max(0, r(p.hp)),
-        maxHp: PLAYER_MAX_HP,
+        maxHp: Math.round(p.derived.maxHp),
         name: p.name,
         cls: this.profiles.classOf(p.id),
       });
@@ -755,7 +772,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         x: r(p.x),
         y: r(p.y),
         hp: Math.max(0, r(p.hp)),
-        maxHp: PLAYER_MAX_HP,
+        maxHp: Math.round(p.derived.maxHp),
         ack: p.lastSeq,
         cds: p.cds,
         cls: this.profiles.classOf(p.id),

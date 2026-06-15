@@ -18,8 +18,11 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   const ab = caster.abilities[idx];
   if (!ab) return false;
   if ((caster.cds[idx] ?? 0) > ctx.now) return false;
-  caster.cds[idx] = ctx.now + ab.cd;
+  // Gear/attributes scale the cast: haste lowers cooldown, power raises damage,
+  // spirit raises healing. Numbers stay on the existing Ability untouched.
+  caster.cds[idx] = ctx.now + ab.cd * caster.derived.cdMult;
   caster.aim = aim;
+  const dmg = ab.dmg < 0 ? ab.dmg * caster.derived.healPower : ab.dmg * caster.derived.spellPower;
   ctx.pushFx({ e: "cast", x: caster.x, y: caster.y, ability: idx });
 
   if (ab.projectile) {
@@ -31,7 +34,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
       y: caster.y + Math.sin(aim) * (PLAYER_RADIUS + 4),
       vx: Math.cos(aim) * speed,
       vy: Math.sin(aim) * speed,
-      dmg: ab.dmg, // negative = heal projectile
+      dmg, // negative = heal projectile
       slowMs: ab.slowMs ?? 0,
       ability: idx,
       ttl: ab.range / speed,
@@ -39,8 +42,8 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
       boss: false,
     });
     // Casting a heal aggravates nearby foes (ported): support play has a cost.
-    if (ab.dmg < 0) {
-      const threat = -ab.dmg * AGGRO_PER_HEAL;
+    if (dmg < 0) {
+      const threat = -dmg * AGGRO_PER_HEAL;
       for (const m of ctx.monsters) {
         if (!m.dead && near(caster, m, AGGRO_HEAL_RADIUS)) m.threat.set(caster.id, (m.threat.get(caster.id) ?? 0) + threat);
       }
@@ -56,14 +59,14 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   const cone = Math.PI / 3;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
-    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
+    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
   }
   if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, aim, ab.range, cone)) {
-    applyDamage(ctx, ctx.boss, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
+    applyDamage(ctx, ctx.boss, dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
   }
   for (const p of ctx.players.values()) {
     if (p.id === caster.id || p.status !== "alive") continue;
-    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
+    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
   }
   return true;
 }

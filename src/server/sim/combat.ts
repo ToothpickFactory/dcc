@@ -1,4 +1,4 @@
-import { MONSTER_RESPAWN_MS, PLAYER_MAX_HP } from "../../shared/constants";
+import { MONSTER_RESPAWN_MS } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
 function isPlayer(t: PlayerState | MonsterState | BossState): t is PlayerState {
@@ -39,14 +39,15 @@ export function applyDamage(
 ): void {
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
+    const taken = dmg * (1 - target.derived.dr); // armor mitigates
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "player", range: hitRange, ability });
     }
-    target.hp -= dmg;
+    target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken });
     if (sourceIsPlayer && sourceId !== target.id) {
-      ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: dmg });
+      ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
     }
     if (target.hp <= 0) {
       // PERMADEATH (Phase 0): no respawn — the player becomes a spectator.
@@ -83,14 +84,15 @@ export function applyDamage(
 
   // Monster target.
   if (target.dead) return;
+  const taken = dmg * (1 - target.derived.dr); // monster armor mitigates too
   if (sourceIsPlayer) {
     // Threat-based aggro (combat note): damage from a player draws aggro.
-    target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + dmg);
+    target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + taken);
     ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-  target.hp -= dmg;
-  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
+  target.hp -= taken;
+  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken });
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;
@@ -113,7 +115,7 @@ export function applyHeal(
 ): void {
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
-    target.hp = Math.min(PLAYER_MAX_HP, target.hp + amount);
+    target.hp = Math.min(target.derived.maxHp, target.hp + amount);
     if (sourceId !== target.id) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: true });
   } else if (isBoss(target)) {
     if (target.dead) return;

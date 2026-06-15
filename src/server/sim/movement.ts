@@ -1,6 +1,6 @@
 import { moveWithCollisions } from "../../procgen/collision";
 import type { CollisionGrid } from "../../procgen/types";
-import { PLAYER_RADIUS, PLAYER_SPEED, SLOW_FACTOR } from "../../shared/constants";
+import { PLAYER_RADIUS, SLOW_FACTOR } from "../../shared/constants";
 import type { PlayerState, WorldCtx } from "../state";
 
 export function stepPlayer(ctx: WorldCtx, p: PlayerState, dt: number): void {
@@ -8,7 +8,8 @@ export function stepPlayer(ctx: WorldCtx, p: PlayerState, dt: number): void {
   const grid = ctx.floor.collision;
   const len = Math.hypot(p.mvx, p.mvy);
   if (len > 0) {
-    const speed = PLAYER_SPEED * (p.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    // moveSpeed comes from the player's gear/attributes (agility), not a constant.
+    const speed = p.derived.moveSpeed * (p.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     moveWithCollisions(grid, p, (p.mvx / len) * speed * dt, (p.mvy / len) * speed * dt, PLAYER_RADIUS);
   }
   revealAround(ctx, p, grid);
