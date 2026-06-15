@@ -9,7 +9,7 @@
 // ===========================================================================
 import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -65,6 +65,7 @@ export type GameEvent =
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
   | { e: "cast"; x: number; y: number; ability: number }
+  | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
 

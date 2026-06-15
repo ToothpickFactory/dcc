@@ -34,6 +34,7 @@ type FacingDir = "up" | "down" | "right";
 type ActionName = "cast" | "bolt" | "strike" | "punch" | "kick";
 const DIR_SWITCH_BIAS = 1.2;
 const ENEMY_FRAME_SLOWDOWN = 1.6;
+const ACTION_FRAME_SPEED = 1.25;
 const MOVEMENT_HOLD_MS = 150;
 
 interface LoadedClip {
@@ -57,6 +58,9 @@ interface SpriteState {
   action: ActionName | null;
   actionFacingDir: FacingDir;
   actionFlipX: boolean;
+  actionFrameStart: number;
+  actionFrameCount: number;
+  actionFrameSpeed: number;
   actionUntil: number;
 }
 
@@ -172,6 +176,9 @@ export class Renderer {
         action: null,
         actionFacingDir: "down",
         actionFlipX: false,
+        actionFrameStart: 0,
+        actionFrameCount: 0,
+        actionFrameSpeed: 1,
         actionUntil: 0,
       };
       this.sprites.set(id, s);
@@ -265,23 +272,37 @@ export class Renderer {
     return `${root}/${prefix} ${dir[0].toUpperCase()}${dir.slice(1)}`;
   }
 
-  private clipDurationMs(clip: LoadedClip | null, isEnemy: boolean): number {
+  private clipDurationMs(clip: LoadedClip | null, isEnemy: boolean, frameCount?: number): number {
     const minimum = isEnemy ? 400 : 180;
     if (!clip) return minimum;
     const slowdown = isEnemy ? ENEMY_FRAME_SLOWDOWN : 1;
-    return Math.max(minimum, clip.frameMs * clip.frames.length * slowdown);
+    return Math.max(minimum, clip.frameMs * (frameCount ?? clip.frames.length) * slowdown);
   }
 
-  private queueAction(id: string, root: string, action: ActionName, now: number): void {
+  private queueAction(
+    id: string,
+    root: string,
+    action: ActionName,
+    now: number,
+    frameStart = 0,
+    frameCount = 0,
+    frameSpeed = ACTION_FRAME_SPEED,
+  ): void {
     const state = this.sprites.get(id);
     if (!state) return;
     state.actionFacingDir = state.facingDir;
     state.actionFlipX = state.flipX;
+    state.actionFrameStart = frameStart;
+    state.actionFrameCount = frameCount;
+    state.actionFrameSpeed = frameSpeed;
     const targetClip = this.actionClipPath(root, action, state.actionFacingDir);
     const loaded = this.clipCache.get(targetClip);
     if (loaded === undefined) void this.ensureClip(targetClip);
     state.action = action;
-    state.actionUntil = loaded ? now + this.clipDurationMs(loaded, root !== HERO_ROOT) : Number.POSITIVE_INFINITY;
+    const playCount = loaded ? Math.min(frameCount || loaded.frames.length, loaded.frames.length - frameStart) : frameCount;
+    state.actionUntil = loaded
+      ? now + this.clipDurationMs(loaded, root !== HERO_ROOT, playCount) / frameSpeed
+      : Number.POSITIVE_INFINITY;
     state.clipKey = "";
     state.frame = 0;
     state.nextFrameAt = 0;
@@ -320,8 +341,9 @@ export class Renderer {
           const ability = DEFAULT_ABILITIES[event.ability];
           if (ability?.id === "mend") this.queueAction(caster.id, root, "cast", now);
           else if (ability?.id === "cleave") {
+            const frameStart = this.heroAttackToggle ? 8 : 0;
             this.heroAttackToggle = !this.heroAttackToggle;
-            this.queueAction(caster.id, root, this.heroAttackToggle ? "punch" : "kick", now);
+            this.queueAction(caster.id, root, "punch", now, frameStart, 8);
           } else {
             this.queueAction(caster.id, root, "cast", now);
           }
@@ -331,8 +353,8 @@ export class Renderer {
         continue;
       }
 
-      if (event.e === "dmg") {
-        const attacker = this.nearestEntity(ents, event.x, event.y, ["monster"], 140);
+      if (event.e === "melee") {
+        const attacker = ents.find((entity) => entity.id === event.by && entity.kind === "monster");
         if (!attacker) continue;
         this.queueAction(attacker.id, this.enemyRoot(attacker.id), "strike", now);
       }
@@ -402,26 +424,35 @@ export class Renderer {
         const displayDir = actionClip ? s.actionFacingDir : s.facingDir;
         const targetClip = readyAction?.path ?? this.clipPath(root, actionClip ? false : moving, displayDir);
         const loaded = readyAction?.clip ?? this.clipCache.get(targetClip);
+        const actionFrameCount =
+          readyAction && s.actionFrameCount > 0
+            ? Math.min(s.actionFrameCount, readyAction.clip.frames.length - s.actionFrameStart)
+            : readyAction?.clip.frames.length;
 
         if (s.clipKey !== targetClip) {
           s.clipKey = targetClip;
           s.frame = readyAction ? 0 : -1;
           if (readyAction) {
-            const frameStepMs = readyAction.clip.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1);
+            const frameStepMs =
+              (readyAction.clip.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1)) / s.actionFrameSpeed;
             s.nextFrameAt = now + frameStepMs;
-            s.actionUntil = now + this.clipDurationMs(readyAction.clip, e.kind === "monster");
+            s.actionUntil =
+              now + this.clipDurationMs(readyAction.clip, e.kind === "monster", actionFrameCount) / s.actionFrameSpeed;
           } else {
             s.nextFrameAt = 0;
           }
         }
 
         if (loaded) {
-          const frameStepMs = loaded.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1);
+          const frameStepMs =
+            (loaded.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1)) /
+            (readyAction ? s.actionFrameSpeed : 1);
           if (now >= s.nextFrameAt) {
-            s.frame = (s.frame + 1) % loaded.frames.length;
+            s.frame = (s.frame + 1) % (actionFrameCount ?? loaded.frames.length);
             s.nextFrameAt = now + frameStepMs;
           }
-          this.applyFrame(s, loaded, s.frame, displayFlipX);
+          const frameIndex = readyAction ? s.actionFrameStart + s.frame : s.frame;
+          this.applyFrame(s, loaded, frameIndex, displayFlipX);
         } else {
           void this.ensureClip(targetClip);
           this.setFallback(s, color);

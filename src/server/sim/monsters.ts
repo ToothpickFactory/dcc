@@ -64,6 +64,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
     } else if (d <= def.meleeRange) {
       if (ctx.now >= m.attackReadyAt) {
         m.attackReadyAt = ctx.now + def.attackCd;
+        ctx.pushFx({ e: "melee", by: m.id });
         applyDamage(ctx, prey, def.dmg, m.id, false);
       }
     } else {
