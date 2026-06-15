@@ -18,6 +18,8 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   const ab = caster.abilities[idx];
   if (!ab) return false;
   if ((caster.cds[idx] ?? 0) > ctx.now) return false;
+  if (ab.ammo !== undefined && ab.ammo <= 0) return false; // out of charges (e.g. rocks)
+  if (ab.ammo !== undefined) ab.ammo -= 1; // consume a charge
   // Gear/attributes scale the cast: haste lowers cooldown, power raises damage,
   // spirit raises healing. Numbers stay on the existing Ability untouched.
   caster.cds[idx] = ctx.now + ab.cd * caster.derived.cdMult;

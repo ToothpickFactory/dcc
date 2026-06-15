@@ -19,7 +19,7 @@ export class Input {
   attach(canvas: HTMLElement) {
     addEventListener("keydown", (e) => {
       const k = e.key.toLowerCase();
-      const n = ["1", "2", "3", "4"].indexOf(e.key);
+      const n = ["1", "2", "3", "4", "5", "6"].indexOf(e.key);
       if (n >= 0) {
         this.castIdx = n;
         return;

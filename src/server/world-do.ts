@@ -633,7 +633,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.openLoot(player, String(msg.bag));
     } else if (msg.t === "takeLoot") {
       this.takeLoot(player, String(msg.bag), msg.item ? String(msg.item) : undefined);
+    } else if (msg.t === "swapAbility") {
+      this.swapAbility(player, msg.a | 0, msg.b | 0);
     }
+  }
+
+  // Reorder the action bar (e.g. move a found ability into the auto-cast slot).
+  // Cooldowns move with the slot index so a swap can't reset a cooldown.
+  private swapAbility(p: PlayerState, a: number, b: number): void {
+    const n = p.abilities.length;
+    if (a < 0 || b < 0 || a >= n || b >= n || a === b) return;
+    [p.abilities[a], p.abilities[b]] = [p.abilities[b], p.abilities[a]];
+    const ca = p.cds[a] ?? 0;
+    p.cds[a] = p.cds[b] ?? 0;
+    p.cds[b] = ca;
+    this.persistPlayer(p);
   }
 
   // ---- Inventory actions (server-authoritative; never trust the client) ----
@@ -715,6 +729,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const p of this.players.values()) stepPlayer(this, p, dt);
     updateMonsters(this, dt);
     updateBoss(this, dt);
+    for (const p of this.players.values()) if (p.status === "alive") this.autoCast(p);
     stepProjectiles(this, dt);
 
     // Despawn expired loot bags so a long floor doesn't litter forever.
@@ -869,6 +884,39 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     p.abilities[target] = ability;
   }
 
+  // Slot-1 AUTO-CAST: the first action ability auto-swings/throws at the nearest
+  // foe in its range whenever it's off cooldown (and has ammo). Targets monsters
+  // and the boss only — never allies.
+  private autoCast(p: PlayerState): void {
+    const ab = p.abilities[0];
+    if (!ab) return;
+    if ((p.cds[0] ?? 0) > this.now) return;
+    if (ab.ammo !== undefined && ab.ammo <= 0) return;
+    const target = this.nearestEnemy(p.x, p.y, ab.range);
+    if (target) castAbility(this, p, 0, Math.atan2(target.y - p.y, target.x - p.x));
+  }
+
+  private nearestEnemy(x: number, y: number, range: number): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD = range * range;
+    for (const m of this.monsters) {
+      if (m.dead) continue;
+      const d = (m.x - x) ** 2 + (m.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = m;
+      }
+    }
+    if (this.boss && !this.boss.dead) {
+      const d = (this.boss.x - x) ** 2 + (this.boss.y - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = this.boss;
+      }
+    }
+    return best;
+  }
+
   private topThreat(threat: Map<string, number>): string | null {
     let best: string | null = null;
     let bestV = 0;
@@ -932,6 +980,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         cls: this.profiles.classOf(p.id),
         profile: this.profiles.get(p.id),
         derived: p.derived,
+        abilities: p.abilities,
         status: p.status,
       };
       this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });

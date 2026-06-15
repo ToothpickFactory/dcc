@@ -147,6 +147,7 @@ function frame(now: number) {
     renderer.sync(net.cur.ents, net.you, { x: predictor.x, y: predictor.y });
     renderer.follow(predictor.x, predictor.y);
     hud?.update(net);
+    if (invUI.isOpen()) invUI.syncBar(); // keep the action-bar swap section live
   }
 
   // Loot prompt: the nearest bag within reach of the (predicted) player.

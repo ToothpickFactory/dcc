@@ -1,5 +1,6 @@
 import type { BagState, InvState, Net } from "./net";
 import { EQUIP_SLOTS, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
+import type { Ability } from "../shared/types";
 
 // The character / inventory screen + the loot-bag panel. Pure DOM over the
 // elements declared in index.html. Works with mouse OR touch — every action is a
@@ -27,9 +28,12 @@ export class InventoryUI {
   private carry = byId("carryGrid");
   private carryCount = byId("carryCount");
   private lootGrid = byId("lootGrid");
+  private abilityBar = byId("abilityBar");
   private invBtn = byId("invBtn");
   private openBagId: string | null = null;
   private openBagItems: Item[] = [];
+  private selectedSlot: number | null = null; // action-bar swap selection
+  private barKey = "";
 
   constructor(net: Net) {
     this.net = net;
@@ -55,9 +59,43 @@ export class InventoryUI {
   open(): void {
     if (!this.net.inv) return;
     this.inv.style.display = "flex";
+    this.selectedSlot = null;
     this.render(this.net.inv);
+    this.renderBar();
   }
   close(): void { this.inv.style.display = "none"; }
+
+  // Keep the action-bar section live while the screen is open (the bar updates
+  // from server state — loot, swaps, ammo). Called each frame by main when open.
+  syncBar(): void {
+    const abilities = this.net.self?.abilities ?? [];
+    const key = abilities.map((a) => a.id).join(",") + ":" + this.selectedSlot;
+    if (key === this.barKey) return;
+    this.barKey = key;
+    this.renderBar();
+  }
+
+  private renderBar(): void {
+    const abilities = this.net.self?.abilities ?? [];
+    this.barKey = abilities.map((a) => a.id).join(",") + ":" + this.selectedSlot;
+    this.abilityBar.innerHTML = "";
+    abilities.forEach((a, i) => {
+      const tile = abilityTile(a, i === 0);
+      if (i === this.selectedSlot) tile.classList.add("sel");
+      tile.addEventListener("click", () => this.onBarTap(i));
+      this.abilityBar.appendChild(tile);
+    });
+  }
+
+  private onBarTap(i: number): void {
+    if (this.selectedSlot === null) this.selectedSlot = i;
+    else if (this.selectedSlot === i) this.selectedSlot = null; // tap again = deselect
+    else {
+      this.net.send({ t: "swapAbility", a: this.selectedSlot, b: i });
+      this.selectedSlot = null;
+    }
+    this.renderBar(); // reflect selection immediately; the server confirms order
+  }
 
   private render(s: InvState): void {
     const inv = s.inv;
@@ -133,6 +171,18 @@ function itemTile(it: Item, slotLabel?: string): HTMLDivElement {
     `<span class="ico">${it.icon ?? ITEM_EMOJI[it.slot]}</span>` +
     `<span class="nm">${esc(it.name)}</span>` +
     `<span class="st">${esc(statStr(it))}</span>`;
+  return d;
+}
+
+function abilityTile(a: Ability, isAuto: boolean): HTMLDivElement {
+  const d = document.createElement("div");
+  d.className = "itile";
+  const sub = a.ammo !== undefined ? `${a.ammo} left` : a.dmg < 0 ? `${Math.abs(a.dmg)} heal` : `${a.dmg} dmg`;
+  d.innerHTML =
+    (isAuto ? `<span class="badge">AUTO</span>` : "") +
+    `<span class="ico">${a.icon ?? "?"}</span>` +
+    `<span class="nm">${esc(a.name)}</span>` +
+    `<span class="st">${sub}</span>`;
   return d;
 }
 

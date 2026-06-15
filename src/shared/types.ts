@@ -22,6 +22,8 @@ export interface Ability {
   projectile: boolean;
   speed?: number; // ballistic projectile speed (px/s)
   slowMs?: number;
+  ammo?: number; // current charges (consumables like thrown rocks); undefined = unlimited
+  maxAmmo?: number; // full ammo, for the UI bar
   // Display-only. The heuristic fills `name`; the LLM may overwrite name/flavor/
   // twist. NONE of these ever affect the numbers above.
   name: string;
