@@ -29,6 +29,13 @@ function showToast(text: string, color: string) {
 
 net.onWelcome = () => {
   connected = true;
+  // Persist the signed identity token so a reload rebinds to the same character
+  // (and a dead character stays dead — permadeath, M1).
+  try {
+    if (net.token) localStorage.setItem("dcc.token", net.token);
+  } catch {
+    /* storage unavailable (private mode) — identity just won't survive reload */
+  }
   loginEl.style.display = "none";
   hud = new Hud((i) => input.queueCast(i));
 };
@@ -60,7 +67,13 @@ function start() {
   loginMsg.textContent = "";
   playBtn.disabled = true;
   playBtn.textContent = "Connecting…";
-  net.connect(name);
+  let token: string | undefined;
+  try {
+    token = localStorage.getItem("dcc.token") ?? undefined;
+  } catch {
+    token = undefined;
+  }
+  net.connect(name, token);
 }
 playBtn.addEventListener("click", start);
 (document.getElementById("name") as HTMLInputElement).addEventListener("keydown", (e) => {
@@ -78,7 +91,8 @@ function frame(now: number) {
 
   // Aim from the pointer (mouse or active touch) projected to the ground.
   input.aim = renderer.aimFromPointer(input.pointer.x, input.pointer.y, predictor.x, predictor.y);
-  input.pump(net, now);
+  // Spectators (dead players) don't send movement/casts.
+  if (net.self?.status === "alive") input.pump(net, now);
 
   if (net.cur) {
     renderer.sync(net.cur.ents, net.you, { x: predictor.x, y: predictor.y });

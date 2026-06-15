@@ -16,6 +16,7 @@ export interface PlayerState {
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
   ws: WebSocket;
+  linkdead: boolean; // socket dropped but a LIVING character stays in the world (decision #8)
 }
 
 export interface MonsterState {
