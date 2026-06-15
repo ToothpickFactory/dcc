@@ -8,6 +8,18 @@ import type {
   SelfDTO,
   ServerMsg,
 } from "../protocol";
+import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
+
+export interface InvState {
+  inv: Inventory;
+  attrs: Attributes;
+  derived: DerivedStats;
+  capacity: number;
+}
+export interface BagState {
+  id: string;
+  items: Item[];
+}
 
 export interface Snapshot {
   tick: number;
@@ -28,9 +40,12 @@ export class Net {
   run: RunState | null = null;
   prev: Snapshot | null = null;
   cur: Snapshot | null = null;
+  inv: InvState | null = null; // latest character-screen state
   onEvents: (e: GameEvent[]) => void = () => {};
   onWelcome: () => void = () => {};
   onClose: () => void = () => {};
+  onInv: (s: InvState) => void = () => {};
+  onBag: (s: BagState) => void = () => {};
 
   connect(name: string, token?: string) {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -62,6 +77,13 @@ export class Net {
         break;
       case "run":
         this.run = m.state;
+        break;
+      case "inv":
+        this.inv = { inv: m.inv, attrs: m.attrs, derived: m.derived, capacity: m.capacity };
+        this.onInv(this.inv);
+        break;
+      case "bag":
+        this.onBag({ id: m.id, items: m.items });
         break;
     }
   }

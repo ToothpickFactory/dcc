@@ -3,13 +3,18 @@ import { Input } from "./input";
 import { Predictor } from "./predict";
 import { Renderer } from "./render";
 import { Hud } from "./hud";
+import { InventoryUI } from "./inventory";
 import { generateFloor } from "../procgen";
+import { LOOT_REACH } from "../shared/constants";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const net = new Net();
 const input = new Input();
 const predictor = new Predictor();
 const renderer = new Renderer(canvas);
+const invUI = new InventoryUI(net);
+const lootBtn = document.getElementById("lootBtn") as HTMLButtonElement;
+let nearestBagId: string | null = null;
 let hud: Hud | null = null;
 
 input.attach(canvas);
@@ -48,6 +53,7 @@ net.onWelcome = () => {
   }
   loginEl.style.display = "none";
   hud = new Hud((i) => input.queueCast(i));
+  invUI.showButton();
 };
 net.onClose = () => {
   if (!connected) {
@@ -91,6 +97,17 @@ playBtn.addEventListener("click", start);
   if (e.key === "Enter") start();
 });
 
+// Inventory + loot keys (work alongside the movement/cast keys in input.ts).
+addEventListener("keydown", (e) => {
+  if (!connected) return;
+  const k = e.key.toLowerCase();
+  if (k === "i") invUI.toggle();
+  else if (k === "e") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
+  else if (k === "escape") { invUI.close(); invUI.closeLoot(); }
+});
+// Mobile loot button (mirrors the E key).
+lootBtn.addEventListener("click", () => { if (nearestBagId) invUI.requestLoot(nearestBagId); });
+
 resetRunBtn.addEventListener("click", async () => {
   if (!confirm("Reset the current round for every connected player?")) return;
 
@@ -131,6 +148,26 @@ function frame(now: number) {
     renderer.follow(predictor.x, predictor.y);
     hud?.update(net);
   }
+
+  // Loot prompt: the nearest bag within reach of the (predicted) player.
+  nearestBagId = null;
+  if (net.cur && net.self?.status === "alive") {
+    let best = LOOT_REACH * LOOT_REACH;
+    for (const e of net.cur.ents) {
+      if (e.kind !== "lootbag") continue;
+      const dx = e.x - predictor.x;
+      const dy = e.y - predictor.y;
+      const d = dx * dx + dy * dy;
+      if (d <= best) {
+        best = d;
+        nearestBagId = e.id;
+      }
+    }
+  }
+  lootBtn.style.display = nearestBagId ? "block" : "none";
+  // Close an open loot panel once its bag is gone (looted, despawned, or walked away).
+  const openBag = invUI.lootOpenBagId();
+  if (openBag && !net.cur?.ents.some((e) => e.kind === "lootbag" && e.id === openBag)) invUI.closeLoot();
 
   // Floor/run transitions -> place the stairs marker (rebuilt from the seed) and
   // toast. Key on seed:depth so a NEW run at the same depth still rebuilds.

@@ -66,6 +66,42 @@
         font: 600 12px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
       #resetRun:hover { background: #51212c; }
       #resetRun:disabled { cursor: wait; opacity: 0.55; }
+
+      /* ---- Inventory / loot buttons (work on desktop AND touch) ---- */
+      #invBtn, #lootBtn { position: fixed; z-index: 16; pointer-events: auto; cursor: pointer;
+        border-radius: 12px; font: 700 14px ui-sans-serif, system-ui, sans-serif; color: #e6e9ef;
+        border: 1px solid #2c3a59; background: #141b2bdd; -webkit-tap-highlight-color: transparent; }
+      #invBtn { display: none; left: 14px; bottom: 92px; width: 56px; height: 56px; font-size: 26px; }
+      #lootBtn { display: none; left: 50%; bottom: 110px; transform: translateX(-50%); padding: 13px 20px;
+        background: linear-gradient(180deg, #caa14a, #8a6a22); border-color: #caa14a; color: #1a1406; }
+      #invBtn:active, #lootBtn:active { filter: brightness(1.18); }
+
+      /* ---- Panels (character screen + loot) ---- */
+      #inventory, #lootPanel { position: fixed; inset: 0; z-index: 25; display: none;
+        align-items: center; justify-content: center; background: #04060cbb; }
+      .panelCard { width: min(94vw, 560px); max-height: 88vh; overflow: auto; padding: 18px; border-radius: 16px;
+        background: #121826f7; border: 1px solid #2c3a59; box-shadow: 0 24px 70px #000a; pointer-events: auto; }
+      .panelHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+      .panelHead h2 { margin: 0; font-size: 18px; }
+      .panelHead button { width: 38px; height: 38px; border-radius: 9px; border: 1px solid #2c3a59;
+        background: #1a2030; color: #cdd6e8; font-size: 17px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+      .invSection { font-size: 11px; color: #7e93b3; text-transform: uppercase; letter-spacing: 1px; margin: 14px 0 6px; }
+      .gridSlots { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 8px; }
+      .itile { position: relative; border-radius: 10px; border: 1px solid #2c3a59; background: #0e1422;
+        padding: 7px 5px; text-align: center; cursor: pointer; min-height: 72px; -webkit-tap-highlight-color: transparent;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+      .itile:active { filter: brightness(1.25); }
+      .itile.empty { opacity: 0.38; cursor: default; }
+      .itile .ico { font-size: 22px; line-height: 1; }
+      .itile .nm { font-size: 10px; color: #d3dcec; line-height: 1.12; }
+      .itile .st { font-size: 9px; color: #86a0c2; }
+      .itile .slotlbl { position: absolute; top: 2px; left: 5px; font-size: 8px; color: #5a6b88; text-transform: uppercase; letter-spacing: .3px; }
+      .itile .drop { position: absolute; top: 1px; right: 3px; font-size: 12px; color: #c87b7b; padding: 2px; }
+      .r-uncommon { border-color: #3fae5a; } .r-rare { border-color: #3a7bd5; }
+      .r-epic { border-color: #9b59d0; } .r-legendary { border-color: #d08a2a; }
+      #statPanel { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12.5px; color: #d3dcec; }
+      #statPanel .k { color: #86a0c2; }
+      .invHint { font-size: 11px; color: #6b7790; margin-top: 12px; line-height: 1.5; }
     </style>
   </head>
   <body>
@@ -80,10 +116,35 @@
     <div id="help">
       <div><b>WASD / arrows</b> move · <b>tap-hold</b> on mobile</div>
       <div><b>mouse</b> aim · <b>1-4 / click / tap slot</b> cast (ballistic)</div>
+      <div><b>I</b> inventory · <b>E</b> loot nearby bag · (or use the 🎒 / Loot buttons)</div>
       <div style="color:#e89a9a">⚠ Spells hit friend or foe — aim carefully!</div>
     </div>
     <div id="hud"><div id="abilities"></div></div>
     <button id="resetRun" type="button" title="Temporary development control">Reset round</button>
+    <button id="invBtn" type="button" title="Inventory (I)">🎒</button>
+    <button id="lootBtn" type="button">💰 Loot (E)</button>
+    <div id="inventory">
+      <div class="panelCard">
+        <div class="panelHead"><h2>⚔️ Character</h2><button id="invClose" type="button">✕</button></div>
+        <div class="invSection">Equipped</div>
+        <div id="equipGrid" class="gridSlots"></div>
+        <div class="invSection">Bags</div>
+        <div id="bagGrid" class="gridSlots"></div>
+        <div class="invSection">Stats</div>
+        <div id="statPanel"></div>
+        <div class="invSection">Carried (<span id="carryCount">0</span>)</div>
+        <div id="carryGrid" class="gridSlots"></div>
+        <div class="invHint">Tap a carried item to equip · tap an equipped item to remove · 🗑 to drop on the floor.</div>
+      </div>
+    </div>
+    <div id="lootPanel">
+      <div class="panelCard">
+        <div class="panelHead"><h2>💰 Loot bag</h2><button id="lootClose" type="button">✕</button></div>
+        <div id="lootGrid" class="gridSlots"></div>
+        <button id="lootAll" type="button" style="margin-top:14px;width:100%;padding:12px;border:0;border-radius:10px;cursor:pointer;font-weight:700;color:#1a1406;background:linear-gradient(180deg,#caa14a,#8a6a22);">Take all</button>
+        <div class="invHint">Tap an item to take it. You must be standing near the bag.</div>
+      </div>
+    </div>
     <div id="login">
       <div class="card">
         <h1>⚔️ DCC</h1>

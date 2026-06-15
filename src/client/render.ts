@@ -387,6 +387,9 @@ export class Renderer {
       } else if (e.kind === "player") {
         color = C.player;
         size = 84;
+      } else if (e.kind === "lootbag") {
+        color = 0xffcc44; // a glinting sack on the floor
+        size = 34;
       } else {
         color = C.monster;
         size = 84;
@@ -398,7 +401,7 @@ export class Renderer {
         wx = predicted.x;
         wy = predicted.y;
       }
-      const h = e.kind === "proj" ? 12 : e.kind === "boss" ? 38 : 22;
+      const h = e.kind === "proj" ? 12 : e.kind === "boss" ? 38 : e.kind === "lootbag" ? 8 : 22;
       const prev = this.lastPos.get(e.id);
       const dx = prev ? wx - prev.x : 0;
       const dy = prev ? wy - prev.y : 0;
