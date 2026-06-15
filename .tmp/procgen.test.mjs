@@ -82,7 +82,11 @@ function generateFloor(seed, depth) {
     theme: THEMES[Math.floor(random() * THEMES.length)],
     w: WORLD.w,
     h: WORLD.h,
-    durationMs: Math.max(45e3, Math.ceil(pathCells * cell * 1.8 * 1e3 / 230)),
+    // Per-floor lethal timer — reach the stairs before it expires (decision #2).
+    // Stream D (M4 gen) will set real, per-floor, theme-driven durations; until
+    // then floor 1 gets a generous 5 min to learn the ropes. Later floors have
+    // at least 60s and scale up when the generated stairs path requires it.
+    durationMs: depth <= 1 ? 3e5 : Math.max(6e4, Math.ceil(pathCells * cell * 1.8 * 1e3 / 230)),
     collision,
     entrance,
     stairs,

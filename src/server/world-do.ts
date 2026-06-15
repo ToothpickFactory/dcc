@@ -5,6 +5,7 @@ import {
   BOSS_NAME,
   BOSS_RADIUS,
   LOOT_BAG_TTL,
+  LOOT_REACH,
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
@@ -13,7 +14,20 @@ import {
   WORLD,
 } from "../shared/constants";
 import type { Ability, MonsterKind, Rarity } from "../shared/types";
-import { addItem, deriveStats, emptyInventory, equip, zeroAttrs, type Item } from "../shared/items";
+import {
+  addItem,
+  aggregateAttrs,
+  carryCapacity,
+  deriveStats,
+  emptyInventory,
+  equip,
+  removeAnywhere,
+  unequip,
+  unequipBag,
+  zeroAttrs,
+  type InvResult,
+  type Item,
+} from "../shared/items";
 import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
@@ -503,7 +517,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           /* already closed */
         }
       }
-      this.welcomeFlow(ws, playerId, token);
+      this.welcomeFlow(existing, token);
       this.startLoop();
       return existing;
     }
@@ -514,7 +528,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       const spec = this.makePlayer(playerId, finalName, ws, "spectator", rec);
       this.players.set(playerId, spec);
       this.connected++;
-      this.welcomeFlow(ws, playerId, token);
+      this.welcomeFlow(spec, token);
       this.startLoop();
       return spec;
     }
@@ -526,7 +540,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.players.set(playerId, p);
     this.connected++;
     this.persistPlayer(p);
-    this.welcomeFlow(ws, playerId, token);
+    this.welcomeFlow(p, token);
     this.startLoop();
     return p;
   }
@@ -575,10 +589,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
   }
 
-  private welcomeFlow(ws: WebSocket, playerId: string, token: string) {
-    this.send(ws, { t: "welcome", you: playerId, token, world: WORLD, protocol: PROTOCOL_VERSION });
-    this.send(ws, this.floorMsg());
-    this.send(ws, this.runMsg());
+  private welcomeFlow(p: PlayerState, token: string) {
+    this.send(p.ws, { t: "welcome", you: p.id, token, world: WORLD, protocol: PROTOCOL_VERSION });
+    this.send(p.ws, this.floorMsg());
+    this.send(p.ws, this.runMsg());
+    this.sendInv(p); // initial character-screen state
   }
 
   private handleInput(player: PlayerState, ws: WebSocket, msg: ClientMsg) {
@@ -596,6 +611,80 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
       castAbility(this, player, msg.ability | 0, player.aim);
+    } else if (msg.t === "equip") {
+      this.applyInv(player, () => equip(player.inv, String(msg.item)));
+    } else if (msg.t === "unequip") {
+      this.applyInv(player, () => unequip(player.inv, msg.slot));
+    } else if (msg.t === "unequipBag") {
+      this.applyInv(player, () => unequipBag(player.inv, msg.index | 0));
+    } else if (msg.t === "drop") {
+      this.dropItem(player, String(msg.item));
+    } else if (msg.t === "openLoot") {
+      this.openLoot(player, String(msg.bag));
+    } else if (msg.t === "takeLoot") {
+      this.takeLoot(player, String(msg.bag), msg.item ? String(msg.item) : undefined);
+    }
+  }
+
+  // ---- Inventory actions (server-authoritative; never trust the client) ----
+  private sendInv(p: PlayerState): void {
+    if (p.linkdead) return;
+    this.send(p.ws, { t: "inv", inv: p.inv, attrs: aggregateAttrs(p.base, p.inv), derived: p.derived, capacity: carryCapacity(p.inv) });
+  }
+
+  // Run an inventory mutation; on success, refold stats + persist + push the
+  // updated character screen. Failures (full bag, bad slot) are silently ignored.
+  private applyInv(p: PlayerState, action: () => InvResult): void {
+    if (p.status !== "alive") return;
+    if (action().ok) {
+      recomputePlayer(p);
+      this.persistPlayer(p);
+      this.sendInv(p);
+    }
+  }
+
+  private dropItem(p: PlayerState, itemId: string): void {
+    const it = removeAnywhere(p.inv, itemId);
+    if (!it) return;
+    this.dropLoot(p.x, p.y, [it]);
+    recomputePlayer(p);
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  private bagInReach(p: PlayerState, bagId: string): LootBagState | null {
+    const bag = this.lootBags.find((b) => b.id === bagId);
+    if (!bag || Math.hypot(bag.x - p.x, bag.y - p.y) > LOOT_REACH) return null;
+    return bag;
+  }
+
+  private openLoot(p: PlayerState, bagId: string): void {
+    const bag = this.bagInReach(p, bagId);
+    if (bag && !p.linkdead) this.send(p.ws, { t: "bag", id: bag.id, items: bag.items });
+  }
+
+  // Take a specific item (or everything that fits) from a nearby bag.
+  private takeLoot(p: PlayerState, bagId: string, itemId?: string): void {
+    const bag = this.bagInReach(p, bagId);
+    if (!bag) return;
+    let changed = false;
+    if (itemId) {
+      const idx = bag.items.findIndex((i) => i.id === itemId);
+      if (idx >= 0 && addItem(p.inv, bag.items[idx])) {
+        bag.items.splice(idx, 1);
+        changed = true;
+      }
+    } else {
+      while (bag.items.length && addItem(p.inv, bag.items[0])) {
+        bag.items.shift();
+        changed = true;
+      }
+    }
+    if (changed) {
+      recomputePlayer(p);
+      this.persistPlayer(p);
+      this.sendInv(p);
+      if (!p.linkdead) this.send(p.ws, { t: "bag", id: bag.id, items: bag.items }); // refresh (despawns when empty)
     }
   }
 
@@ -830,6 +919,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         cds: p.cds,
         cls: this.profiles.classOf(p.id),
         profile: this.profiles.get(p.id),
+        derived: p.derived,
         status: p.status,
       };
       this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });

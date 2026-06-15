@@ -8,14 +8,22 @@
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
 import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
   | { t: "join"; name: string; token?: string } // token = signed playerId for reconnect
   | { t: "input"; seq: number; mv: [number, number]; aim: number } // mv = move vec; aim = radians
   | { t: "cast"; seq: number; ability: number; aim: number } // fire ability N in aim direction
+  // ---- inventory / gear (character screen) ----
+  | { t: "equip"; item: string } // equip a carried item (auto-slots)
+  | { t: "unequip"; slot: EquipSlot } // move equipped gear back to carry
+  | { t: "unequipBag"; index: number } // unequip a bag container
+  | { t: "drop"; item: string } // drop a carried item onto the floor
+  | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
+  | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -25,6 +33,8 @@ export type ServerMsg =
   | { t: "floor"; info: FloorClientInfo; state: FloorState }
   | { t: "run"; state: RunState }
   | { t: "loot"; grant: LootGrantDTO }
+  | { t: "inv"; inv: Inventory; attrs: Attributes; derived: DerivedStats; capacity: number } // character screen
+  | { t: "bag"; id: string; items: Item[] } // contents of an opened loot bag
   | { t: "pong"; ts: number };
 
 export interface WorldInfo {
@@ -58,6 +68,7 @@ export interface SelfDTO {
   cds: Record<number, number>; // ability index -> ready-at (server logical ms)
   cls: PlayerClass;
   profile: PlaystyleProfile;
+  derived: DerivedStats; // gear-derived stats (HUD + client movement prediction)
   status: "alive" | "spectator";
 }
 
