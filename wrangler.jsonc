@@ -5,8 +5,12 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "young-frost-2be4",
-	"main": "src/index.ts",
+	"main": "src/worker.ts",
 	"compatibility_date": "2026-06-14",
+	"assets": {
+		"directory": "./public",
+		"binding": "ASSETS"
+	},
 	"migrations": [
 		{
 			"new_sqlite_classes": [

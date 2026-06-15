@@ -1,0 +1,11 @@
+{
+  // Client typecheck: DOM + three, NOT the worker runtime globals (which would
+  // collide with the DOM lib). esbuild does the actual bundling; this just
+  // type-checks src/client.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": []
+  },
+  "include": ["src/client/**/*.ts", "src/protocol.ts", "src/shared/**/*.ts"]
+}

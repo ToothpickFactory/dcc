@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>DCC — The Infinite Descent (Phase 0)</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e14;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e6e9ef; }
+      #game { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+
+      #login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+        background: radial-gradient(1200px 800px at 50% -10%, #1a2233, #0b0e14 70%); z-index: 20; }
+      #login .card { width: min(92vw, 420px); padding: 32px; border-radius: 16px;
+        background: #121826ee; border: 1px solid #243049; box-shadow: 0 20px 60px #0008; text-align: center; }
+      #login h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: 0.5px; }
+      #login p { margin: 0 0 20px; color: #97a3bb; font-size: 14px; }
+      #login input { width: 100%; padding: 12px 14px; font-size: 16px; border-radius: 10px;
+        border: 1px solid #2c3a59; background: #0e1422; color: #e6e9ef; outline: none; }
+      #login input:focus { border-color: #4f7cff; }
+      #login button { margin-top: 14px; width: 100%; padding: 12px 14px; font-size: 16px; font-weight: 600;
+        border: 0; border-radius: 10px; cursor: pointer; color: white; background: linear-gradient(180deg, #5b86ff, #3a5fe0); }
+      #login button:hover { filter: brightness(1.07); }
+      #login .hint { margin-top: 14px; font-size: 12px; color: #6b7790; line-height: 1.5; }
+
+      #hud { position: fixed; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10; }
+      #abilities { display: flex; gap: 10px; justify-content: center; padding: 14px; }
+      .slot { width: 64px; height: 64px; border-radius: 12px; position: relative; overflow: hidden;
+        background: #141b2b; border: 1px solid #2c3a59; box-shadow: 0 6px 18px #0006;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+        pointer-events: auto; cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+      .slot:active { border-color: #4f7cff; filter: brightness(1.15); }
+      .slot .key { position: absolute; top: 3px; left: 6px; font-size: 11px; color: #9fb0d0; }
+      .slot .name { font-size: 11px; color: #cdd6e8; }
+      .slot .icon { font-size: 22px; line-height: 1; }
+      .slot .cd { position: absolute; inset: 0; background: #000a; transform-origin: bottom; transform: scaleY(0); }
+      #status { position: fixed; top: 12px; left: 12px; z-index: 10; font-size: 13px; color: #97a3bb; }
+      #status b { color: #e6e9ef; }
+      #help { position: fixed; top: 12px; right: 12px; z-index: 10; font-size: 12px; color: #6b7790; text-align: right; line-height: 1.6; }
+      #help b { color: #aab6cf; }
+
+      /* ---- Boss banner ---- */
+      #bossbar { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+        width: min(80vw, 560px); z-index: 11; text-align: center; pointer-events: none; }
+      #bossname { font-size: 14px; font-weight: 700; letter-spacing: 1px; color: #e7b3ff; text-shadow: 0 2px 8px #000a; margin-bottom: 5px; }
+      #bosshp { height: 14px; border-radius: 8px; overflow: hidden; background: #1a1020; border: 1px solid #7b1fa2; box-shadow: 0 4px 16px #0008; }
+      #bossfill { height: 100%; width: 100%; background: linear-gradient(180deg, #d05cff, #8e24aa); transition: width 0.12s linear; }
+
+      /* ---- Center toast ---- */
+      #toast { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 12;
+        font-size: 22px; font-weight: 800; letter-spacing: 0.5px; text-align: center; pointer-events: none;
+        opacity: 0; transition: opacity 0.4s ease; text-shadow: 0 2px 12px #000c, 0 0 24px #0008; }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="status"></div>
+    <div id="bossbar">
+      <div id="bossname">Boss</div>
+      <div id="bosshp"><div id="bossfill"></div></div>
+    </div>
+    <div id="toast"></div>
+    <div id="help">
+      <div><b>WASD / arrows</b> move · <b>tap-hold</b> on mobile</div>
+      <div><b>mouse</b> aim · <b>1-4 / click / tap slot</b> cast (ballistic)</div>
+      <div style="color:#e89a9a">⚠ Spells hit friend or foe — aim carefully!</div>
+    </div>
+    <div id="hud"><div id="abilities"></div></div>
+    <div id="login">
+      <div class="card">
+        <h1>⚔️ DCC</h1>
+        <p>The Infinite Descent — Phase 0 scaffold</p>
+        <input id="name" maxlength="16" placeholder="Your hero name" autocomplete="off" />
+        <button id="play">Enter the world</button>
+        <div id="loginMsg" style="margin-top: 12px; font-size: 13px; color: #ff8a8a; min-height: 18px;"></div>
+        <div class="hint">WASD to move, mouse to aim, click or 1–4 to fire.<br />Friendly fire is ON. One life.</div>
+      </div>
+    </div>
+    <script src="/client.js"></script>
+  </body>
+</html>

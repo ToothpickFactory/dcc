@@ -25,6 +25,10 @@ jobs:
 
       - run: npm ci
 
+      # Build the client bundle into ./public before wrangler uploads assets.
+      # (public/client.js is gitignored build output, so it must be produced in CI.)
+      - run: npm run build:client
+
       - name: Deploy
         uses: cloudflare/wrangler-action@v3
         with:

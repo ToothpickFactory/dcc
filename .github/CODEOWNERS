@@ -1,0 +1,25 @@
+# Phase 0 ownership (see WORKSTREAMS.md). Replace the placeholder handles with
+# real GitHub usernames before enabling required reviews.
+
+# Dev 1 — Server Spine + Platform
+/src/server/world-do.ts        @dev1
+/src/server/persistence/       @dev1
+/src/server/identity.ts        @dev1
+/test/                         @dev1
+/.github/                      @dev1
+
+# Dev 2 — Server Gameplay
+/src/server/sim/               @dev2
+/src/server/events.ts          @dev2
+/src/server/loot/              @dev2
+/src/shared/                   @dev2
+
+# Dev 3 — Client
+/src/client/                   @dev3
+
+# Dev 4 — Content & Worlds
+/src/procgen/                  @dev4
+
+# Shared wire contract — needs a client lead AND a server lead
+/src/protocol.ts               @dev2 @dev3
+/public/                       @dev3 @dev4

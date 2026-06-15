@@ -40,5 +40,14 @@
 			"./worker-configuration.d.ts",
 			"node"
 		]
-	}
+	},
+	/* Server/worker scope only — the client is type-checked via tsconfig.client.json. */
+	"include": [
+		"src/worker.ts",
+		"src/protocol.ts",
+		"src/shared/**/*.ts",
+		"src/procgen/**/*.ts",
+		"src/server/**/*.ts",
+		"test/**/*.ts"
+	]
 }

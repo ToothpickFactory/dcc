@@ -1,0 +1,37 @@
+name: CI
+
+# Phase-0 gate: typecheck server + client, build the bundle, and smoke-test the
+# live server with the synthetic-client bot. Runs on every PR and on main.
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx wrangler types
+
+      - name: Typecheck (server)
+        run: npx tsc --noEmit
+      - name: Typecheck (client)
+        run: npx tsc --noEmit -p tsconfig.client.json
+      - name: Build client bundle
+        run: npm run build:client
+
+      - name: Bot smoke test
+        run: |
+          npm run dev > /tmp/dev.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8787/ >/dev/null && break
+            sleep 1
+          done
+          node --experimental-strip-types test/bot.ts 15 ws://127.0.0.1:8787/ws 6000
