@@ -25,6 +25,7 @@ export class Renderer {
   private raycaster = new THREE.Raycaster();
   private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private sprites = new Map<string, THREE.Sprite>();
+  private stairs: THREE.Sprite | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -100,6 +101,23 @@ export class Renderer {
         this.scene.remove(s);
         this.sprites.delete(id);
       }
+    }
+  }
+
+  // The exit. Client rebuilds its position from the floor seed (shared procgen).
+  setStairs(x: number, y: number) {
+    if (!this.stairs) {
+      this.stairs = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x5dff9b }));
+      this.stairs.scale.set(80, 80, 1);
+      this.scene.add(this.stairs);
+    }
+    this.stairs.position.set(x, 30, y);
+  }
+
+  clearStairs() {
+    if (this.stairs) {
+      this.scene.remove(this.stairs);
+      this.stairs = null;
     }
   }
 

@@ -3,6 +3,7 @@ import {
   BOSS_KILL_THRESHOLD,
   BOSS_MAX_HP,
   BOSS_NAME,
+  MAX_FLOORS,
   MONSTER_MAX_HP,
   PLAYER_MAX_HP,
   TICK_MS,
@@ -51,6 +52,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile
   private runId = "run-dev";
   private phase: RunPhase = "running";
+  private floorEndsAt = 0; // wall-clock deadline of the current floor (mirrors the DO alarm)
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -66,6 +68,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         else this.bootstrapRun();
       } catch {
         this.bootstrapRun();
+      }
+      // Floor timer = a durable alarm (survives eviction). Adopt the scheduled
+      // deadline only if it's still in the FUTURE; a past-due rehydrated alarm
+      // (the DO was down past the deadline) gets a fresh timer instead of firing
+      // a spurious timeout/extinction on the first player to reconnect.
+      if (this.phase === "running") {
+        const due = await ctx.storage.getAlarm();
+        if (due != null && due > Date.now()) {
+          this.floorEndsAt = due;
+        } else {
+          this.floorEndsAt = Date.now() + this.floor.durationMs;
+          await ctx.storage.setAlarm(this.floorEndsAt);
+        }
       }
     });
   }
@@ -167,6 +182,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.projectiles = [];
     this.boss = null;
     this.killsSinceBoss = 0;
+    this.floorEndsAt = Date.now() + this.floor.durationMs;
+    void this.ctx.storage.setAlarm(this.floorEndsAt);
     for (const p of this.players.values()) {
       // Leave p.linkdead as-is: a disconnected character stays frozen/targetable
       // in the new run and clears linkdead only when it reconnects.
@@ -184,6 +201,104 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       }
     }
     return { runId, seed };
+  }
+
+  // ---- Floor lifecycle (M4) ----
+  // The DO alarm fires at the floor deadline — even if the DO was idle/evicted.
+  async alarm(): Promise<void> {
+    // at-least-once: ignore a stale retry if a new floor was already scheduled.
+    if (Date.now() < this.floorEndsAt - 500) {
+      await this.ctx.storage.setAlarm(this.floorEndsAt);
+      return;
+    }
+    if (this.phase !== "running") return;
+    // Nobody connected: PAUSE rather than extinct an abandoned/just-woken run.
+    // The floor resumes counting once a player reconnects.
+    if (this.connected === 0) {
+      this.floorEndsAt = Date.now() + this.floor.durationMs;
+      await this.ctx.storage.setAlarm(this.floorEndsAt);
+      return;
+    }
+    this.timeoutExpire();
+  }
+
+  private atStairs(p: PlayerState): boolean {
+    const s = this.floor.stairs;
+    return Math.hypot(p.x - s.x, p.y - s.y) <= s.r;
+  }
+
+  // Timer expired: living players who didn't reach the stairs die (lethal timer,
+  // decision #2), then the floor advances.
+  private timeoutExpire(): void {
+    for (const p of this.players.values()) {
+      if (p.status === "alive" && !this.atStairs(p)) {
+        p.status = "spectator";
+        p.mvx = 0;
+        p.mvy = 0;
+        this.events.push({ e: "death", x: p.x, y: p.y, id: p.id });
+        this.persistPlayer(p);
+      }
+    }
+    this.advanceFloor();
+  }
+
+  // Advance when the timer expires OR all living players reach the stairs.
+  // Survivors descend; if none remain the run ends.
+  private advanceFloor(): void {
+    const survivors = [...this.players.values()].filter((p) => p.status === "alive");
+    if (survivors.length === 0 || this.floor.depth + 1 > MAX_FLOORS) {
+      this.endRun();
+      return;
+    }
+    this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
+    this.spawnMonsters();
+    this.projectiles = [];
+    this.boss = null;
+    this.killsSinceBoss = 0;
+    for (const p of survivors) {
+      p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
+      p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;
+      p.mvx = 0;
+      p.mvy = 0;
+    }
+    this.floorEndsAt = Date.now() + this.floor.durationMs;
+    void this.ctx.storage.setAlarm(this.floorEndsAt);
+    this.checkpoint();
+    this.broadcastFloorRun();
+  }
+
+  private endRun(): void {
+    this.phase = "ended";
+    this.floorEndsAt = 0;
+    void this.ctx.storage.deleteAlarm();
+    this.checkpoint();
+    this.broadcastFloorRun();
+  }
+
+  private checkpoint(): void {
+    try {
+      this.ctx.storage.transactionSync(() =>
+        this.store.checkpointSync({
+          runId: this.runId,
+          currentFloor: this.floor.depth,
+          seed: this.floor.seed,
+          phase: this.phase,
+          savedAt: Date.now(),
+        }),
+      );
+    } catch {
+      /* never break on a storage hiccup */
+    }
+  }
+
+  private broadcastFloorRun(): void {
+    const floor = this.floorMsg();
+    const run = this.runMsg();
+    for (const p of this.players.values()) {
+      if (p.linkdead) continue;
+      this.send(p.ws, floor);
+      this.send(p.ws, run);
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -299,8 +414,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       return spec;
     }
 
-    // New player, or an alive player returning after the DO was evicted.
-    const p = this.makePlayer(playerId, finalName, ws, "alive", rec);
+    // New player, or an alive player returning after the DO was evicted. Joining
+    // a run that has already ENDED yields a spectator (no acting until a new run).
+    const status = this.phase === "running" ? "alive" : "spectator";
+    const p = this.makePlayer(playerId, finalName, ws, status, rec);
     this.players.set(playerId, p);
     this.connected++;
     this.persistPlayer(p);
@@ -378,6 +495,22 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const dp = this.players.get(e.id);
         if (dp && dp.status === "spectator") this.persistPlayer(dp);
       }
+    }
+
+    // All living players reached the stairs -> descend early (the other advance
+    // trigger is the alarm timeout). advanceFloor resets positions, so this
+    // can't re-fire on the next tick.
+    if (this.phase === "running") {
+      let living = 0;
+      let allAtStairs = true;
+      for (const p of this.players.values()) {
+        // Only CONNECTED living players consent to descend — a linkdead teammate
+        // (frozen wherever they dropped) must not block the others.
+        if (p.status !== "alive" || p.linkdead) continue;
+        living++;
+        if (!this.atStairs(p)) allAtStairs = false;
+      }
+      if (living > 0 && allAtStairs) this.advanceFloor();
     }
 
     this.broadcast();
@@ -490,8 +623,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         h: this.floor.h,
         durationMs: this.floor.durationMs,
       },
-      state: { index: this.floor.index, phase: "active", endsAt: this.now + this.floor.durationMs, livingAtStairs: 0, living: this.aliveCount() },
+      state: {
+        index: this.floor.index,
+        phase: this.phase === "ended" ? "complete" : "active",
+        endsAt: this.floorEndsAt, // wall-clock; client counts down via Date.now()
+        livingAtStairs: this.atStairsCount(),
+        living: this.aliveCount(),
+      },
     };
+  }
+  private atStairsCount(): number {
+    let n = 0;
+    for (const p of this.players.values()) if (p.status === "alive" && this.atStairs(p)) n++;
+    return n;
   }
   private runMsg(): ServerMsg {
     return {

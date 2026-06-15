@@ -8,6 +8,8 @@ export const INPUT_MS = 1000 / INPUT_HZ;
 
 export const WORLD = { w: 2400, h: 2400 };
 
+export const MAX_FLOORS = 100; // reaching past this ends the run as a victory (lore: Floor 100)
+
 export const PLAYER_SPEED = 230; // px/s
 export const PLAYER_MAX_HP = 100;
 export const PLAYER_RADIUS = 17;

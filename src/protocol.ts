@@ -82,7 +82,7 @@ export type FloorPhase = "generating" | "active" | "closing" | "complete";
 export interface FloorState {
   index: number;
   phase: FloorPhase;
-  endsAt: number; // server logical ms
+  endsAt: number; // wall-clock ms (the floor's durable-alarm deadline); client counts down via its own clock
   livingAtStairs: number;
   living: number;
 }
