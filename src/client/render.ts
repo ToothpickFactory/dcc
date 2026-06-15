@@ -61,6 +61,7 @@ export class Renderer {
   private lastPos = new Map<string, { x: number; y: number }>();
   private textureLoader = new THREE.TextureLoader();
   private heroAttackToggle = false;
+  private stairs: THREE.Sprite | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -345,6 +346,23 @@ export class Renderer {
         this.sprites.delete(id);
         this.lastPos.delete(id);
       }
+    }
+  }
+
+  // The exit. Client rebuilds its position from the floor seed (shared procgen).
+  setStairs(x: number, y: number) {
+    if (!this.stairs) {
+      this.stairs = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x5dff9b }));
+      this.stairs.scale.set(80, 80, 1);
+      this.scene.add(this.stairs);
+    }
+    this.stairs.position.set(x, 30, y);
+  }
+
+  clearStairs() {
+    if (this.stairs) {
+      this.scene.remove(this.stairs);
+      this.stairs = null;
     }
   }
 

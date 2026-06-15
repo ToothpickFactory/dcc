@@ -3,6 +3,7 @@ import { Input } from "./input";
 import { Predictor } from "./predict";
 import { Renderer } from "./render";
 import { Hud } from "./hud";
+import { generateFloor } from "../procgen";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const net = new Net();
@@ -19,6 +20,8 @@ const loginMsg = document.getElementById("loginMsg") as HTMLElement;
 const toastEl = document.getElementById("toast") as HTMLElement;
 let connected = false;
 let toastHideAt = 0;
+let lastFloorKey = "";
+let lastRunPhase = "";
 
 function showToast(text: string, color: string) {
   toastEl.textContent = text;
@@ -100,6 +103,24 @@ function frame(now: number) {
     renderer.follow(predictor.x, predictor.y);
     hud?.update(net);
   }
+
+  // Floor/run transitions -> place the stairs marker (rebuilt from the seed) and
+  // toast. Key on seed:depth so a NEW run at the same depth still rebuilds.
+  const floorKey = net.floor ? `${net.floor.info.seed}:${net.floor.info.depth}` : "";
+  if (net.floor && floorKey !== lastFloorKey && net.run?.phase !== "ended") {
+    lastFloorKey = floorKey;
+    const f = generateFloor(net.floor.info.seed, net.floor.info.depth);
+    renderer.setStairs(f.stairs.x, f.stairs.y);
+    showToast(`⬇ Floor ${net.floor.info.depth} — ${net.floor.info.theme}`, "#9be7ff");
+  }
+  if (net.run && net.run.phase !== lastRunPhase) {
+    lastRunPhase = net.run.phase;
+    if (net.run.phase === "ended") {
+      renderer.clearStairs();
+      showToast("🏁 The run is over.", "#ffd34d");
+    }
+  }
+
   if (toastHideAt && now > toastHideAt) {
     toastEl.style.opacity = "0";
     toastHideAt = 0;

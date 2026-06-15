@@ -46,12 +46,15 @@ export class Hud {
       this.cds[i].style.transform = `scaleY(${Math.min(1, remaining / a.cd)})`;
     });
 
-    const timer = net.floor ? Math.max(0, Math.round((net.floor.state.endsAt - net.cur.tick) / 1000)) : 0;
+    const ended = net.run?.phase === "ended";
+    // Floor timer is wall-clock (the durable alarm), so count down via Date.now().
+    const timer = !ended && net.floor ? Math.max(0, Math.round((net.floor.state.endsAt - Date.now()) / 1000)) : 0;
+    const state = ended ? "🏁 RUN OVER" : self.status === "spectator" ? "💀 SPECTATING" : "ALIVE";
     this.status.innerHTML =
-      `<b>${self.status === "spectator" ? "💀 SPECTATING" : "ALIVE"}</b> · ` +
-      `HP ${self.hp}/${self.maxHp} · Class <b>${self.cls}</b> · ` +
+      `<b>${state}</b> · HP ${self.hp}/${self.maxHp} · Class <b>${self.cls}</b> · ` +
       `Floor ${net.floor?.info.depth ?? "?"} (${net.floor?.info.theme ?? ""}) · ` +
-      `Timer <b>${timer}s</b> · Players ${net.run?.players ?? 0}`;
+      (ended ? "" : `Timer <b>${timer}s</b> · `) +
+      `Players ${net.run?.players ?? 0}`;
 
     // Boss banner — driven off the boss entity in the snapshot.
     const boss = net.cur.ents.find((e) => e.kind === "boss");
