@@ -23,7 +23,7 @@ import { castAbility, stepProjectiles } from "./sim/projectiles";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type PlayerRecord, type RunCheckpoint } from "./persistence";
 import { SCHEMA } from "./persistence/schema";
-import { StubProfileTracker, type ProfileTracker } from "./loot/profile";
+import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
 const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 ticks)
 const FIRST_SEED = 0xdcc;
@@ -46,7 +46,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private connected = 0; // open joined sockets; loop runs while > 0
 
   private identity: Identity;
-  private profiles: ProfileTracker = new StubProfileTracker();
+  private profiles: ProfileTracker = new EmaProfileTracker();
   private sql: SqlStorage;
   private store: SqlRunStore;
   private floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile

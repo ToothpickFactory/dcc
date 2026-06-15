@@ -49,5 +49,9 @@
 		"src/procgen/**/*.ts",
 		"src/server/**/*.ts",
 		"test/**/*.ts"
-	]
+	],
+	/* *.test.ts use explicit .ts import specifiers (required by Node's runtime
+	   type-stripping) which tsc rejects without allowImportingTsExtensions; they
+	   are executed by Node, which is their real check. */
+	"exclude": ["src/**/*.test.ts"]
 }
