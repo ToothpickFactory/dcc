@@ -1,14 +1,14 @@
 import {
   AGGRO_HEAL_RADIUS,
   AGGRO_PER_HEAL,
-  BOSS_PROJ_RADIUS,
   BOSS_RADIUS,
-  MONSTER_RADIUS,
+  MONSTER_KINDS,
   PLAYER_RADIUS,
   PROJECTILE_RADIUS,
 } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { applyDamage, applyHeal } from "./combat";
+import { blocked } from "./movement";
 
 let seq = 0;
 
@@ -35,6 +35,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
       slowMs: ab.slowMs ?? 0,
       ability: idx,
       ttl: ab.range / speed,
+      hitR: PROJECTILE_RADIUS,
       boss: false,
     });
     // Casting a heal aggravates nearby foes (ported): support play has a cost.
@@ -95,16 +96,19 @@ function inCone(
 // the first thing it overlaps — monster, boss, or another player. Damage spells
 // hurt; heal spells (negative dmg) mend whatever they strike (friend OR foe).
 export function stepProjectiles(ctx: WorldCtx, dt: number): void {
+  const grid = ctx.floor.collision;
   ctx.projectiles = ctx.projectiles.filter((pr) => {
     pr.ttl -= dt;
     if (pr.ttl <= 0) return false;
     pr.x += pr.vx * dt;
     pr.y += pr.vy * dt;
+    if (blocked(grid, pr.x, pr.y)) return false; // stopped by a wall
 
+    // Enemy projectile (boss bolt OR monster bolt): affects players only.
     if (pr.boss) {
       for (const p of ctx.players.values()) {
         if (p.status !== "alive") continue;
-        if (hit(pr.x, pr.y, p.x, p.y, BOSS_PROJ_RADIUS + PLAYER_RADIUS)) {
+        if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
           applyDamage(ctx, p, pr.dmg, pr.ownerId, false, pr.slowMs);
           ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
           return false;
@@ -116,18 +120,18 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
     const isHeal = pr.dmg < 0;
     for (const m of ctx.monsters) {
       if (m.dead) continue;
-      if (hit(pr.x, pr.y, m.x, m.y, PROJECTILE_RADIUS + MONSTER_RADIUS)) {
+      if (hit(pr.x, pr.y, m.x, m.y, pr.hitR + MONSTER_KINDS[m.kind].radius)) {
         resolve(ctx, m, pr, isHeal);
         return false;
       }
     }
-    if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, PROJECTILE_RADIUS + BOSS_RADIUS)) {
+    if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, pr.hitR + BOSS_RADIUS)) {
       resolve(ctx, ctx.boss, pr, isHeal);
       return false;
     }
     for (const p of ctx.players.values()) {
       if (p.id === pr.ownerId || p.status !== "alive") continue; // can't hit yourself
-      if (hit(pr.x, pr.y, p.x, p.y, PROJECTILE_RADIUS + PLAYER_RADIUS)) {
+      if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
         resolve(ctx, p, pr, isHeal);
         return false;
       }

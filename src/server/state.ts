@@ -1,6 +1,7 @@
 import type { Ability, MonsterKind } from "../shared/types";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
+import type { FloorDescriptor } from "../procgen/types";
 
 export interface PlayerState {
   id: string;
@@ -16,6 +17,7 @@ export interface PlayerState {
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   ws: WebSocket;
   linkdead: boolean; // socket dropped but a LIVING character stays in the world (decision #8)
 }
@@ -26,6 +28,7 @@ export interface MonsterState {
   x: number;
   y: number;
   aim: number;
+  maxHp: number; // per-kind (grunt/ranged/brute/swarm differ)
   hp: number;
   dead: boolean;
   respawnAt: number; // monsters respawn (keeps kills accruing toward the boss)
@@ -63,7 +66,8 @@ export interface ProjectileState {
   slowMs: number;
   ability: number;
   ttl: number; // seconds remaining
-  boss: boolean; // boss bolt: only affects players, bigger hit radius
+  hitR: number; // projectile's own collision radius (px), added to the target's
+  boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players
 }
 
 // The slice of the world the simulation modules operate on. The Durable Object
@@ -75,6 +79,7 @@ export interface WorldCtx {
   monsters: MonsterState[];
   projectiles: ProjectileState[];
   boss: BossState | null;
+  floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
 }

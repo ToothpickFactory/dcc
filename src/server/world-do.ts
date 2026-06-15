@@ -4,11 +4,12 @@ import {
   BOSS_MAX_HP,
   BOSS_NAME,
   MAX_FLOORS,
-  MONSTER_MAX_HP,
+  MONSTER_KINDS,
   PLAYER_MAX_HP,
   TICK_MS,
   WORLD,
 } from "../shared/constants";
+import type { MonsterKind } from "../shared/types";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
@@ -49,7 +50,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private profiles: ProfileTracker = new EmaProfileTracker();
   private sql: SqlStorage;
   private store: SqlRunStore;
-  private floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile
+  floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile (public: part of WorldCtx)
   private runId = "run-dev";
   private phase: RunPhase = "running";
   private floorEndsAt = 0; // wall-clock deadline of the current floor (mirrors the DO alarm)
@@ -113,20 +114,30 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private spawnMonsters() {
-    this.monsters = this.floor.spawns.map((s, i) => ({
-      id: `m_${i.toString(36)}`,
-      kind: s.kind,
-      x: s.x,
-      y: s.y,
-      aim: 0,
-      hp: MONSTER_MAX_HP,
-      dead: false,
-      respawnAt: 0,
-      attackReadyAt: 0,
-      wanderAt: 0,
-      slowUntil: 0,
-      threat: new Map(),
-    }));
+    // Stream D's procgen stub spawns all grunts; until it emits varied kinds,
+    // distribute archetypes so the per-kind behaviors are exercised. The moment
+    // floor.spawns carry real variety (any non-grunt present), honor them as-is.
+    const homogeneousGrunt = this.floor.spawns.every((s) => s.kind === "grunt");
+    const VARIETY: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "swarm", "grunt"];
+    this.monsters = this.floor.spawns.map((s, i) => {
+      const kind = homogeneousGrunt ? VARIETY[i % VARIETY.length] : s.kind;
+      const def = MONSTER_KINDS[kind];
+      return {
+        id: `m_${i.toString(36)}`,
+        kind,
+        x: s.x,
+        y: s.y,
+        aim: 0,
+        maxHp: def.hp,
+        hp: def.hp,
+        dead: false,
+        respawnAt: 0,
+        attackReadyAt: 0,
+        wanderAt: 0,
+        slowUntil: 0,
+        threat: new Map(),
+      };
+    });
   }
 
   private maybeSpawnBoss() {
@@ -193,6 +204,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.cds = {};
       p.mvx = 0;
       p.mvy = 0;
+      p.slowUntil = 0;
+      p.seen.clear();
       p.abilities = DEFAULT_ABILITIES.map((a) => ({ ...a }));
       p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
       p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;
@@ -261,6 +274,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;
       p.mvx = 0;
       p.mvy = 0;
+      p.slowUntil = 0;
+      p.seen.clear(); // fresh floor = fresh exploration
     }
     this.floorEndsAt = Date.now() + this.floor.durationMs;
     void this.ctx.storage.setAlarm(this.floorEndsAt);
@@ -442,6 +457,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
       slowUntil: 0,
+      seen: new Set(),
       ws,
       linkdead: false,
     };
@@ -578,7 +594,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
     for (const m of this.monsters) {
       if (m.dead) continue;
-      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: MONSTER_MAX_HP });
+      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp });
     }
     if (this.boss && !this.boss.dead) {
       ents.push({

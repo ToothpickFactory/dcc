@@ -1,4 +1,4 @@
-import { MONSTER_MAX_HP, MONSTER_RESPAWN_MS, PLAYER_MAX_HP } from "../../shared/constants";
+import { MONSTER_RESPAWN_MS, PLAYER_MAX_HP } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
 function isPlayer(t: PlayerState | MonsterState | BossState): t is PlayerState {
@@ -121,7 +121,7 @@ export function applyHeal(
     if (sourceId) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: false });
   } else {
     if (target.dead) return;
-    target.hp = Math.min(MONSTER_MAX_HP, target.hp + amount);
+    target.hp = Math.min(target.maxHp, target.hp + amount);
     if (sourceId) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: false });
   }
   ctx.pushFx({ e: "heal", x: target.x, y: target.y, amount });

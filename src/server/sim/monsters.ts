@@ -1,26 +1,24 @@
-import {
-  MONSTER_AGGRO,
-  MONSTER_ATTACK_CD,
-  MONSTER_DMG,
-  MONSTER_MAX_HP,
-  MONSTER_MELEE_RANGE,
-  MONSTER_SPEED,
-  SLOW_FACTOR,
-  THREAT_DECAY,
-  WORLD,
-} from "../../shared/constants";
+import { MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY, WORLD } from "../../shared/constants";
 import type { MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage } from "./combat";
 
-// Threat-based aggro (combat note): a monster chases whoever has hit it most,
-// falling back to the nearest player in range when no one has drawn threat.
+let seq = 0;
+
+// Per-kind monster AI (Stream B). All kinds use threat-based aggro — chase
+// whoever has hit them most, else the nearest player in range. They differ in
+// stats (HP/speed/damage/reach) and in HOW they engage:
+//   grunt — baseline melee chaser
+//   brute — slow, tanky, heavy melee
+//   swarm — fast, fragile, light melee
+//   ranged — kites to a standoff and fires dodgeable bolts (no melee)
 export function updateMonsters(ctx: WorldCtx, dt: number): void {
   for (const m of ctx.monsters) {
+    const def = MONSTER_KINDS[m.kind];
     if (m.dead) {
       // Respawn so collective kills keep accruing toward the boss trigger.
       if (ctx.now >= m.respawnAt) {
         m.dead = false;
-        m.hp = MONSTER_MAX_HP;
+        m.hp = m.maxHp;
         m.x = 200 + Math.random() * (WORLD.w - 400);
         m.y = 200 + Math.random() * (WORLD.h - 400);
         m.slowUntil = 0;
@@ -36,34 +34,76 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       else m.threat.set(id, nv);
     }
 
-    const speed = MONSTER_SPEED * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    const speed = def.speed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
-    if (prey) {
-      const dx = prey.x - m.x;
-      const dy = prey.y - m.y;
-      const d = Math.hypot(dx, dy) || 1;
-      m.aim = Math.atan2(dy, dx);
-      if (d <= MONSTER_MELEE_RANGE) {
-        if (ctx.now >= m.attackReadyAt) {
-          m.attackReadyAt = ctx.now + MONSTER_ATTACK_CD;
-          applyDamage(ctx, prey, MONSTER_DMG, m.id, false);
-        }
-      } else {
+
+    if (!prey) {
+      wander(ctx, m, speed, dt);
+      continue;
+    }
+
+    const dx = prey.x - m.x;
+    const dy = prey.y - m.y;
+    const d = Math.hypot(dx, dy) || 1;
+    m.aim = Math.atan2(dy, dx);
+
+    if (def.ranged) {
+      // Kite: back off if too close, close in if out of shooting range, else hold.
+      const r = def.ranged;
+      if (d < r.kite) {
+        m.x -= (dx / d) * speed * dt;
+        m.y -= (dy / d) * speed * dt;
+      } else if (d > r.shootRange) {
         m.x += (dx / d) * speed * dt;
         m.y += (dy / d) * speed * dt;
       }
-    } else {
-      // Wander.
-      if (ctx.now >= m.wanderAt) {
-        m.wanderAt = ctx.now + 2000 + Math.random() * 3000;
-        m.aim = Math.random() * Math.PI * 2;
+      if (d <= r.shootRange && ctx.now >= m.attackReadyAt) {
+        m.attackReadyAt = ctx.now + def.attackCd;
+        shoot(ctx, m, prey, r.projSpeed, r.projDmg);
       }
-      m.x = clamp(m.x + Math.cos(m.aim) * speed * 0.5 * dt, 24, WORLD.w - 24);
-      m.y = clamp(m.y + Math.sin(m.aim) * speed * 0.5 * dt, 24, WORLD.h - 24);
+    } else if (d <= def.meleeRange) {
+      if (ctx.now >= m.attackReadyAt) {
+        m.attackReadyAt = ctx.now + def.attackCd;
+        applyDamage(ctx, prey, def.dmg, m.id, false);
+      }
+    } else {
+      m.x += (dx / d) * speed * dt;
+      m.y += (dy / d) * speed * dt;
     }
   }
 }
 
+// Straight-line monster bolt — dodgeable, affects players only (boss=true path).
+function shoot(ctx: WorldCtx, m: MonsterState, prey: PlayerState, projSpeed: number, projDmg: number): void {
+  const ang = Math.atan2(prey.y - m.y, prey.x - m.x);
+  ctx.projectiles.push({
+    id: `mb_${(++seq).toString(36)}`,
+    ownerId: m.id,
+    x: m.x + Math.cos(ang) * (MONSTER_KINDS[m.kind].radius + 4),
+    y: m.y + Math.sin(ang) * (MONSTER_KINDS[m.kind].radius + 4),
+    vx: Math.cos(ang) * projSpeed,
+    vy: Math.sin(ang) * projSpeed,
+    dmg: projDmg,
+    slowMs: 0,
+    ability: MONSTER_BOLT_SPRITE,
+    ttl: 4,
+    hitR: 7,
+    boss: true,
+  });
+  ctx.pushFx({ e: "cast", x: m.x, y: m.y, ability: MONSTER_BOLT_SPRITE });
+}
+
+function wander(ctx: WorldCtx, m: MonsterState, speed: number, dt: number): void {
+  if (ctx.now >= m.wanderAt) {
+    m.wanderAt = ctx.now + 2000 + Math.random() * 3000;
+    m.aim = Math.random() * Math.PI * 2;
+  }
+  m.x = clamp(m.x + Math.cos(m.aim) * speed * 0.5 * dt, 24, WORLD.w - 24);
+  m.y = clamp(m.y + Math.sin(m.aim) * speed * 0.5 * dt, 24, WORLD.h - 24);
+}
+
+// Threat-based aggro: chase whoever has hit it most, falling back to the nearest
+// player in range when no one has drawn threat.
 function pickTarget(ctx: WorldCtx, m: MonsterState): PlayerState | null {
   let best: PlayerState | null = null;
   let bestThreat = 0;
