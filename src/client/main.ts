@@ -20,13 +20,16 @@ const loginMsg = document.getElementById("loginMsg") as HTMLElement;
 const toastEl = document.getElementById("toast") as HTMLElement;
 const resetRunBtn = document.getElementById("resetRun") as HTMLButtonElement;
 const isLocalDev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+// Show the reset control in local dev, or anywhere when `?admin` is in the URL
+// (so a deployed instance can be reset without curl — still gated by the token).
+const adminUnlocked = isLocalDev || new URLSearchParams(location.search).has("admin");
 let connected = false;
 let toastHideAt = 0;
 let lastFloorKey = "";
 let lastRunPhase = "";
 let adminToken = "";
 
-if (isLocalDev) resetRunBtn.style.display = "block";
+if (adminUnlocked) resetRunBtn.style.display = "block";
 
 function showToast(text: string, color: string) {
   toastEl.textContent = text;
@@ -93,7 +96,7 @@ resetRunBtn.addEventListener("click", async () => {
   if (!confirm("Reset the current round for every connected player?")) return;
 
   if (!adminToken) {
-    const entered = prompt("Admin token from .dev.vars", "dev");
+    const entered = prompt("Admin token (ADMIN_TOKEN from .dev.vars / wrangler secret)", "dev-admin-token");
     if (!entered) return;
     adminToken = entered;
   }
