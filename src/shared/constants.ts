@@ -26,6 +26,7 @@ export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accrui
 
 export const PROJECTILE_RADIUS = 7;
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
+export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost) is active
 
 // Directional heal (ported): a heal projectile mends the first ally it hits, and
 // casting it draws aggro from nearby foes — so support play carries risk.

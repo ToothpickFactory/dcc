@@ -5,6 +5,7 @@ import {
   MONSTER_MAX_HP,
   MONSTER_MELEE_RANGE,
   MONSTER_SPEED,
+  SLOW_FACTOR,
   THREAT_DECAY,
   WORLD,
 } from "../../shared/constants";
@@ -22,6 +23,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
         m.hp = MONSTER_MAX_HP;
         m.x = 200 + Math.random() * (WORLD.w - 400);
         m.y = 200 + Math.random() * (WORLD.h - 400);
+        m.slowUntil = 0;
         m.threat.clear();
       }
       continue;
@@ -34,6 +36,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       else m.threat.set(id, nv);
     }
 
+    const speed = MONSTER_SPEED * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
     if (prey) {
       const dx = prey.x - m.x;
@@ -46,8 +49,8 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
           applyDamage(ctx, prey, MONSTER_DMG, m.id, false);
         }
       } else {
-        m.x += (dx / d) * MONSTER_SPEED * dt;
-        m.y += (dy / d) * MONSTER_SPEED * dt;
+        m.x += (dx / d) * speed * dt;
+        m.y += (dy / d) * speed * dt;
       }
     } else {
       // Wander.
@@ -55,8 +58,8 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
         m.wanderAt = ctx.now + 2000 + Math.random() * 3000;
         m.aim = Math.random() * Math.PI * 2;
       }
-      m.x = clamp(m.x + Math.cos(m.aim) * MONSTER_SPEED * 0.5 * dt, 24, WORLD.w - 24);
-      m.y = clamp(m.y + Math.sin(m.aim) * MONSTER_SPEED * 0.5 * dt, 24, WORLD.h - 24);
+      m.x = clamp(m.x + Math.cos(m.aim) * speed * 0.5 * dt, 24, WORLD.w - 24);
+      m.y = clamp(m.y + Math.sin(m.aim) * speed * 0.5 * dt, 24, WORLD.h - 24);
     }
   }
 }

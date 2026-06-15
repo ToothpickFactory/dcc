@@ -15,6 +15,7 @@ export interface PlayerState {
   cds: Record<number, number>;
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
+  slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
   ws: WebSocket;
   linkdead: boolean; // socket dropped but a LIVING character stays in the world (decision #8)
 }
@@ -30,6 +31,7 @@ export interface MonsterState {
   respawnAt: number; // monsters respawn (keeps kills accruing toward the boss)
   attackReadyAt: number;
   wanderAt: number;
+  slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
   threat: Map<string, number>; // playerId -> accumulated threat
 }
 

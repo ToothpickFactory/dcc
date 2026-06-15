@@ -50,20 +50,25 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     return true;
   }
 
-  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players.
+  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The
+  // hit range passed to the profile is the actual distance to each victim.
   const cone = Math.PI / 3;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
-    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, ab.dmg, caster.id, true, ab.slowMs);
+    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
   }
   if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, aim, ab.range, cone)) {
-    applyDamage(ctx, ctx.boss, ab.dmg, caster.id, true, ab.slowMs);
+    applyDamage(ctx, ctx.boss, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
   }
   for (const p of ctx.players.values()) {
     if (p.id === caster.id || p.status !== "alive") continue;
-    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, ab.dmg, caster.id, true, ab.slowMs);
+    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, ab.dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
   }
   return true;
+}
+
+function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
 function near(a: { x: number; y: number }, b: { x: number; y: number }, range: number): boolean {
@@ -137,8 +142,14 @@ function resolve(
   pr: ProjectileState,
   isHeal: boolean,
 ): void {
-  if (isHeal) applyHeal(ctx, target, -pr.dmg, pr.ownerId);
-  else applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs);
+  if (isHeal) {
+    applyHeal(ctx, target, -pr.dmg, pr.ownerId);
+  } else {
+    // How far the shooter was from the impact — drives the ranged/melee axes.
+    const owner = ctx.players.get(pr.ownerId);
+    const range = owner ? Math.hypot(owner.x - target.x, owner.y - target.y) : 0;
+    applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs, pr.ability, range);
+  }
   ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
 }
 

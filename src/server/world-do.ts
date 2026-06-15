@@ -124,6 +124,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       respawnAt: 0,
       attackReadyAt: 0,
       wanderAt: 0,
+      slowUntil: 0,
       threat: new Map(),
     }));
   }
@@ -440,6 +441,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       cds: {},
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
+      slowUntil: 0,
       ws,
       linkdead: false,
     };
@@ -483,7 +485,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private tick() {
     this.now += TICK_MS;
     const dt = TICK_MS / 1000;
-    for (const p of this.players.values()) stepPlayer(p, dt);
+    for (const p of this.players.values()) stepPlayer(this, p, dt);
     updateMonsters(this, dt);
     updateBoss(this, dt);
     stepProjectiles(this, dt);
