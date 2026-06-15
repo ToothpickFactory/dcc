@@ -1,4 +1,5 @@
 import { MONSTER_RESPAWN_MS } from "../../shared/constants";
+import { allItems, emptyInventory } from "../../shared/items";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
 function isPlayer(t: PlayerState | MonsterState | BossState): t is PlayerState {
@@ -50,10 +51,13 @@ export function applyDamage(
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
     }
     if (target.hp <= 0) {
-      // PERMADEATH (Phase 0): no respawn — the player becomes a spectator.
+      // PERMADEATH (Phase 0): no respawn — the player becomes a spectator and
+      // drops ALL their gear on the ground (their items are gone for good).
       target.status = "spectator";
       target.mvx = 0;
       target.mvy = 0;
+      ctx.dropLoot(target.x, target.y, allItems(target.inv));
+      target.inv = emptyInventory();
       ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
       if (sourceIsPlayer && sourceId !== target.id) {
         ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "player" });
@@ -96,6 +100,9 @@ export function applyDamage(
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;
+    // Drop copies of its gear (the monster keeps its own set and respawns with
+    // it, so it stays farmable). dropLoot re-ids the copies.
+    ctx.dropLoot(target.x, target.y, allItems(target.inv));
     ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
     if (sourceIsPlayer) {
       ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });

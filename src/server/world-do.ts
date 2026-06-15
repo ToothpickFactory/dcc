@@ -4,6 +4,7 @@ import {
   BOSS_MAX_HP,
   BOSS_NAME,
   BOSS_RADIUS,
+  LOOT_BAG_TTL,
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
@@ -12,8 +13,9 @@ import {
   WORLD,
 } from "../shared/constants";
 import type { Ability, MonsterKind, Rarity } from "../shared/types";
-import { deriveStats, emptyInventory, zeroAttrs } from "../shared/items";
-import { recomputePlayer } from "./sim/stats";
+import { addItem, deriveStats, emptyInventory, equip, zeroAttrs, type Item } from "../shared/items";
+import { recomputeMonster, recomputePlayer } from "./sim/stats";
+import { generateItem, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
@@ -22,7 +24,7 @@ import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } fr
 import { generateFloor, rng } from "../procgen";
 import { randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
-import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
+import type { BossState, LootBagState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
@@ -47,11 +49,15 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   monsters: MonsterState[] = [];
   projectiles: ProjectileState[] = [];
   boss: BossState | null = null;
+  lootBags: LootBagState[] = [];
 
   private events: GameEvent[] = [];
   private loop: ReturnType<typeof setInterval> | null = null;
   private killsSinceBoss = 0;
   private bossSeq = 0;
+  private lootBagSeq = 0;
+  private itemSeq = 0;
+  private gearRng: () => number = () => 0; // seeded per floor for monster/drop gear
   private ticksSincePersist = 0;
   private connected = 0; // open joined sockets; loop runs while > 0
 
@@ -150,6 +156,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
   }
 
+  // Spawn a loot bag holding (fresh-id copies of) the given items. Called by the
+  // combat funnel whenever an entity dies. No-op for an empty drop.
+  dropLoot(x: number, y: number, items: Item[]): void {
+    if (items.length === 0) return;
+    const copies = items.map((it) => ({ ...it, id: `i_${(++this.itemSeq).toString(36)}` }));
+    this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, expiresAt: Date.now() + LOOT_BAG_TTL });
+  }
+
   private spawnMonsters() {
     // Stream D's procgen stub spawns all grunts; until it emits varied kinds,
     // distribute archetypes so the per-kind behaviors are exercised. The moment
@@ -179,6 +193,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         threat: new Map(),
       };
     });
+    for (const m of this.monsters) this.gearUpMonster(m);
+  }
+
+  // Give a monster 1-2 generated items (so kills actually drop loot), then fold
+  // the gear into its stats and refill HP. Deterministic via the per-floor gear
+  // stream. Brutes carry an extra piece.
+  private gearUpMonster(m: MonsterState): void {
+    const pieces = 1 + (m.kind === "brute" ? 1 : this.gearRng() < 0.4 ? 1 : 0);
+    for (let i = 0; i < pieces; i++) {
+      addItem(m.inv, generateItem(this.floor.depth, rollGearRarity(this.floor.depth, this.gearRng), this.gearRng));
+    }
+    recomputeMonster(m);
+    m.hp = m.maxHp; // spawn at full HP including any vitality gear
   }
 
   private maybeSpawnBoss() {
@@ -528,8 +555,24 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       ws,
       linkdead: false,
     };
-    recomputePlayer(p); // fold in any persisted gear; clamps hp to derived maxHp
+    if (!rec) this.giveStarterKit(p); // brand-new hero gets a basic kit (INV-5 persists it)
+    recomputePlayer(p); // fold in gear; clamps hp to derived maxHp
+    if (!rec) p.hp = p.derived.maxHp; // start at full HP including gear
     return p;
+  }
+
+  // A fresh hero starts with a common weapon + chest + a small bag equipped, so
+  // every character has gear from the start (and something to drop / be looted).
+  private giveStarterKit(p: PlayerState): void {
+    const kit = [
+      generateItem(1, "common", this.gearRng, "weapon"),
+      generateItem(1, "common", this.gearRng, "chest"),
+      generateItem(1, "common", this.gearRng, "bag"),
+    ];
+    for (const it of kit) {
+      addItem(p.inv, it);
+      equip(p.inv, it.id);
+    }
   }
 
   private welcomeFlow(ws: WebSocket, playerId: string, token: string) {
@@ -574,6 +617,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     updateMonsters(this, dt);
     updateBoss(this, dt);
     stepProjectiles(this, dt);
+
+    // Despawn expired loot bags so a long floor doesn't litter forever.
+    if (this.lootBags.length) {
+      const nowMs = Date.now();
+      this.lootBags = this.lootBags.filter((b) => b.expiresAt > nowMs && b.items.length > 0);
+    }
 
     // Permadeath must be durable the instant it happens, not on the next
     // heartbeat — persist any player who died this tick.
@@ -654,6 +703,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private seedLoot(): void {
     // Deterministic per-floor stream: a given floor + grant order = the same drops.
     this.lootStream = rng((this.floor.seed * 2654435761 + this.floor.depth * 40503) >>> 0);
+    this.gearRng = rng((this.floor.seed * 374761393 + this.floor.depth * 668265263) >>> 0);
     this.flavorSvc.resetFloorBudget(); // per-floor LLM spend cap
   }
 
@@ -761,6 +811,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         maxHp: this.boss.maxHp,
         name: this.boss.name,
       });
+    }
+    for (const b of this.lootBags) {
+      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length });
     }
     for (const pr of this.projectiles) {
       ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), sprite: pr.ability });

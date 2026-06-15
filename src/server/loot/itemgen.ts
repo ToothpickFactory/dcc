@@ -1,0 +1,71 @@
+import type { AttrKey, Attributes, Item, ItemSlot } from "../../shared/items";
+import type { Rarity } from "../../shared/types";
+
+// Deterministic gear generator: a slot + an attribute budget scaled by depth and
+// rarity, distributed across the attributes that slot favors. Reused for monster
+// drops, chests, and player starter kits. (INV-5 adds LLM-named flavor.)
+
+const RARITY_RANK: Record<Rarity, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+const RARITY_BUDGET: Record<Rarity, number> = { common: 4, uncommon: 7, rare: 11, epic: 16, legendary: 24 };
+const RARITY_ADJ: Record<Rarity, string> = { common: "Worn", uncommon: "Sturdy", rare: "Fine", epic: "Heroic", legendary: "Mythic" };
+
+const SLOT_NOUN: Record<ItemSlot, string> = {
+  helmet: "Helm",
+  chest: "Cuirass",
+  legs: "Greaves",
+  gloves: "Gauntlets",
+  weapon: "Blade",
+  ring: "Band",
+  amulet: "Pendant",
+  bag: "Satchel",
+};
+// Each slot favours a themed set of attributes.
+const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
+  helmet: ["vitality", "armor", "spirit"],
+  chest: ["vitality", "armor"],
+  legs: ["vitality", "agility", "armor"],
+  gloves: ["power", "haste", "agility"],
+  weapon: ["power", "power", "haste"], // weighted toward power
+  ring: ["power", "spirit", "haste", "agility"],
+  amulet: ["spirit", "power", "vitality"],
+  bag: ["vitality"],
+};
+const ALL_SLOTS: ItemSlot[] = ["helmet", "chest", "legs", "gloves", "weapon", "ring", "amulet", "bag"];
+
+export function generateItem(depth: number, rarity: Rarity, rng: () => number, slot?: ItemSlot): Item {
+  const s = slot ?? ALL_SLOTS[Math.floor(rng() * ALL_SLOTS.length)];
+  const item: Item = {
+    id: `gear-${depth}-${Math.floor(rng() * 1e9).toString(36)}`,
+    name: `${RARITY_ADJ[rarity]} ${SLOT_NOUN[s]}`,
+    rarity,
+    slot: s,
+    attrs: {},
+  };
+
+  let budget = RARITY_BUDGET[rarity] + Math.floor(depth * 0.5);
+  if (s === "bag") {
+    item.bagSlots = 2 + RARITY_RANK[rarity]; // 2..6 extra carry slots
+    budget = Math.floor(budget / 2); // bags carry fewer combat stats
+  }
+
+  const keys = SLOT_ATTRS[s];
+  const attrs = item.attrs as Partial<Attributes>;
+  const picks = 1 + Math.min(2, RARITY_RANK[rarity]); // 1..3 stat lines by rarity
+  for (let i = 0; i < picks && budget > 0; i++) {
+    const k = keys[Math.floor(rng() * keys.length)];
+    const give = i === picks - 1 ? budget : 1 + Math.floor(rng() * budget);
+    attrs[k] = (attrs[k] ?? 0) + give;
+    budget -= give;
+  }
+  return item;
+}
+
+// Roll a rarity for a routine drop, skewing richer with depth. Bosses/chests
+// pass an explicit rarity instead of using this.
+export function rollGearRarity(depth: number, rng: () => number): Rarity {
+  const roll = rng() + depth * 0.01;
+  if (roll > 0.97) return "epic";
+  if (roll > 0.88) return "rare";
+  if (roll > 0.62) return "uncommon";
+  return "common";
+}

@@ -32,7 +32,7 @@ export interface WorldInfo {
   h: number;
 }
 
-export type EntityKind = "player" | "monster" | "boss" | "proj";
+export type EntityKind = "player" | "monster" | "boss" | "proj" | "lootbag";
 export interface EntityDTO {
   id: string;
   kind: EntityKind;
@@ -45,6 +45,7 @@ export interface EntityDTO {
   name?: string; // players only
   cls?: PlayerClass; // players only
   sprite?: number; // atlas frame id (kind-specific)
+  n?: number; // item count (loot bags)
 }
 
 export interface SelfDTO {

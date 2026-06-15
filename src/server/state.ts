@@ -1,5 +1,5 @@
 import type { Ability, MonsterKind } from "../shared/types";
-import type { Attributes, DerivedStats, Inventory } from "../shared/items";
+import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
 import type { FloorDescriptor } from "../procgen/types";
@@ -77,6 +77,16 @@ export interface ProjectileState {
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players
 }
 
+// A bag of dropped items sitting on the floor. Spawned when ANY entity dies
+// (player or monster) holding its full inventory; players walk up and loot it.
+export interface LootBagState {
+  id: string;
+  x: number;
+  y: number;
+  items: Item[];
+  expiresAt: number; // wall-clock ms; despawns after this so the floor stays clean
+}
+
 // The slice of the world the simulation modules operate on. The Durable Object
 // implements this and passes itself as the context, so sim modules never import
 // the DO.
@@ -86,7 +96,9 @@ export interface WorldCtx {
   monsters: MonsterState[];
   projectiles: ProjectileState[];
   boss: BossState | null;
+  lootBags: LootBagState[];
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
+  dropLoot(x: number, y: number, items: Item[]): void; // spawn a loot bag (no-op if empty)
 }
