@@ -78,7 +78,7 @@ function pickTarget(ctx: WorldCtx, boss: BossState): PlayerState | null {
   let bestThreat = 0;
   for (const [id, v] of boss.threat) {
     const p = ctx.players.get(id);
-    if (p && p.status === "alive" && v > bestThreat) {
+    if (p && p.status === "alive" && !p.reached && v > bestThreat) {
       best = p;
       bestThreat = v;
     }
@@ -89,7 +89,7 @@ function pickTarget(ctx: WorldCtx, boss: BossState): PlayerState | null {
   let near: PlayerState | null = null;
   let nd = Infinity;
   for (const p of ctx.players.values()) {
-    if (p.status !== "alive") continue;
+    if (p.status !== "alive" || p.reached) continue;
     const dx = p.x - boss.x;
     const dy = p.y - boss.y;
     const d = dx * dx + dy * dy;

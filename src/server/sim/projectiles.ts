@@ -67,7 +67,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     applyDamage(ctx, ctx.boss, dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
   }
   for (const p of ctx.players.values()) {
-    if (p.id === caster.id || p.status !== "alive") continue;
+    if (p.id === caster.id || p.status !== "alive" || p.reached) continue;
     if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
   }
   return true;
@@ -112,7 +112,7 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
     // Enemy projectile (boss bolt OR monster bolt): affects players only.
     if (pr.boss) {
       for (const p of ctx.players.values()) {
-        if (p.status !== "alive") continue;
+        if (p.status !== "alive" || p.reached) continue;
         if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
           applyDamage(ctx, p, pr.dmg, pr.ownerId, false, pr.slowMs);
           ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
@@ -135,7 +135,7 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
       return false;
     }
     for (const p of ctx.players.values()) {
-      if (p.id === pr.ownerId || p.status !== "alive") continue; // can't hit yourself
+      if (p.id === pr.ownerId || p.status !== "alive" || p.reached) continue; // can't hit yourself / waiting-room players
       if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
         resolve(ctx, p, pr, isHeal);
         return false;

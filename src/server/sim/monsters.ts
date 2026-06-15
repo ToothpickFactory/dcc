@@ -114,7 +114,7 @@ function pickTarget(ctx: WorldCtx, m: MonsterState): PlayerState | null {
   let bestThreat = 0;
   for (const [id, v] of m.threat) {
     const p = ctx.players.get(id);
-    if (p && p.status === "alive" && v > bestThreat) {
+    if (p && p.status === "alive" && !p.reached && v > bestThreat) {
       best = p;
       bestThreat = v;
     }
@@ -124,7 +124,7 @@ function pickTarget(ctx: WorldCtx, m: MonsterState): PlayerState | null {
   let near: PlayerState | null = null;
   let nd = MONSTER_AGGRO * MONSTER_AGGRO;
   for (const p of ctx.players.values()) {
-    if (p.status !== "alive") continue;
+    if (p.status !== "alive" || p.reached) continue;
     const dx = p.x - m.x;
     const dy = p.y - m.y;
     const d = dx * dx + dy * dy;

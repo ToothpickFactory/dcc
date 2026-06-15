@@ -21,7 +21,9 @@ import {
   deriveStats,
   emptyInventory,
   equip,
+  findCarried,
   removeAnywhere,
+  sellValue,
   unequip,
   unequipBag,
   zeroAttrs,
@@ -272,6 +274,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           abilities: DEFAULT_ABILITIES,
           base: zeroAttrs(), // fresh run = fresh character
           inv: emptyInventory(),
+          gold: 0,
           lastSeen: Date.now(),
         });
       }
@@ -291,6 +294,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       // Leave p.linkdead as-is: a disconnected character stays frozen/targetable
       // in the new run and clears linkdead only when it reconnects.
       p.status = "alive";
+      p.reached = false;
+      p.gold = 0; // fresh run = fresh character: gold wiped with gear
       p.cds = {};
       p.mvx = 0;
       p.mvy = 0;
@@ -335,11 +340,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     return Math.hypot(p.x - s.x, p.y - s.y) <= s.r;
   }
 
+  // A player reached the stairs: pull them into the safe "waiting room" — they
+  // leave the floor (excluded from the entity list), become invulnerable and
+  // untargeted, and wait for the rest of the party (or the timer).
+  private markReached(p: PlayerState): void {
+    p.reached = true;
+    p.mvx = 0;
+    p.mvy = 0;
+    for (const m of this.monsters) m.threat.delete(p.id);
+    if (this.boss) this.boss.threat.delete(p.id);
+  }
+
   // Timer expired: living players who didn't reach the stairs die (lethal timer,
-  // decision #2), then the floor advances.
+  // decision #2), then the floor advances. Players already in the waiting room
+  // (reached) are safe and survive.
   private timeoutExpire(): void {
     for (const p of this.players.values()) {
-      if (p.status === "alive" && !this.atStairs(p)) {
+      if (p.status === "alive" && !p.reached) {
         p.status = "spectator";
         p.mvx = 0;
         p.mvy = 0;
@@ -375,6 +392,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.mvx = 0;
       p.mvy = 0;
       p.slowUntil = 0;
+      p.reached = false; // fresh floor: everyone back in play
       p.seen.clear(); // fresh floor = fresh exploration
     }
     this.floorEndsAt = Date.now() + this.floor.durationMs;
@@ -568,6 +586,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       mvy: 0,
       hp: PLAYER_MAX_HP,
       status,
+      reached: false,
+      gold: rec?.gold ?? 0, // carry persisted gold across reconnect/eviction
       cds: {},
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
@@ -613,14 +633,18 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
     if (player.status !== "alive") return; // spectators send no game input
     if (msg.t === "input") {
+      if (player.reached) return; // in the waiting room — no movement
       player.mvx = clampUnit(msg.mv?.[0] ?? 0);
       player.mvy = clampUnit(msg.mv?.[1] ?? 0);
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
     } else if (msg.t === "cast") {
+      if (player.reached) return; // in the waiting room — no casting
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
       castAbility(this, player, msg.ability | 0, player.aim);
+    } else if (msg.t === "sell") {
+      this.sellItem(player, String(msg.item));
     } else if (msg.t === "equip") {
       this.applyInv(player, () => equip(player.inv, String(msg.item)));
     } else if (msg.t === "unequip") {
@@ -653,7 +677,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // ---- Inventory actions (server-authoritative; never trust the client) ----
   private sendInv(p: PlayerState): void {
     if (p.linkdead) return;
-    this.send(p.ws, { t: "inv", inv: p.inv, attrs: aggregateAttrs(p.base, p.inv), derived: p.derived, capacity: carryCapacity(p.inv) });
+    this.send(p.ws, { t: "inv", inv: p.inv, attrs: aggregateAttrs(p.base, p.inv), derived: p.derived, capacity: carryCapacity(p.inv), gold: p.gold });
   }
 
   // Run an inventory mutation; on success, refold stats + persist + push the
@@ -672,6 +696,18 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (!it) return;
     this.dropLoot(p.x, p.y, [it]);
     recomputePlayer(p);
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Sell a CARRIED item for gold — a waiting-room action (you must be "reached").
+  // Equipped gear must be unequipped first; selling never touches worn stats.
+  private sellItem(p: PlayerState, itemId: string): void {
+    if (p.status !== "alive" || !p.reached) return;
+    const idx = findCarried(p.inv, itemId);
+    if (idx < 0) return;
+    const [it] = p.inv.carried.splice(idx, 1);
+    p.gold += sellValue(it);
     this.persistPlayer(p);
     this.sendInv(p);
   }
@@ -757,15 +793,20 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // can't re-fire on the next tick.
     if (this.phase === "running") {
       let living = 0;
-      let allAtStairs = true;
+      let allReached = true;
       for (const p of this.players.values()) {
         // Only CONNECTED living players consent to descend — a linkdead teammate
         // (frozen wherever they dropped) must not block the others.
         if (p.status !== "alive" || p.linkdead) continue;
+        // Latch: the instant you touch the stairs you're "done" — safe in the
+        // waiting room. You don't have to stay on the tile.
+        if (!p.reached && this.atStairs(p)) this.markReached(p);
         living++;
-        if (!this.atStairs(p)) allAtStairs = false;
+        if (!p.reached) allReached = false;
       }
-      if (living > 0 && allAtStairs) this.advanceFloor();
+      // Advance once EVERY living player has reached (stragglers are killed by the
+      // floor timer in timeoutExpire, which then advances).
+      if (living > 0 && allReached) this.advanceFloor();
     }
 
     this.broadcast();
@@ -811,6 +852,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       abilities: p.abilities,
       base: p.base,
       inv: p.inv,
+      gold: p.gold,
       lastSeen: Date.now(),
     };
   }
@@ -932,7 +974,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private broadcast() {
     const ents: EntityDTO[] = [];
     for (const p of this.players.values()) {
-      if (p.status !== "alive") continue; // linkdead alive players ARE entities (targetable)
+      if (p.status !== "alive" || p.reached) continue; // reached players left the floor for the waiting room
       ents.push({
         id: p.id,
         kind: "player",
@@ -982,6 +1024,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         derived: p.derived,
         abilities: p.abilities,
         status: p.status,
+        reached: p.reached,
       };
       this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });
     }
@@ -1008,9 +1051,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       },
     };
   }
+  // Count players who've reached the stairs (now in the waiting room). Sent as
+  // `livingAtStairs` so the client shows "N reached / waiting for the rest".
   private atStairsCount(): number {
     let n = 0;
-    for (const p of this.players.values()) if (p.status === "alive" && this.atStairs(p)) n++;
+    for (const p of this.players.values()) if (p.status === "alive" && p.reached) n++;
     return n;
   }
   private runMsg(): ServerMsg {

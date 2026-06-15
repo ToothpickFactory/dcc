@@ -40,6 +40,7 @@ export function applyDamage(
 ): void {
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
+    if (target.reached) return; // safe in the waiting room — out of play
     const taken = dmg * (1 - target.derived.dr); // armor mitigates
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "player", range: hitRange, ability });
@@ -122,6 +123,7 @@ export function applyHeal(
 ): void {
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
+    if (target.reached) return; // safe in the waiting room — out of play
     target.hp = Math.min(target.derived.maxHp, target.hp + amount);
     if (sourceId !== target.id) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: true });
   } else if (isBoss(target)) {

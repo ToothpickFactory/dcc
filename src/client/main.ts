@@ -14,8 +14,17 @@ const predictor = new Predictor();
 const renderer = new Renderer(canvas);
 const invUI = new InventoryUI(net);
 const lootBtn = document.getElementById("lootBtn") as HTMLButtonElement;
+const hudEl = document.getElementById("hud") as HTMLElement;
+const waitingEl = document.getElementById("waiting") as HTMLElement;
 let nearestBagId: string | null = null;
 let hud: Hud | null = null;
+
+// Waiting-room spectate camera: once you reach the stairs your character leaves
+// the floor, so the camera follows a spectate target instead of the (gone) player.
+const spectateTarget = { x: 0, y: 0 };
+let spectateMode: "follow" | "free" = "follow";
+let followIdx = 0;
+let wasReached = false;
 
 input.attach(canvas);
 
@@ -40,6 +49,16 @@ function showToast(text: string, color: string) {
   toastEl.style.color = color;
   toastEl.style.opacity = "1";
   toastHideAt = performance.now() + 3500;
+}
+
+// Waiting-room banner: how many players are still fighting + spectate controls.
+function updateWaitingBanner() {
+  const remaining = net.floor ? Math.max(0, net.floor.state.living - net.floor.state.livingAtStairs) : 0;
+  const ctrl = spectateMode === "follow" ? "Tab: next player · V: free-cam" : "WASD: pan · V: follow";
+  waitingEl.style.display = "block";
+  waitingEl.innerHTML =
+    `🚪 <b>Waiting room</b> — ${remaining} ${remaining === 1 ? "player" : "players"} still on the floor` +
+    `<div class="wsub">${ctrl} · I: inventory & sell</div>`;
 }
 
 net.onWelcome = () => {
@@ -104,6 +123,11 @@ addEventListener("keydown", (e) => {
   if (k === "i") invUI.toggle();
   else if (k === "e") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
   else if (k === "escape") { invUI.close(); invUI.closeLoot(); }
+  else if (net.self?.reached) {
+    // Waiting-room spectate controls.
+    if (k === "tab") { e.preventDefault(); spectateMode = "follow"; followIdx++; }
+    else if (k === "v") spectateMode = spectateMode === "follow" ? "free" : "follow";
+  }
 });
 // Mobile loot button (mirrors the E key).
 lootBtn.addEventListener("click", () => { if (nearestBagId) invUI.requestLoot(nearestBagId); });
@@ -135,24 +159,62 @@ function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
 
+  const reached = net.self?.reached === true;
   const mv = input.moveVec();
   predictor.update(net, mv, dt);
 
   // Aim from the pointer (mouse or active touch) projected to the ground.
   input.aim = renderer.aimFromPointer(input.pointer.x, input.pointer.y, predictor.x, predictor.y);
-  // Spectators (dead players) don't send movement/casts.
-  if (net.self?.status === "alive") input.pump(net, now);
+  // Movement/casts only while alive AND still in play (not in the waiting room).
+  if (net.self?.status === "alive" && !reached) input.pump(net, now);
+
+  // Enter/leave the waiting room (reached the stairs -> safe spectate).
+  if (reached && !wasReached) {
+    spectateTarget.x = predictor.x;
+    spectateTarget.y = predictor.y;
+    spectateMode = "follow";
+    followIdx = 0;
+    hudEl.style.display = "none"; // no ability bar while waiting
+    showToast("✓ Reached the stairs — waiting for the party", "#5dff9b");
+    invUI.refresh(); // surface the sell buttons if the screen is open
+  } else if (!reached && wasReached) {
+    hudEl.style.display = "";
+    waitingEl.style.display = "none";
+    invUI.refresh();
+  }
+  wasReached = reached;
+
+  // Camera + fog center: the local player while in play; a spectate target while
+  // waiting (the local character has left the floor).
+  let camX = predictor.x;
+  let camY = predictor.y;
+  if (reached) {
+    const players = net.cur ? net.cur.ents.filter((e) => e.kind === "player") : [];
+    if (spectateMode === "follow" && players.length) {
+      const t = players[followIdx % players.length]!;
+      const k = Math.min(1, dt * 6); // ease toward the followed player
+      spectateTarget.x += (t.x - spectateTarget.x) * k;
+      spectateTarget.y += (t.y - spectateTarget.y) * k;
+    } else {
+      const PAN = 620; // free-pan (or follow with nobody left): WASD moves the camera
+      spectateTarget.x += mv[0] * PAN * dt;
+      spectateTarget.y += mv[1] * PAN * dt;
+    }
+    camX = spectateTarget.x;
+    camY = spectateTarget.y;
+    updateWaitingBanner();
+  }
 
   if (net.cur) {
-    renderer.sync(net.cur.ents, net.you, { x: predictor.x, y: predictor.y });
-    renderer.follow(predictor.x, predictor.y);
+    renderer.sync(net.cur.ents, net.you, { x: camX, y: camY });
+    renderer.follow(camX, camY);
     hud?.update(net);
     if (invUI.isOpen()) invUI.syncBar(); // keep the action-bar swap section live
   }
 
   // Loot prompt: the nearest bag within reach of the (predicted) player.
   nearestBagId = null;
-  if (net.cur && net.self?.status === "alive") {
+  if (net.cur && net.self?.status === "alive" && !reached) {
     let best = LOOT_REACH * LOOT_REACH;
     for (const e of net.cur.ents) {
       if (e.kind !== "lootbag") continue;

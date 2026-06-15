@@ -15,6 +15,7 @@ export interface InvState {
   attrs: Attributes;
   derived: DerivedStats;
   capacity: number;
+  gold: number;
 }
 export interface BagState {
   id: string;
@@ -79,7 +80,7 @@ export class Net {
         this.run = m.state;
         break;
       case "inv":
-        this.inv = { inv: m.inv, attrs: m.attrs, derived: m.derived, capacity: m.capacity };
+        this.inv = { inv: m.inv, attrs: m.attrs, derived: m.derived, capacity: m.capacity, gold: m.gold };
         this.onInv(this.inv);
         break;
       case "bag":

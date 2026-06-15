@@ -21,6 +21,7 @@ export type ClientMsg =
   | { t: "equip"; item: string } // equip a carried item (auto-slots)
   | { t: "unequip"; slot: EquipSlot } // move equipped gear back to carry
   | { t: "unequipBag"; index: number } // unequip a bag container
+  | { t: "sell"; item: string } // sell a carried item for gold (waiting room only)
   | { t: "drop"; item: string } // drop a carried item onto the floor
   | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
@@ -34,7 +35,7 @@ export type ServerMsg =
   | { t: "floor"; info: FloorClientInfo; state: FloorState }
   | { t: "run"; state: RunState }
   | { t: "loot"; grant: LootGrantDTO }
-  | { t: "inv"; inv: Inventory; attrs: Attributes; derived: DerivedStats; capacity: number } // character screen
+  | { t: "inv"; inv: Inventory; attrs: Attributes; derived: DerivedStats; capacity: number; gold: number } // character screen
   | { t: "bag"; id: string; items: Item[] } // contents of an opened loot bag
   | { t: "pong"; ts: number };
 
@@ -72,6 +73,7 @@ export interface SelfDTO {
   derived: DerivedStats; // gear-derived stats (HUD + client movement prediction)
   abilities: Ability[]; // the action bar (slot 1 auto-casts) — incl. live ammo
   status: "alive" | "spectator";
+  reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
 }
 
 export type GameEvent =

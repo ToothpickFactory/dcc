@@ -14,6 +14,8 @@ export interface PlayerState {
   mvy: number;
   hp: number;
   status: "alive" | "spectator";
+  reached: boolean; // reached the stairs this floor — safe in the "waiting room", out of play
+  gold: number; // currency, earned by selling gear in the waiting room
   cds: Record<number, number>;
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];

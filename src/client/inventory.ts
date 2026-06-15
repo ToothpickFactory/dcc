@@ -1,5 +1,5 @@
 import type { BagState, InvState, Net } from "./net";
-import { EQUIP_SLOTS, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
+import { EQUIP_SLOTS, sellValue, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
 import type { Ability } from "../shared/types";
 
 // The character / inventory screen + the loot-bag panel. Pure DOM over the
@@ -27,6 +27,7 @@ export class InventoryUI {
   private statPanel = byId("statPanel");
   private carry = byId("carryGrid");
   private carryCount = byId("carryCount");
+  private goldEl = byId("invGold");
   private lootGrid = byId("lootGrid");
   private abilityBar = byId("abilityBar");
   private invBtn = byId("invBtn");
@@ -64,6 +65,8 @@ export class InventoryUI {
     this.renderBar();
   }
   close(): void { this.inv.style.display = "none"; }
+  // Re-render if open (e.g. entering the waiting room toggles the sell buttons).
+  refresh(): void { if (this.isOpen() && this.net.inv) this.render(this.net.inv); }
 
   // Keep the action-bar section live while the screen is open (the bar updates
   // from server state — loot, swaps, ammo). Called each frame by main when open.
@@ -113,8 +116,10 @@ export class InventoryUI {
       this.bags.appendChild(tile);
     });
     this.statPanel.innerHTML = statRows(s);
+    this.goldEl.textContent = `🪙 ${s.gold}`;
     this.carryCount.textContent = `${inv.carried.length}/${s.capacity}`;
     this.carry.innerHTML = inv.carried.length ? "" : `<div class="invHint">Empty — loot bags or unequip gear here.</div>`;
+    const canSell = this.net.self?.reached === true; // selling is a waiting-room action
     for (const it of inv.carried) {
       const tile = itemTile(it);
       tile.addEventListener("click", () => this.net.send({ t: "equip", item: it.id }));
@@ -127,6 +132,17 @@ export class InventoryUI {
         this.net.send({ t: "drop", item: it.id });
       });
       tile.appendChild(drop);
+      if (canSell) {
+        const sell = document.createElement("span");
+        sell.className = "sell";
+        sell.textContent = `🪙${sellValue(it)}`;
+        sell.title = "Sell for gold";
+        sell.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.net.send({ t: "sell", item: it.id });
+        });
+        tile.appendChild(sell);
+      }
       this.carry.appendChild(tile);
     }
   }

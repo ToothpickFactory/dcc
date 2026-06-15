@@ -38,6 +38,13 @@ export interface Item {
   flavor?: string;
 }
 
+// Gold a piece of gear sells for, by rarity (shared so client can preview the
+// price on the sell button). Tune freely — purely an economy knob.
+const SELL_PRICE: Record<Rarity, number> = { common: 3, uncommon: 8, rare: 20, epic: 50, legendary: 120 };
+export function sellValue(item: Item): number {
+  return SELL_PRICE[item.rarity] ?? 1;
+}
+
 // ---- Inventory ------------------------------------------------------------
 export const BASE_CARRY_SLOTS = 8; // the built-in backpack
 export const BAG_EQUIP_SLOTS = 4; // how many bag containers you can equip
