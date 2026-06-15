@@ -1,4 +1,5 @@
 import type { Ability, MonsterKind } from "../shared/types";
+import type { Attributes, DerivedStats, Inventory } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
 import type { FloorDescriptor } from "../procgen/types";
@@ -18,6 +19,9 @@ export interface PlayerState {
   abilities: Ability[];
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
+  base: Attributes; // innate attributes (before gear)
+  inv: Inventory; // equipped gear + bags + carried items
+  derived: DerivedStats; // cached: base+gear -> maxHp/moveSpeed/spellPower/... (recompute on change)
   ws: WebSocket;
   linkdead: boolean; // socket dropped but a LIVING character stays in the world (decision #8)
 }
@@ -35,6 +39,9 @@ export interface MonsterState {
   attackReadyAt: number;
   wanderAt: number;
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  base: Attributes; // innate attributes (per kind); gear adds on top
+  inv: Inventory; // monsters carry gear too — dropped on death
+  derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
   threat: Map<string, number>; // playerId -> accumulated threat
 }
 

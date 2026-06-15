@@ -36,7 +36,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       else m.threat.set(id, nv);
     }
 
-    const speed = def.speed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    const speed = m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
 
     if (!prey) {
