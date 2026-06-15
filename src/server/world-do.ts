@@ -11,6 +11,7 @@ import {
 } from "../shared/constants";
 import type { Ability, MonsterKind, Rarity } from "../shared/types";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
+import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
@@ -53,6 +54,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private profiles: ProfileTracker = new EmaProfileTracker();
   private loot: LootEngine = new HeuristicLootEngine();
   private lootStream: () => number = () => 0; // seeded per floor for deterministic grants
+  private flavorSvc!: AiFlavorService; // LLM name/flavor (off the loop); falls open to a static table
+  private flavorEnabled = false; // feature flag (env FLAVOR_ENABLED); default off
   private sql: SqlStorage;
   private store: SqlRunStore;
   floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile (public: part of WorldCtx)
@@ -66,6 +69,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt); // idempotent CREATE TABLE IF NOT EXISTS
     this.store = new SqlRunStore(this.sql);
+
+    // Loot flavor (Stream E): Workers AI / Claude behind AI Gateway, flag-gated
+    // and always failing open to the static table. Config is read defensively so
+    // a missing binding/secret simply means "table only" — never a crash.
+    const e = env as unknown as {
+      AI?: WorkersAiBinding;
+      FLAVOR_ENABLED?: string;
+      AI_GATEWAY_ACCOUNT?: string;
+      AI_GATEWAY_ID?: string;
+      ANTHROPIC_API_KEY?: string;
+    };
+    this.flavorEnabled = e.FLAVOR_ENABLED === "1" || e.FLAVOR_ENABLED === "true";
+    const gateway =
+      e.AI_GATEWAY_ACCOUNT && e.AI_GATEWAY_ID && e.ANTHROPIC_API_KEY
+        ? { accountId: e.AI_GATEWAY_ACCOUNT, gatewayId: e.AI_GATEWAY_ID, anthropicKey: e.ANTHROPIC_API_KEY }
+        : undefined;
+    this.flavorSvc = new AiFlavorService({ enabled: this.flavorEnabled, ai: e.AI, gateway, budgetPerFloor: 24 });
 
     ctx.blockConcurrencyWhile(async () => {
       try {
@@ -601,6 +621,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private seedLoot(): void {
     // Deterministic per-floor stream: a given floor + grant order = the same drops.
     this.lootStream = rng((this.floor.seed * 2654435761 + this.floor.depth * 40503) >>> 0);
+    this.flavorSvc.resetFloorBudget(); // per-floor LLM spend cap
   }
 
   // Heuristic loot for a player: profile -> playable Ability the same tick, then
@@ -610,9 +631,36 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (p.status !== "alive") return;
     const lctx: LootContext = { trigger, depth: this.floor.depth, rarity, theme: this.floor.theme, rng: this.lootStream };
     const ability = this.loot.grant(this.profiles.get(p.id), lctx);
+    // Instant static flavor so every drop is named + playable the same tick.
+    const tf = tableFlavor(ability.category, rarity, this.floor.theme);
+    ability.name = tf.name;
+    ability.flavor = tf.flavor;
+    ability.twist = tf.twist;
     this.slotLoot(p, ability);
     this.persistPlayer(p);
-    if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity } });
+    if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: tf } });
+    // Optional LLM upgrade — OFF the tick, fail-open, sends a follow-up if better.
+    if (this.flavorEnabled) this.flavorize(p, ability, rarity);
+  }
+
+  // Fire-and-forget: ask the model for a richer name/flavor and, if it returns
+  // something different from the table, patch the ability and push a follow-up
+  // `loot` event (the client merges by grant id). Never awaited in the loop.
+  private flavorize(p: PlayerState, ability: Ability, rarity: Rarity): void {
+    const theme = this.floor.theme;
+    void this.flavorSvc
+      .flavor(ability.category, rarity, theme)
+      .then((fl) => {
+        if (!fl || fl.name === ability.name) return; // table already applied
+        ability.name = fl.name;
+        ability.flavor = fl.flavor;
+        ability.twist = fl.twist;
+        this.persistPlayer(p);
+        if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: fl } });
+      })
+      .catch(() => {
+        /* table flavor already shipped; an LLM failure is invisible */
+      });
   }
 
   // Bounded slots under permadeath: the 4-ability starting kit (0-3) is never
