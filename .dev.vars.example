@@ -2,3 +2,12 @@
 # In production, set with: npx wrangler secret put ADMIN_TOKEN  (and TOKEN_SIGNING_KEY)
 ADMIN_TOKEN=replace-me
 TOKEN_SIGNING_KEY=replace-with-a-long-random-string
+
+# Loot-flavor LLM (Stream E / M5) — OPTIONAL. Off by default; loot is fully
+# playable from the static table without any of these. Set FLAVOR_ENABLED=1 to
+# turn it on. Commons use the Workers AI binding (AI); rare+ use Claude Haiku via
+# AI Gateway, which needs the three gateway/anthropic values below.
+FLAVOR_ENABLED=0
+# AI_GATEWAY_ACCOUNT=your-cloudflare-account-id
+# AI_GATEWAY_ID=your-ai-gateway-name
+# ANTHROPIC_API_KEY=sk-ant-...

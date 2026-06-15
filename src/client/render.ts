@@ -448,8 +448,7 @@ export class Renderer {
   // The exit. Client rebuilds its position from the floor seed (shared procgen).
   setStairs(x: number, y: number) {
     if (!this.stairs) {
-      this.stairs = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x5dff9b }));
-      this.stairs.scale.set(80, 80, 1);
+      this.stairs = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x5dff9b, transparent: true }));
       this.scene.add(this.stairs);
     }
     this.stairs.position.set(x, 30, y);
@@ -507,6 +506,14 @@ export class Renderer {
   }
 
   draw() {
+    // Pulse the stairs marker (size + opacity) so the exit reads as a beacon.
+    if (this.stairs) {
+      const t = performance.now();
+      const pulse = 0.5 + 0.5 * Math.sin(t / 280);
+      const s = 120 + 35 * pulse;
+      this.stairs.scale.set(s, s, 1);
+      (this.stairs.material as THREE.SpriteMaterial).opacity = 0.65 + 0.35 * pulse;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }

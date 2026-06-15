@@ -49,11 +49,15 @@ export class Hud {
     const ended = net.run?.phase === "ended";
     // Floor timer is wall-clock (the durable alarm), so count down via Date.now().
     const timer = !ended && net.floor ? Math.max(0, Math.round((net.floor.state.endsAt - Date.now()) / 1000)) : 0;
+    // Under 10s the timer is lethal soon — flash it red to warn "reach the stairs!".
+    const low = !ended && self.status === "alive" && timer <= 10;
+    const flash = low && Math.floor(Date.now() / 350) % 2 === 0;
+    const timerHtml = `Timer <b style="color:${low ? (flash ? "#ff3b3b" : "#ffd34d") : "inherit"}">${low ? "⚠ " : ""}${timer}s${low ? " — reach the stairs!" : ""}</b> · `;
     const state = ended ? "🏁 RUN OVER" : self.status === "spectator" ? "💀 SPECTATING" : "ALIVE";
     this.status.innerHTML =
       `<b>${state}</b> · HP ${self.hp}/${self.maxHp} · Class <b>${self.cls}</b> · ` +
       `Floor ${net.floor?.info.depth ?? "?"} (${net.floor?.info.theme ?? ""}) · ` +
-      (ended ? "" : `Timer <b>${timer}s</b> · `) +
+      (ended ? "" : timerHtml) +
       `Players ${net.run?.players ?? 0}`;
 
     // Boss banner — driven off the boss entity in the snapshot.

@@ -10,11 +10,13 @@ import {
   TICK_MS,
   WORLD,
 } from "../shared/constants";
-import type { MonsterKind } from "../shared/types";
+import type { Ability, MonsterKind, Rarity } from "../shared/types";
+import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
+import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
-import { generateFloor } from "../procgen";
+import { generateFloor, rng } from "../procgen";
 import { randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
@@ -30,6 +32,8 @@ import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
 const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 ticks)
 const FIRST_SEED = 0xdcc;
+const MAX_ABILITY_SLOTS = 6; // base kit (4) + up to 2 granted; bounded under permadeath
+const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
 
 // The single global world. It IS the authoritative server: a fixed-rate tick over
 // in-memory state, persisted to the DO's SQLite so the run AND identities survive
@@ -50,6 +54,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
   private identity: Identity;
   private profiles: ProfileTracker = new EmaProfileTracker();
+  private loot: LootEngine = new HeuristicLootEngine();
+  private lootStream: () => number = () => 0; // seeded per floor for deterministic grants
+  private flavorSvc!: AiFlavorService; // LLM name/flavor (off the loop); falls open to a static table
+  private flavorEnabled = false; // feature flag (env FLAVOR_ENABLED); default off
   private sql: SqlStorage;
   private store: SqlRunStore;
   floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile (public: part of WorldCtx)
@@ -63,6 +71,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt); // idempotent CREATE TABLE IF NOT EXISTS
     this.store = new SqlRunStore(this.sql);
+
+    // Loot flavor (Stream E): Workers AI / Claude behind AI Gateway, flag-gated
+    // and always failing open to the static table. Config is read defensively so
+    // a missing binding/secret simply means "table only" — never a crash.
+    const e = env as unknown as {
+      AI?: WorkersAiBinding;
+      FLAVOR_ENABLED?: string;
+      AI_GATEWAY_ACCOUNT?: string;
+      AI_GATEWAY_ID?: string;
+      ANTHROPIC_API_KEY?: string;
+    };
+    this.flavorEnabled = e.FLAVOR_ENABLED === "1" || e.FLAVOR_ENABLED === "true";
+    const gateway =
+      e.AI_GATEWAY_ACCOUNT && e.AI_GATEWAY_ID && e.ANTHROPIC_API_KEY
+        ? { accountId: e.AI_GATEWAY_ACCOUNT, gatewayId: e.AI_GATEWAY_ID, anthropicKey: e.ANTHROPIC_API_KEY }
+        : undefined;
+    this.flavorSvc = new AiFlavorService({ enabled: this.flavorEnabled, ai: e.AI, gateway, budgetPerFloor: 24 });
 
     ctx.blockConcurrencyWhile(async () => {
       try {
@@ -92,6 +117,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = `run-${Date.now().toString(36)}`;
     this.phase = "running";
     this.floor = generateFloor(FIRST_SEED, 1);
+    this.seedLoot();
     this.spawnMonsters();
     this.store.checkpointSync({ runId: this.runId, currentFloor: 1, seed: FIRST_SEED, phase: this.phase, savedAt: Date.now() });
   }
@@ -100,6 +126,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = run.runId;
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
     this.floor = generateFloor(run.seed, run.currentFloor);
+    this.seedLoot();
     this.spawnMonsters();
   }
 
@@ -112,6 +139,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (e.e === "kill" && e.targetKind === "monster") {
       this.killsSinceBoss += 1;
       this.maybeSpawnBoss();
+      // Loot drops on SOME kills, not every one (decision #10).
+      const killer = this.players.get(e.by);
+      if (killer && this.lootStream() < LOOT_KILL_CHANCE) {
+        this.grantLoot(killer, "kill", this.lootStream() < 0.25 ? "uncommon" : "common");
+      }
     }
   }
 
@@ -191,6 +223,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = runId;
     this.phase = "running";
     this.floor = generateFloor(seed, 1);
+    this.seedLoot();
     this.spawnMonsters();
     this.projectiles = [];
     this.boss = null;
@@ -265,7 +298,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.endRun();
       return;
     }
+    // Floor-end reward — granted on the COMPLETED floor (its depth/theme/seed).
+    for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
     this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
+    this.seedLoot();
     this.spawnMonsters();
     this.projectiles = [];
     this.boss = null;
@@ -513,6 +549,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (e.e === "death") {
         const dp = this.players.get(e.id);
         if (dp && dp.status === "spectator") this.persistPlayer(dp);
+      } else if (e.e === "boss" && e.state === "dead" && this.boss) {
+        // The boss is a guaranteed, big drop for whoever did the most damage.
+        const id = this.topThreat(this.boss.threat);
+        const winner = id ? this.players.get(id) : null;
+        if (winner) this.grantLoot(winner, "kill", this.floor.depth >= 10 ? "legendary" : "epic");
       }
     }
 
@@ -575,6 +616,86 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       abilities: p.abilities,
       lastSeen: Date.now(),
     };
+  }
+
+  // ---- Loot (Stream E / M5) ----
+  private seedLoot(): void {
+    // Deterministic per-floor stream: a given floor + grant order = the same drops.
+    this.lootStream = rng((this.floor.seed * 2654435761 + this.floor.depth * 40503) >>> 0);
+    this.flavorSvc.resetFloorBudget(); // per-floor LLM spend cap
+  }
+
+  // Heuristic loot for a player: profile -> playable Ability the same tick, then
+  // slot it, persist, and push the wire event (the LLM flavor arrives later, off
+  // the loop). The class label is recomputed live in broadcast/recordOf.
+  private grantLoot(p: PlayerState, trigger: LootContext["trigger"], rarity: Rarity): void {
+    if (p.status !== "alive") return;
+    const lctx: LootContext = { trigger, depth: this.floor.depth, rarity, theme: this.floor.theme, rng: this.lootStream };
+    const ability = this.loot.grant(this.profiles.get(p.id), lctx);
+    // Instant static flavor so every drop is named + playable the same tick.
+    const tf = tableFlavor(ability.category, rarity, this.floor.theme);
+    ability.name = tf.name;
+    ability.flavor = tf.flavor;
+    ability.twist = tf.twist;
+    this.slotLoot(p, ability);
+    this.persistPlayer(p);
+    if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: tf } });
+    // Optional LLM upgrade — OFF the tick, fail-open, sends a follow-up if better.
+    if (this.flavorEnabled) this.flavorize(p, ability, rarity);
+  }
+
+  // Fire-and-forget: ask the model for a richer name/flavor and, if it returns
+  // something different from the table, patch the ability and push a follow-up
+  // `loot` event (the client merges by grant id). Never awaited in the loop.
+  private flavorize(p: PlayerState, ability: Ability, rarity: Rarity): void {
+    const theme = this.floor.theme;
+    void this.flavorSvc
+      .flavor(ability.category, rarity, theme)
+      .then((fl) => {
+        if (!fl || fl.name === ability.name) return; // table already applied
+        ability.name = fl.name;
+        ability.flavor = fl.flavor;
+        ability.twist = fl.twist;
+        this.persistPlayer(p);
+        if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: fl } });
+      })
+      .catch(() => {
+        /* table flavor already shipped; an LLM failure is invisible */
+      });
+  }
+
+  // Bounded slots under permadeath: the 4-ability starting kit (0-3) is never
+  // overwritten; grants fill the two extra slots, then replace the weakest extra
+  // (preferring same-category) so power can't grow unbounded.
+  private slotLoot(p: PlayerState, ability: Ability): void {
+    const BASE = DEFAULT_ABILITIES.length;
+    if (p.abilities.length < MAX_ABILITY_SLOTS) {
+      p.abilities.push(ability);
+      return;
+    }
+    let target = BASE;
+    let worst = Infinity;
+    for (let i = BASE; i < p.abilities.length; i++) {
+      const a = p.abilities[i];
+      const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
+      if (score < worst) {
+        worst = score;
+        target = i;
+      }
+    }
+    p.abilities[target] = ability;
+  }
+
+  private topThreat(threat: Map<string, number>): string | null {
+    let best: string | null = null;
+    let bestV = 0;
+    for (const [id, v] of threat) {
+      if (v > bestV) {
+        bestV = v;
+        best = id;
+      }
+    }
+    return best;
   }
 
   private broadcast() {

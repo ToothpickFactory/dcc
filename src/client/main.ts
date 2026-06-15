@@ -20,13 +20,15 @@ const loginMsg = document.getElementById("loginMsg") as HTMLElement;
 const toastEl = document.getElementById("toast") as HTMLElement;
 const resetRunBtn = document.getElementById("resetRun") as HTMLButtonElement;
 const isLocalDev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+// Show the reset control in local dev, or anywhere when `?admin` is in the URL
+// (so a deployed instance can be reset without curl — still gated by the token).
+const adminUnlocked = isLocalDev || new URLSearchParams(location.search).has("admin");
 let connected = false;
 let toastHideAt = 0;
 let lastFloorKey = "";
 let lastRunPhase = "";
-let adminToken = "";
 
-if (isLocalDev) resetRunBtn.style.display = "block";
+if (adminUnlocked) resetRunBtn.style.display = "block";
 
 function showToast(text: string, color: string) {
   toastEl.textContent = text;
@@ -92,22 +94,14 @@ playBtn.addEventListener("click", start);
 resetRunBtn.addEventListener("click", async () => {
   if (!confirm("Reset the current round for every connected player?")) return;
 
-  if (!adminToken) {
-    const entered = prompt("Admin token from .dev.vars", "dev");
-    if (!entered) return;
-    adminToken = entered;
-  }
-
+  // TEMP: token prompt removed — the server bypasses auth while ADMIN_OPEN="true".
+  // Restore the prompt + Authorization header when re-securing the endpoint.
   resetRunBtn.disabled = true;
   resetRunBtn.textContent = "Resetting...";
   try {
-    const response = await fetch("/admin/new-run", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
+    const response = await fetch("/admin/new-run", { method: "POST" });
     if (!response.ok) {
-      if (response.status === 403) adminToken = "";
-      throw new Error(response.status === 403 ? "Invalid admin token." : `Reset failed (${response.status}).`);
+      throw new Error(response.status === 403 ? "Reset forbidden (token required)." : `Reset failed (${response.status}).`);
     }
     showToast("Round reset.", "#9be7ff");
   } catch (error) {

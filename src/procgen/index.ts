@@ -59,7 +59,11 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
     theme: THEMES[Math.floor(random() * THEMES.length)]!,
     w: WORLD.w,
     h: WORLD.h,
-    durationMs: Math.max(45000, Math.ceil((pathCells * cell * 1.8 * 1000) / 230)),
+    // Per-floor lethal timer — reach the stairs before it expires (decision #2).
+    // Stream D (M4 gen) will set real, per-floor, theme-driven durations; until
+    // then floor 1 gets a generous 5 min to learn the ropes. Later floors have
+    // at least 60s and scale up when the generated stairs path requires it.
+    durationMs: depth <= 1 ? 300000 : Math.max(60000, Math.ceil((pathCells * cell * 1.8 * 1000) / 230)),
     collision,
     entrance,
     stairs,

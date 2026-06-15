@@ -18,6 +18,10 @@ jobs:
           cache: npm
 
       - run: npm ci
+      # Secrets live in .dev.vars (gitignored). `wrangler types` reads it to type
+      # them onto Env, and `wrangler dev` reads it for a valid signing key — so
+      # materialize it from the committed example before either runs.
+      - run: cp .dev.vars.example .dev.vars
       - run: npx wrangler types
 
       - name: Typecheck (server)
