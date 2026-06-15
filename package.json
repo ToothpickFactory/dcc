@@ -14,6 +14,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc --noEmit -p tsconfig.client.json",
     "test:profile": "node --experimental-strip-types src/server/loot/profile.test.ts",
+    "test:loot": "node --experimental-strip-types src/server/loot/heuristic.test.ts",
+    "test": "npm run test:profile && npm run test:loot",
     "bot": "node --experimental-strip-types test/bot.ts",
     "cf-typegen": "wrangler types"
   },
