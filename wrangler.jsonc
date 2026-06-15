@@ -27,12 +27,11 @@
 			}
 		]
 	},
-	// Workers AI — loot-flavor names for common/uncommon drops (Stream E). The
-	// flavor service is flag-gated (FLAVOR_ENABLED) and fails open to a static
-	// table, so this binding is optional for the game to run.
-	"ai": {
-		"binding": "AI"
-	},
+	// Workers AI powers loot-flavor names (Stream E), but it's flag-gated OFF
+	// (FLAVOR_ENABLED) and fails open to a static table, and a live AI binding
+	// makes `wrangler dev` require Cloudflare auth (which breaks the local/CI
+	// smoke). So it's intentionally NOT bound by default — add it back when
+	// turning the LLM on:  "ai": { "binding": "AI" }
 	"observability": {
 		"enabled": true
 	},
