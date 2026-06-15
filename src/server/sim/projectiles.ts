@@ -1,6 +1,14 @@
-import { BOSS_PROJ_RADIUS, BOSS_RADIUS, MONSTER_RADIUS, PLAYER_RADIUS, PROJECTILE_RADIUS } from "../../shared/constants";
-import type { PlayerState, WorldCtx } from "../state";
-import { applyDamage } from "./combat";
+import {
+  AGGRO_HEAL_RADIUS,
+  AGGRO_PER_HEAL,
+  BOSS_PROJ_RADIUS,
+  BOSS_RADIUS,
+  MONSTER_RADIUS,
+  PLAYER_RADIUS,
+  PROJECTILE_RADIUS,
+} from "../../shared/constants";
+import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
+import { applyDamage, applyHeal } from "./combat";
 
 let seq = 0;
 
@@ -23,22 +31,26 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
       y: caster.y + Math.sin(aim) * (PLAYER_RADIUS + 4),
       vx: Math.cos(aim) * speed,
       vy: Math.sin(aim) * speed,
-      dmg: ab.dmg,
+      dmg: ab.dmg, // negative = heal projectile
       slowMs: ab.slowMs ?? 0,
       ability: idx,
       ttl: ab.range / speed,
       boss: false,
     });
+    // Casting a heal aggravates nearby foes (ported): support play has a cost.
+    if (ab.dmg < 0) {
+      const threat = -ab.dmg * AGGRO_PER_HEAL;
+      for (const m of ctx.monsters) {
+        if (!m.dead && near(caster, m, AGGRO_HEAL_RADIUS)) m.threat.set(caster.id, (m.threat.get(caster.id) ?? 0) + threat);
+      }
+      if (ctx.boss && !ctx.boss.dead && near(caster, ctx.boss, AGGRO_HEAL_RADIUS)) {
+        ctx.boss.threat.set(caster.id, (ctx.boss.threat.get(caster.id) ?? 0) + threat);
+      }
+    }
     return true;
   }
 
-  // Self heal.
-  if (ab.dmg < 0 && ab.range === 0) {
-    applyDamage(ctx, caster, ab.dmg, caster.id, true);
-    return true;
-  }
-
-  // Melee cone: hit monsters, the boss, and OTHER players within range and ~60°.
+  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players.
   const cone = Math.PI / 3;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
@@ -52,6 +64,10 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, ab.dmg, caster.id, true, ab.slowMs);
   }
   return true;
+}
+
+function near(a: { x: number; y: number }, b: { x: number; y: number }, range: number): boolean {
+  return Math.hypot(b.x - a.x, b.y - a.y) <= range;
 }
 
 function inCone(
@@ -71,7 +87,8 @@ function inCone(
 }
 
 // Advance projectiles. Boss bolts hit players only. A player's projectile hits
-// the first thing it overlaps — monster, boss, or another player (friendly fire).
+// the first thing it overlaps — monster, boss, or another player. Damage spells
+// hurt; heal spells (negative dmg) mend whatever they strike (friend OR foe).
 export function stepProjectiles(ctx: WorldCtx, dt: number): void {
   ctx.projectiles = ctx.projectiles.filter((pr) => {
     pr.ttl -= dt;
@@ -91,29 +108,38 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
       return true;
     }
 
+    const isHeal = pr.dmg < 0;
     for (const m of ctx.monsters) {
       if (m.dead) continue;
       if (hit(pr.x, pr.y, m.x, m.y, PROJECTILE_RADIUS + MONSTER_RADIUS)) {
-        applyDamage(ctx, m, pr.dmg, pr.ownerId, true, pr.slowMs);
-        ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
+        resolve(ctx, m, pr, isHeal);
         return false;
       }
     }
     if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, PROJECTILE_RADIUS + BOSS_RADIUS)) {
-      applyDamage(ctx, ctx.boss, pr.dmg, pr.ownerId, true, pr.slowMs);
-      ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
+      resolve(ctx, ctx.boss, pr, isHeal);
       return false;
     }
     for (const p of ctx.players.values()) {
-      if (p.id === pr.ownerId || p.status !== "alive") continue;
+      if (p.id === pr.ownerId || p.status !== "alive") continue; // can't hit yourself
       if (hit(pr.x, pr.y, p.x, p.y, PROJECTILE_RADIUS + PLAYER_RADIUS)) {
-        applyDamage(ctx, p, pr.dmg, pr.ownerId, true, pr.slowMs); // friendly fire
-        ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
+        resolve(ctx, p, pr, isHeal);
         return false;
       }
     }
     return true;
   });
+}
+
+function resolve(
+  ctx: WorldCtx,
+  target: PlayerState | MonsterState | BossState,
+  pr: ProjectileState,
+  isHeal: boolean,
+): void {
+  if (isHeal) applyHeal(ctx, target, -pr.dmg, pr.ownerId);
+  else applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs);
+  ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
 }
 
 function hit(ax: number, ay: number, bx: number, by: number, r: number): boolean {

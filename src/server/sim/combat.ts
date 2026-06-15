@@ -1,4 +1,4 @@
-import { MONSTER_RESPAWN_MS, PLAYER_MAX_HP } from "../../shared/constants";
+import { MONSTER_MAX_HP, MONSTER_RESPAWN_MS, PLAYER_MAX_HP } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
 function isPlayer(t: PlayerState | MonsterState | BossState): t is PlayerState {
@@ -10,7 +10,8 @@ function isBoss(t: PlayerState | MonsterState | BossState): t is BossState {
 
 // The single damage funnel. Friendly fire is just a player damaging a player —
 // nothing special-cases it, because the server never trusts the client. This is
-// the anti-cheat bedrock; keep ALL damage flowing through here.
+// the anti-cheat bedrock; keep ALL damage flowing through here. Heals go through
+// applyHeal below, so dmg here is always positive.
 export function applyDamage(
   ctx: WorldCtx,
   target: PlayerState | MonsterState | BossState,
@@ -23,19 +24,12 @@ export function applyDamage(
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
     target.hp -= dmg;
-    if (dmg >= 0) {
-      ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
-      if (sourceIsPlayer && sourceId !== target.id) {
-        ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: dmg });
-      }
-    } else {
-      target.hp = Math.min(PLAYER_MAX_HP, target.hp);
-      ctx.pushFx({ e: "heal", x: target.x, y: target.y, amount: -dmg });
-      ctx.pushPlay({ e: "heal", by: sourceId, amount: -dmg, ally: sourceId !== target.id });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
+    if (sourceIsPlayer && sourceId !== target.id) {
+      ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: dmg });
     }
     if (target.hp <= 0) {
       // PERMADEATH (Phase 0): no respawn — the player becomes a spectator.
-      // Stream A / M1 ties this to the durable `alive` flag.
       target.status = "spectator";
       target.mvx = 0;
       target.mvy = 0;
@@ -74,4 +68,27 @@ export function applyDamage(
     ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
     if (sourceIsPlayer) ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });
   }
+}
+
+// Heal the first thing a heal projectile strikes — ally, monster, or boss
+// (aim carefully). Clamped to each target's max. Healing an ally feeds the
+// support/teamwork playstyle axis.
+export function applyHeal(
+  ctx: WorldCtx,
+  target: PlayerState | MonsterState | BossState,
+  amount: number,
+  sourceId: string,
+): void {
+  if (isPlayer(target)) {
+    if (target.status !== "alive") return;
+    target.hp = Math.min(PLAYER_MAX_HP, target.hp + amount);
+    if (sourceId !== target.id) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: true });
+  } else if (isBoss(target)) {
+    if (target.dead) return;
+    target.hp = Math.min(target.maxHp, target.hp + amount);
+  } else {
+    if (target.dead) return;
+    target.hp = Math.min(MONSTER_MAX_HP, target.hp + amount);
+  }
+  ctx.pushFx({ e: "heal", x: target.x, y: target.y, amount });
 }

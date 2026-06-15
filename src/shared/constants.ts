@@ -25,6 +25,11 @@ export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accrui
 export const PROJECTILE_RADIUS = 7;
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
 
+// Directional heal (ported): a heal projectile mends the first ally it hits, and
+// casting it draws aggro from nearby foes — so support play carries risk.
+export const AGGRO_HEAL_RADIUS = 760;
+export const AGGRO_PER_HEAL = 1.2; // threat per point healed, added to nearby foes
+
 // ---- Boss (ported from the monolith: spawns after enough collective kills) ----
 export const BOSS_KILL_THRESHOLD = 12; // monster kills before a boss appears
 export const BOSS_MAX_HP = 700;

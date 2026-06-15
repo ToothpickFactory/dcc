@@ -1,22 +1,18 @@
 import * as THREE from "three";
 import { BOSS_BOLT_SPRITE } from "../shared/constants";
+import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO } from "../protocol";
 
-const COLORS: Record<string, number> = {
+// Per-ability projectile colors (so a green heal bolt reads differently from a
+// damage bolt — important when spells hit friend or foe).
+const ABILITY_COLORS = DEFAULT_ABILITIES.map((a) => new THREE.Color(a.color ?? "#ffd34d").getHex());
+const C = {
   player: 0x4f8cff,
-  monster: 0xb6433d,
-  proj: 0xffd34d,
   self: 0x5dd6ff,
+  monster: 0xb6433d,
   boss: 0x9b30ff,
   bossbolt: 0xc850ff,
-};
-const SIZES: Record<string, number> = {
-  player: 40,
-  self: 40,
-  monster: 44,
-  proj: 16,
-  boss: 76,
-  bossbolt: 24,
+  proj: 0xffd34d,
 };
 
 // PHASE 0 renderer: a 3D ground plane with billboard sprites (Doom-like) drawn
@@ -55,11 +51,10 @@ export class Renderer {
     this.camera.updateProjectionMatrix();
   }
 
-  private spriteFor(id: string, visualKind: string): THREE.Sprite {
+  private spriteFor(id: string, color: number, size: number): THREE.Sprite {
     let s = this.sprites.get(id);
     if (!s) {
-      s = new THREE.Sprite(new THREE.SpriteMaterial({ color: COLORS[visualKind] ?? 0xffffff }));
-      const size = SIZES[visualKind] ?? 32;
+      s = new THREE.Sprite(new THREE.SpriteMaterial({ color }));
       s.scale.set(size, size, 1);
       this.scene.add(s);
       this.sprites.set(id, s);
@@ -72,17 +67,25 @@ export class Renderer {
     const seen = new Set<string>();
     for (const e of ents) {
       seen.add(e.id);
-      const vk =
-        e.kind === "boss"
-          ? "boss"
-          : e.kind === "proj"
-            ? e.sprite === BOSS_BOLT_SPRITE
-              ? "bossbolt"
-              : "proj"
-            : e.id === selfId
-              ? "self"
-              : e.kind;
-      const s = this.spriteFor(e.id, vk);
+      let color: number;
+      let size: number;
+      if (e.kind === "boss") {
+        color = C.boss;
+        size = 76;
+      } else if (e.kind === "proj") {
+        color = e.sprite === BOSS_BOLT_SPRITE ? C.bossbolt : (ABILITY_COLORS[e.sprite ?? 0] ?? C.proj);
+        size = e.sprite === BOSS_BOLT_SPRITE ? 24 : 16;
+      } else if (e.id === selfId) {
+        color = C.self;
+        size = 40;
+      } else if (e.kind === "player") {
+        color = C.player;
+        size = 40;
+      } else {
+        color = C.monster;
+        size = 44;
+      }
+      const s = this.spriteFor(e.id, color, size);
       let wx = e.x;
       let wy = e.y;
       if (e.id === selfId && predicted) {
