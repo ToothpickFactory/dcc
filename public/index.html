@@ -52,6 +52,13 @@
       #toast { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 12;
         font-size: 22px; font-weight: 800; letter-spacing: 0.5px; text-align: center; pointer-events: none;
         opacity: 0; transition: opacity 0.4s ease; text-shadow: 0 2px 12px #000c, 0 0 24px #0008; }
+
+      /* Temporary local/admin control for rapid round testing. */
+      #resetRun { display: none; position: fixed; right: 14px; bottom: 92px; z-index: 15; padding: 8px 12px;
+        border: 1px solid #8f4c58; border-radius: 8px; background: #3a1820dd; color: #ffd7dc;
+        font: 600 12px ui-sans-serif, system-ui, sans-serif; cursor: pointer; }
+      #resetRun:hover { background: #51212c; }
+      #resetRun:disabled { cursor: wait; opacity: 0.55; }
     </style>
   </head>
   <body>
@@ -68,6 +75,7 @@
       <div style="color:#e89a9a">⚠ Spells hit friend or foe — aim carefully!</div>
     </div>
     <div id="hud"><div id="abilities"></div></div>
+    <button id="resetRun" type="button" title="Temporary development control">Reset round</button>
     <div id="login">
       <div class="card">
         <h1>⚔️ DCC</h1>

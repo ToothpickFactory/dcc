@@ -18,10 +18,15 @@ const loginEl = document.getElementById("login") as HTMLElement;
 const playBtn = document.getElementById("play") as HTMLButtonElement;
 const loginMsg = document.getElementById("loginMsg") as HTMLElement;
 const toastEl = document.getElementById("toast") as HTMLElement;
+const resetRunBtn = document.getElementById("resetRun") as HTMLButtonElement;
+const isLocalDev = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 let connected = false;
 let toastHideAt = 0;
 let lastFloorKey = "";
 let lastRunPhase = "";
+let adminToken = "";
+
+if (isLocalDev) resetRunBtn.style.display = "block";
 
 function showToast(text: string, color: string) {
   toastEl.textContent = text;
@@ -82,6 +87,35 @@ function start() {
 playBtn.addEventListener("click", start);
 (document.getElementById("name") as HTMLInputElement).addEventListener("keydown", (e) => {
   if (e.key === "Enter") start();
+});
+
+resetRunBtn.addEventListener("click", async () => {
+  if (!confirm("Reset the current round for every connected player?")) return;
+
+  if (!adminToken) {
+    const entered = prompt("Admin token from .dev.vars", "dev");
+    if (!entered) return;
+    adminToken = entered;
+  }
+
+  resetRunBtn.disabled = true;
+  resetRunBtn.textContent = "Resetting...";
+  try {
+    const response = await fetch("/admin/new-run", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    if (!response.ok) {
+      if (response.status === 403) adminToken = "";
+      throw new Error(response.status === 403 ? "Invalid admin token." : `Reset failed (${response.status}).`);
+    }
+    showToast("Round reset.", "#9be7ff");
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : "Round reset failed.", "#ff8a8a");
+  } finally {
+    resetRunBtn.disabled = false;
+    resetRunBtn.textContent = "Reset round";
+  }
 });
 
 let last = performance.now();

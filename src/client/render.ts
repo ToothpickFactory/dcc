@@ -26,9 +26,14 @@ const MOVE_ANIM_NAMES = [
   "iso_run_right_right",
   "iso_run_down_right",
 ];
+const ENEMY_ACTION_NAMES = ["Cast", "Bolt", "Strike"];
+const ACTION_DIRECTIONS = ["Up", "Right", "Down"];
 
 type FacingDir = "up" | "down" | "right";
 type ActionName = "cast" | "bolt" | "strike" | "punch" | "kick";
+const DIR_SWITCH_BIAS = 1.2;
+const ENEMY_FRAME_SLOWDOWN = 1.6;
+const MOVEMENT_HOLD_MS = 150;
 
 interface LoadedClip {
   texture: THREE.Texture;
@@ -40,12 +45,17 @@ interface LoadedClip {
 
 interface SpriteState {
   sprite: THREE.Sprite;
+  texture: THREE.Texture | null;
+  textureSource: THREE.Texture | null;
   clipKey: string;
   frame: number;
   nextFrameAt: number;
   facingDir: FacingDir;
   flipX: boolean;
+  movingUntil: number;
   action: ActionName | null;
+  actionFacingDir: FacingDir;
+  actionFlipX: boolean;
   actionUntil: number;
 }
 
@@ -94,6 +104,9 @@ export class Renderer {
     for (const a of MOVE_ANIM_NAMES) paths.push(`${HERO_ROOT}/${a}`);
     for (const root of ENEMY_ROOTS) {
       for (const a of MOVE_ANIM_NAMES) paths.push(`${root}/${a}`);
+      for (const action of ENEMY_ACTION_NAMES) {
+        for (const dir of ACTION_DIRECTIONS) paths.push(`${root}/${action} ${dir}`);
+      }
     }
     await Promise.all(paths.map((p) => this.ensureClip(p)));
   }
@@ -144,25 +157,49 @@ export class Renderer {
       const sprite = new THREE.Sprite(mat);
       sprite.scale.set(size, size, 1);
       this.scene.add(sprite);
-      s = { sprite, clipKey: "", frame: 0, nextFrameAt: 0, facingDir: "down", flipX: false, action: null, actionUntil: 0 };
+      s = {
+        sprite,
+        texture: null,
+        textureSource: null,
+        clipKey: "",
+        frame: 0,
+        nextFrameAt: 0,
+        facingDir: "down",
+        flipX: false,
+        movingUntil: 0,
+        action: null,
+        actionFacingDir: "down",
+        actionFlipX: false,
+        actionUntil: 0,
+      };
       this.sprites.set(id, s);
     }
     return s;
   }
 
-  private setFallback(mat: THREE.SpriteMaterial, color: number): void {
+  private setFallback(state: SpriteState, color: number): void {
+    const mat = state.sprite.material as THREE.SpriteMaterial;
     mat.map = null;
     mat.color.setHex(color);
     mat.needsUpdate = true;
   }
 
-  private applyFrame(mat: THREE.SpriteMaterial, clip: LoadedClip, frameIndex: number): void {
+  private applyFrame(state: SpriteState, clip: LoadedClip, frameIndex: number, flipX: boolean): void {
     const f = clip.frames[frameIndex % clip.frames.length];
     if (!f) return;
-    mat.map = clip.texture;
+    if (state.textureSource !== clip.texture) {
+      state.texture?.dispose();
+      state.texture = clip.texture.clone();
+      state.texture.needsUpdate = true;
+      state.textureSource = clip.texture;
+    }
+
+    const mat = state.sprite.material as THREE.SpriteMaterial;
+    const texture = state.texture!;
+    mat.map = texture;
     mat.color.setHex(0xffffff);
-    mat.map.repeat.set(f.w / clip.sheetW, f.h / clip.sheetH);
-    mat.map.offset.set(f.x / clip.sheetW, 1 - (f.y + f.h) / clip.sheetH);
+    texture.repeat.set((flipX ? -1 : 1) * (f.w / clip.sheetW), f.h / clip.sheetH);
+    texture.offset.set((f.x + (flipX ? f.w : 0)) / clip.sheetW, 1 - (f.y + f.h) / clip.sheetH);
     mat.needsUpdate = true;
   }
 
@@ -190,28 +227,59 @@ export class Renderer {
     return this.facingFromVector(Math.cos(a), Math.sin(a));
   }
 
+  private facingWithHysteresis(
+    state: SpriteState,
+    dx: number,
+    dy: number,
+    moving: boolean,
+    aim: number,
+  ): { dir: FacingDir; flipX: boolean } {
+    if (!moving) {
+      const f = this.facingFromAngle(aim);
+      return { dir: f.dir, flipX: Math.cos(aim) < 0 };
+    }
+
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    let dir: FacingDir;
+    if (state.facingDir === "right") {
+      dir = ay > ax * DIR_SWITCH_BIAS ? (dy < 0 ? "up" : "down") : "right";
+    } else {
+      dir = ax > ay * DIR_SWITCH_BIAS ? "right" : state.facingDir;
+      if (dir !== "right") dir = dy < 0 ? "up" : "down";
+    }
+
+    return { dir, flipX: dx < 0 };
+  }
+
   private clipPath(root: string, moving: boolean, dir: FacingDir): string {
+    // Left-facing movement reuses these right-facing atlases and mirrors the sprite.
     return `${root}/${moving ? "iso_run" : "iso_idle"}_${dir}_right`;
   }
 
   private actionClipPath(root: string, action: ActionName, dir: FacingDir): string {
+    // Action folders are canonical right-facing art; left actions mirror the sprite.
     const prefix = action === "cast" ? "Cast" : action === "bolt" ? "Bolt" : action === "strike" ? "Strike" : action === "punch" ? "Punch" : "Kick";
     return `${root}/${prefix} ${dir[0].toUpperCase()}${dir.slice(1)}`;
   }
 
-  private clipDurationMs(clip: LoadedClip | null): number {
-    if (!clip) return 220;
-    return Math.max(180, clip.frameMs * clip.frames.length);
+  private clipDurationMs(clip: LoadedClip | null, isEnemy: boolean): number {
+    const minimum = isEnemy ? 400 : 180;
+    if (!clip) return minimum;
+    const slowdown = isEnemy ? ENEMY_FRAME_SLOWDOWN : 1;
+    return Math.max(minimum, clip.frameMs * clip.frames.length * slowdown);
   }
 
   private queueAction(id: string, root: string, action: ActionName, now: number): void {
     const state = this.sprites.get(id);
     if (!state) return;
-    const targetClip = this.actionClipPath(root, action, state.facingDir);
-    const loaded = this.clipCache.get(targetClip) ?? null;
-    if (this.clipCache.get(targetClip) === undefined) void this.ensureClip(targetClip);
+    state.actionFacingDir = state.facingDir;
+    state.actionFlipX = state.flipX;
+    const targetClip = this.actionClipPath(root, action, state.actionFacingDir);
+    const loaded = this.clipCache.get(targetClip);
+    if (loaded === undefined) void this.ensureClip(targetClip);
     state.action = action;
-    state.actionUntil = now + this.clipDurationMs(loaded);
+    state.actionUntil = loaded ? now + this.clipDurationMs(loaded, root !== HERO_ROOT) : Number.POSITIVE_INFINITY;
     state.clipKey = "";
     state.frame = 0;
     state.nextFrameAt = 0;
@@ -304,45 +372,71 @@ export class Renderer {
       const prev = this.lastPos.get(e.id);
       const dx = prev ? wx - prev.x : 0;
       const dy = prev ? wy - prev.y : 0;
-      const moving = dx * dx + dy * dy > 0.5;
-      const face = moving ? this.facingFromVector(dx, dy) : this.facingFromAngle(e.aim ?? 0);
+      const positionChanged = dx * dx + dy * dy > 0.5;
+      if (positionChanged) s.movingUntil = now + MOVEMENT_HOLD_MS;
+      const moving = positionChanged || now < s.movingUntil;
+      const face = positionChanged
+        ? this.facingWithHysteresis(s, dx, dy, true, e.aim ?? 0)
+        : moving
+          ? { dir: s.facingDir, flipX: s.flipX }
+          : this.facingWithHysteresis(s, 0, 0, false, e.aim ?? 0);
       s.facingDir = face.dir;
       s.flipX = face.flipX;
       if (s.action && now >= s.actionUntil) s.action = null;
 
       if (e.kind === "player" || e.kind === "monster") {
         const root = e.kind === "player" ? HERO_ROOT : this.enemyRoot(e.id);
-        const targetClip = s.action ? this.actionClipPath(root, s.action, s.facingDir) : this.clipPath(root, moving, s.facingDir);
+        const displayFlipX = s.action ? s.actionFlipX : s.flipX;
+        let actionClip = s.action ? this.actionClipPath(root, s.action, s.actionFacingDir) : null;
+        let loadedAction = actionClip ? this.clipCache.get(actionClip) : undefined;
+        if (actionClip && loadedAction === undefined) void this.ensureClip(actionClip);
+        if (actionClip && loadedAction === null) {
+          s.action = null;
+          actionClip = null;
+          loadedAction = undefined;
+        }
+
+        const readyAction = actionClip && loadedAction ? { path: actionClip, clip: loadedAction } : null;
+        const displayDir = actionClip ? s.actionFacingDir : s.facingDir;
+        const targetClip = readyAction?.path ?? this.clipPath(root, actionClip ? false : moving, displayDir);
+        const loaded = readyAction?.clip ?? this.clipCache.get(targetClip);
 
         if (s.clipKey !== targetClip) {
           s.clipKey = targetClip;
-          s.frame = s.action ? 0 : -1;
-          s.nextFrameAt = 0;
+          s.frame = readyAction ? 0 : -1;
+          if (readyAction) {
+            const frameStepMs = readyAction.clip.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1);
+            s.nextFrameAt = now + frameStepMs;
+            s.actionUntil = now + this.clipDurationMs(readyAction.clip, e.kind === "monster");
+          } else {
+            s.nextFrameAt = 0;
+          }
         }
 
-        const loaded = this.clipCache.get(targetClip);
         if (loaded) {
+          const frameStepMs = loaded.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1);
           if (now >= s.nextFrameAt) {
             s.frame = (s.frame + 1) % loaded.frames.length;
-            s.nextFrameAt = now + loaded.frameMs;
+            s.nextFrameAt = now + frameStepMs;
           }
-          this.applyFrame(s.sprite.material as THREE.SpriteMaterial, loaded, s.frame);
+          this.applyFrame(s, loaded, s.frame, displayFlipX);
         } else {
           void this.ensureClip(targetClip);
-          this.setFallback(s.sprite.material as THREE.SpriteMaterial, color);
+          this.setFallback(s, color);
         }
       } else {
-        this.setFallback(s.sprite.material as THREE.SpriteMaterial, color);
+        this.setFallback(s, color);
       }
 
-      const sx = (e.kind === "player" || e.kind === "monster") && s.flipX ? -size : size;
-      s.sprite.scale.set(sx, size, 1);
+      s.sprite.scale.set(size, size, 1);
       s.sprite.position.set(wx, h, wy);
       this.lastPos.set(e.id, { x: wx, y: wy });
     }
     for (const [id, s] of this.sprites) {
       if (!seen.has(id)) {
         this.scene.remove(s.sprite);
+        s.texture?.dispose();
+        (s.sprite.material as THREE.SpriteMaterial).dispose();
         this.sprites.delete(id);
         this.lastPos.delete(id);
       }
