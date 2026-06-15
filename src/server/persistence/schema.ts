@@ -20,6 +20,8 @@ export const SCHEMA: string[] = [
      cls TEXT NOT NULL,
      profile TEXT NOT NULL,
      abilities TEXT NOT NULL,
+     base TEXT NOT NULL DEFAULT '{}',
+     inv TEXT NOT NULL DEFAULT '{}',
      last_seen INTEGER NOT NULL
    )`,
   `CREATE TABLE IF NOT EXISTS floor_record (
@@ -28,4 +30,12 @@ export const SCHEMA: string[] = [
      completed_at INTEGER NOT NULL,
      survivors INTEGER NOT NULL
    )`,
+];
+
+// Additive migrations for DBs created before a column existed. Each ALTER throws
+// "duplicate column" if already applied, so the DO runs them in try/catch — a
+// re-run is a harmless no-op. (Fresh DBs already have the columns from SCHEMA.)
+export const MIGRATIONS: string[] = [
+  "ALTER TABLE player_record ADD COLUMN base TEXT NOT NULL DEFAULT '{}'",
+  "ALTER TABLE player_record ADD COLUMN inv TEXT NOT NULL DEFAULT '{}'",
 ];

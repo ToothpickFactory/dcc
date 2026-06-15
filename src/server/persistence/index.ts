@@ -1,4 +1,5 @@
 import type { Ability, PlayerClass, PlaystyleProfile } from "../../shared/types";
+import { coerceAttrs, coerceInventory, type Attributes, type Inventory } from "../../shared/items";
 
 export interface PlayerRecord {
   playerId: string;
@@ -7,6 +8,8 @@ export interface PlayerRecord {
   cls: PlayerClass;
   profile: PlaystyleProfile;
   abilities: Ability[];
+  base: Attributes; // innate attributes (gear-derived stats rebuild from base+inv)
+  inv: Inventory; // equipped gear + bags + carried items
   lastSeen: number;
 }
 export interface RunCheckpoint {
@@ -47,6 +50,8 @@ interface PlayerRow {
   cls: string;
   profile: string;
   abilities: string;
+  base: string;
+  inv: string;
   last_seen: number;
   [k: string]: SqlStorageValue;
 }
@@ -73,15 +78,17 @@ export class SqlRunStore implements RunStore {
 
   playerSync(rec: PlayerRecord): void {
     this.sql.exec(
-      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, base, inv, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, alive=excluded.alive, cls=excluded.cls,
-         profile=excluded.profile, abilities=excluded.abilities, last_seen=excluded.last_seen`,
+         profile=excluded.profile, abilities=excluded.abilities, base=excluded.base, inv=excluded.inv, last_seen=excluded.last_seen`,
       rec.playerId,
       rec.name,
       rec.alive ? 1 : 0,
       rec.cls,
       JSON.stringify(rec.profile),
       JSON.stringify(rec.abilities),
+      JSON.stringify(rec.base),
+      JSON.stringify(rec.inv),
       rec.lastSeen,
     );
   }
@@ -109,7 +116,7 @@ export class SqlRunStore implements RunStore {
 
   async loadPlayer(playerId: string): Promise<PlayerRecord | null> {
     const rows = this.sql
-      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, last_seen FROM player_record WHERE player_id = ?", playerId)
+      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, base, inv, last_seen FROM player_record WHERE player_id = ?", playerId)
       .toArray();
     if (rows.length !== 1) return null;
     try {
@@ -148,6 +155,8 @@ function rowToPlayer(r: PlayerRow): PlayerRecord {
     cls: r.cls as PlayerClass,
     profile: JSON.parse(r.profile) as PlaystyleProfile,
     abilities: JSON.parse(r.abilities) as Ability[],
+    base: coerceAttrs(JSON.parse(r.base ?? "{}")),
+    inv: coerceInventory(JSON.parse(r.inv ?? "{}")),
     lastSeen: r.last_seen,
   };
 }

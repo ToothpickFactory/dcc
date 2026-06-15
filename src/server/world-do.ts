@@ -46,7 +46,7 @@ import { updateBoss } from "./sim/boss";
 import { castAbility, stepProjectiles } from "./sim/projectiles";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type PlayerRecord, type RunCheckpoint } from "./persistence";
-import { SCHEMA } from "./persistence/schema";
+import { MIGRATIONS, SCHEMA } from "./persistence/schema";
 import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
 const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 ticks)
@@ -93,6 +93,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.identity = new HmacIdentity(env.TOKEN_SIGNING_KEY);
     this.sql = ctx.storage.sql;
     for (const stmt of SCHEMA) this.sql.exec(stmt); // idempotent CREATE TABLE IF NOT EXISTS
+    for (const stmt of MIGRATIONS) {
+      try {
+        this.sql.exec(stmt); // additive column adds; throws (ignored) if already applied
+      } catch {
+        /* column already exists */
+      }
+    }
     this.store = new SqlRunStore(this.sql);
 
     // Loot flavor (Stream E): Workers AI / Claude behind AI Gateway, flag-gated
@@ -263,6 +270,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           cls: this.profiles.classOf(id),
           profile: this.profiles.get(id),
           abilities: DEFAULT_ABILITIES,
+          base: zeroAttrs(), // fresh run = fresh character
+          inv: emptyInventory(),
           lastSeen: Date.now(),
         });
       }
@@ -546,8 +555,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private makePlayer(id: string, name: string, ws: WebSocket, status: "alive" | "spectator", rec: PlayerRecord | null): PlayerState {
-    const base = zeroAttrs(); // INV-5 will rehydrate base/inv from the record
-    const inv = emptyInventory();
+    // Reconnects rehydrate their persisted gear; brand-new heroes get a kit below.
+    const base = rec ? { ...rec.base } : zeroAttrs();
+    const inv = rec ? rec.inv : emptyInventory();
     const p: PlayerState = {
       id,
       name,
@@ -784,6 +794,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       cls: this.profiles.classOf(p.id),
       profile: this.profiles.get(p.id),
       abilities: p.abilities,
+      base: p.base,
+      inv: p.inv,
       lastSeen: Date.now(),
     };
   }

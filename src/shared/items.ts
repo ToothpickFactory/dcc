@@ -52,6 +52,28 @@ export function emptyInventory(): Inventory {
   return { equipped: {}, bagEquip: new Array(BAG_EQUIP_SLOTS).fill(null), carried: [] };
 }
 
+// Defensive rehydration of persisted blobs (a malformed/legacy row must never
+// crash a join). Coerce to a valid shape, defaulting anything missing.
+export function coerceAttrs(x: unknown): Attributes {
+  const a = zeroAttrs();
+  if (x && typeof x === "object") {
+    const o = x as Record<string, unknown>;
+    for (const k of ATTR_KEYS) if (typeof o[k] === "number") a[k] = o[k] as number;
+  }
+  return a;
+}
+export function coerceInventory(x: unknown): Inventory {
+  if (!x || typeof x !== "object") return emptyInventory();
+  const o = x as Partial<Inventory>;
+  const bagEquip = Array.isArray(o.bagEquip) ? o.bagEquip.slice(0, BAG_EQUIP_SLOTS) : [];
+  while (bagEquip.length < BAG_EQUIP_SLOTS) bagEquip.push(null);
+  return {
+    equipped: o.equipped && typeof o.equipped === "object" ? o.equipped : {},
+    bagEquip,
+    carried: Array.isArray(o.carried) ? o.carried : [],
+  };
+}
+
 export function carryCapacity(inv: Inventory): number {
   let cap = BASE_CARRY_SLOTS;
   for (const b of inv.bagEquip) if (b?.bagSlots) cap += b.bagSlots;
