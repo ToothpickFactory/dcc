@@ -492,7 +492,9 @@ export class Renderer {
   }
 
   follow(x: number, y: number) {
-    this.camera.position.set(x, 520, y + 420);
+    // Raised + tilted more top-down (was 520h / 420 back) so the level extent and
+    // boundaries read clearly. Higher = more overhead, smaller back-offset = flatter.
+    this.camera.position.set(x, 820, y + 460);
     this.camera.lookAt(x, 0, y);
   }
 
