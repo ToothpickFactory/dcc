@@ -315,6 +315,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
 	_music.set_theme(str(info.get("theme", "fantasy")))
+	_hud.floor_title(int(info.get("depth", 1)), str(info.get("theme", "")))  # "Floor N · Theme" card
+	_sfx.play("descent")
 	_char_level = -1  # re-sync level/xp baselines on floor/run change (avoids spurious toasts)
 	_char_xp = -1
 	if OS.get_environment("DCC_DEBUG") != "":
