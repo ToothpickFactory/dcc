@@ -1100,6 +1100,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         livingAtStairs: this.atStairsCount(),
         living: this.aliveCount(),
       },
+      // Static geometry for non-procgen clients (Godot). The browser ignores it.
+      geometry: {
+        gw: this.floor.collision.w,
+        gh: this.floor.collision.h,
+        cell: this.floor.collision.cell,
+        solid: encodeSolid(this.floor.collision.solid),
+        entrance: this.floor.entrance,
+        stairs: this.floor.stairs,
+        decorations: this.floor.decorations,
+      },
     };
   }
   // Count players who've reached the stairs (now in the waiting room). Sent as
@@ -1150,4 +1160,13 @@ function clampUnit(v: number) {
 const RUN_PHASES: readonly RunPhase[] = ["lobby", "running", "ended", "cooldown"];
 function isRunPhase(s: string): s is RunPhase {
   return (RUN_PHASES as readonly string[]).includes(s);
+}
+
+// Base64-encode the collision grid (1 byte/cell) for the floor message. `btoa` is
+// a Workers global; ~900 bytes -> ~1.2 KB, sent once per floor change. Godot decodes
+// with Marshalls.base64_to_raw().
+function encodeSolid(solid: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < solid.length; i++) bin += String.fromCharCode(solid[i]);
+  return btoa(bin);
 }

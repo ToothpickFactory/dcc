@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -33,7 +33,7 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: "welcome"; you: string; token: string; world: WorldInfo; protocol: number }
   | { t: "state"; tick: number; ack: number; ents: EntityDTO[]; events: GameEvent[]; self: SelfDTO }
-  | { t: "floor"; info: FloorClientInfo; state: FloorState }
+  | { t: "floor"; info: FloorClientInfo; state: FloorState; geometry: FloorGeometry }
   | { t: "run"; state: RunState }
   | { t: "loot"; grant: LootGrantDTO }
   | { t: "inv"; inv: Inventory; attrs: Attributes; derived: DerivedStats; capacity: number; gold: number } // character screen
@@ -86,6 +86,19 @@ export type GameEvent =
   | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
+
+// Static floor geometry shipped to clients that don't run the TS procgen (e.g. the
+// native Godot client). The browser ignores this and rebuilds from `seed`. Sent
+// once per floor change on the `floor` message — never in the per-tick `state`.
+export interface FloorGeometry {
+  gw: number; // grid width in cells
+  gh: number; // grid height in cells
+  cell: number; // cell size px
+  solid: string; // base64 of the gw*gh Uint8Array, row-major y*gw+x (1 = wall)
+  entrance: { x: number; y: number };
+  stairs: { x: number; y: number; r: number };
+  decorations: { x: number; y: number; variant: number; scale: number }[];
+}
 
 export interface FloorClientInfo {
   // Client rebuilds geometry from the seed (shared procgen); no collision needed.

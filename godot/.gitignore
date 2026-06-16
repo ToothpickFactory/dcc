@@ -1,0 +1,7 @@
+# Godot import cache + test reports
+.godot/
+reports/
+*.translation
+
+# Vendored test framework — install with the command in README.md (not committed)
+addons/gdUnit4/
