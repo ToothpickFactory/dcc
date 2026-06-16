@@ -50,6 +50,14 @@ func flash_hit(now_ms: float, hurt: bool = false) -> void:
 	_flash_until = now_ms + FLASH_MS
 	_flash_color = Color(2.6, 0.7, 0.7) if hurt else Color(2.4, 2.4, 2.4)
 
+# ---- spawn pop (juice): a quick over-shooting scale-in when first seen ----
+const SPAWN_MS := 200.0
+var _spawn_until := 0.0
+var _spawn_mul := 1.0
+
+func spawn(now_ms: float) -> void:
+	_spawn_until = now_ms + SPAWN_MS
+
 # ---- facing / movement state (render.ts SpriteState) ----
 var _facing_dir := "down"          # "up" | "down" | "right"
 var _flip := false                 # mirror horizontally (left-facing)
@@ -199,6 +207,14 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 # Mirrors the per-entity body of render.ts sync().
 # ---------------------------------------------------------------------------
 func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float) -> void:
+	# Spawn-pop scale factor (ease-out-back overshoot) applied in _apply_size.
+	if now_ms < _spawn_until:
+		var p := 1.0 - (_spawn_until - now_ms) / SPAWN_MS
+		var tt := p - 1.0
+		_spawn_mul = 1.0 + 2.7 * tt * tt * tt + 1.7 * tt * tt
+	else:
+		_spawn_mul = 1.0
+
 	# Movement detection + hold (render.ts: positionChanged if |delta|^2 > 0.5).
 	var position_changed := dx * dx + dy * dy > 0.5
 	if position_changed:
@@ -355,14 +371,14 @@ func _apply_size(sprite_px: float) -> void:
 	if texture != null:
 		var th := texture.get_height()
 		var s := sprite_px / float(th if th > 0 else 128)
-		scale = Vector3(s, s, s)
+		scale = Vector3(s, s, s) * _spawn_mul
 	else:
 		# No texture: Sprite3D draws nothing without a texture, so give the fallback a
 		# 1px white texture sized up. Built lazily and shared per-instance.
 		if texture == null:
 			_ensure_fallback_texture()
 			var s := sprite_px
-			scale = Vector3(s, s, s)
+			scale = Vector3(s, s, s) * _spawn_mul
 
 # A 1x1 white texture so a textureless (fallback-colored) entity is still visible.
 static var _white_tex: Texture2D

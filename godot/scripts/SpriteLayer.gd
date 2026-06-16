@@ -86,6 +86,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
+			if k != "proj":  # projectiles are too fleeting to pop; everything else scales in
+				spr.spawn(now_ms)
 
 		# Resolve display world position.
 		var wpos: Vector2

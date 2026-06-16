@@ -241,6 +241,7 @@ func _on_events(events: Array) -> void:
 				if self_hit:
 					_shake = 1.0
 					_sfx.play("hurt")
+					Input.start_joy_vibration(0, 0.35, 0.6, 0.18)  # gamepad rumble (no-op if none)
 				else:
 					_sfx.play("hit")
 			"hit":
