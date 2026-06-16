@@ -1,12 +1,13 @@
 #!/bin/bash
-# DCC — click-to-play launcher (macOS). Double-click this file to:
-#   1. check git for a newer `main` and fast-forward to it (if your tree is clean),
+# DCC — one-command click-to-play launcher (macOS). Double-click this file to:
+#   0. first run only: vendor GdUnit4 + copy assets + download export templates (~1.2 GB),
+#   1. fast-forward `main` to the latest (only if your tree is clean),
 #   2. re-export the native .app when there's a new version (or it's missing),
-#   3. launch the game (which connects to the live server by default).
+#   3. launch the game (connects to the live server by default).
 #
-# Put this on your Desktop/Dock via an alias, or just double-click it in Finder.
-# Needs: git, Godot 4.6 on PATH or at $GODOT, and the export templates installed
-# (see godot/SETUP.md "Building a native release").
+# This is the SINGLE command — it self-installs everything it needs the first time.
+# Only prereqs: git + Godot 4.6 (on PATH or at $GODOT). Double-click in Finder, or put an
+# alias on your Desktop/Dock. (Right-click → Open the first time to clear Gatekeeper.)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -19,6 +20,28 @@ if [ -z "$GODOT" ]; then
   if command -v godot >/dev/null 2>&1; then GODOT="godot"
   elif command -v godot4 >/dev/null 2>&1; then GODOT="godot4"
   elif [ -x "/Applications/Godot.app/Contents/MacOS/Godot" ]; then GODOT="/Applications/Godot.app/Contents/MacOS/Godot"
+  fi
+fi
+if [ -z "$GODOT" ]; then
+  echo "!! Godot 4.6 not found. Install it (brew install --cask godot) or set GODOT=/path/to/Godot, then re-run."
+  read -r -p "Press enter to close..." _; exit 1
+fi
+
+# One-time: vendor GdUnit4 + copy the gitignored art assets if they're missing.
+if [ ! -f godot/addons/gdUnit4/plugin.cfg ] || [ ! -d godot/assets ]; then
+  echo "==> First-time setup (GdUnit4 + art assets)..."
+  GODOT="$GODOT" ./godot/setup.sh
+fi
+
+# One-time: install the matching export templates (~1.2 GB) if missing.
+VER="$("$GODOT" --version 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+TPL="$HOME/Library/Application Support/Godot/export_templates/${VER}.stable"
+if [ -n "$VER" ] && [ ! -d "$TPL" ]; then
+  echo "==> Installing Godot $VER export templates (one-time, ~1.2 GB)..."
+  if curl -L -o /tmp/dcc-tpl.tpz "https://github.com/godotengine/godot-builds/releases/download/${VER}-stable/Godot_v${VER}-stable_export_templates.tpz"; then
+    rm -rf /tmp/dcc-tpl && unzip -q /tmp/dcc-tpl.tpz -d /tmp/dcc-tpl && mkdir -p "$TPL" && cp /tmp/dcc-tpl/templates/* "$TPL/"
+  else
+    echo "!! Template download failed (offline?). Install via the editor: Manage Export Templates."
   fi
 fi
 
