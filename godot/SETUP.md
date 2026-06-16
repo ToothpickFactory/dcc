@@ -138,6 +138,13 @@ The bundle is **unsigned** — to run it locally without Gatekeeper griping:
 > (already set in `project.godot`). The server URL is baked from the `Main` node's `server_url`
 > export (defaults to the deployed worker); players can still override it with `DCC_WS`.
 
+### Click-to-play launcher (macOS, dev machines)
+**`godot/launch-dcc.command`** is a double-clickable launcher: it fast-forwards `main` to the
+latest (only if your working tree is clean), re-exports the `.app` when there's a new version,
+then launches it (connected to the live server). Right-click → Open the first time, or drag an
+alias of it to your Desktop/Dock. Needs Godot + the export templates. If your tree has local
+changes it skips the auto-update and just launches your current code.
+
 ## 10. Troubleshooting
 - **Black screen / "No floor geometry" toast** → the server isn't on protocol v6. Run a
   local server (step 5) and use `DCC_WS=ws://127.0.0.1:8787/ws`, or have someone `npm run deploy`.
