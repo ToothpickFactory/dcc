@@ -11,6 +11,7 @@ const copyPairs = [
   [join(root, "assets", "Heroes"), join(outRoot, "Heroes")],
   [join(root, "assets", "Enemies"), join(outRoot, "Enemies")],
   [join(root, "assets", "Tiles"), join(outRoot, "Tiles")],
+  [join(root, "assets", "Props"), join(outRoot, "Props")],
 ];
 
 for (const [src, dst] of copyPairs) {

@@ -75,11 +75,19 @@ function generateFloor(seed, depth) {
   }
   const chests = candidates.slice(spawnCount, spawnCount + 2).map((p) => cellCenter(p.x, p.y, cell));
   const pathCells = farthest.distance + 1;
+  const theme = THEMES[Math.floor(random() * THEMES.length)];
+  const decorationCells = candidates.slice(spawnCount + 2, spawnCount + 26);
+  const decorations = decorationCells.map((p) => ({
+    ...cellCenter(p.x, p.y, cell),
+    // Variant 0 is reserved for the themed stairs sprite in the prop sheet.
+    variant: 1 + Math.floor(random() * 15),
+    scale: 0.75 + random() * 0.45
+  }));
   return {
     index: depth,
     seed,
     depth,
-    theme: THEMES[Math.floor(random() * THEMES.length)],
+    theme,
     w: WORLD.w,
     h: WORLD.h,
     // Per-floor lethal timer — reach the stairs before it expires (decision #2).
@@ -91,7 +99,8 @@ function generateFloor(seed, depth) {
     entrance,
     stairs,
     spawns,
-    chests
+    chests,
+    decorations
   };
 }
 function carveConnectedMaze(solid, w, h, startX, startY, random) {
@@ -209,6 +218,7 @@ for (let seed = 1; seed <= 100; seed++) {
   assert.equal(canOccupy(grid, floor.entrance.x, floor.entrance.y, PLAYER_RADIUS), true);
   assert.equal(canOccupy(grid, floor.stairs.x, floor.stairs.y, PLAYER_RADIUS), true);
   for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true);
+  for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true);
 }
 console.log("procgen connectivity: 100 seeds passed");
 function flood(solid, w, h, startX, startY) {

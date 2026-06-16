@@ -51,12 +51,20 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
 
   const chests = candidates.slice(spawnCount, spawnCount + 2).map((p) => cellCenter(p.x, p.y, cell));
   const pathCells = farthest.distance + 1;
+  const theme = THEMES[Math.floor(random() * THEMES.length)]!;
+  const decorationCells = candidates.slice(spawnCount + 2, spawnCount + 26);
+  const decorations = decorationCells.map((p) => ({
+    ...cellCenter(p.x, p.y, cell),
+    // Variant 0 is reserved for the themed stairs sprite in the prop sheet.
+    variant: 1 + Math.floor(random() * 15),
+    scale: 0.75 + random() * 0.45,
+  }));
 
   return {
     index: depth,
     seed,
     depth,
-    theme: THEMES[Math.floor(random() * THEMES.length)]!,
+    theme,
     w: WORLD.w,
     h: WORLD.h,
     // Per-floor lethal timer — reach the stairs before it expires (decision #2).
@@ -69,6 +77,7 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
     stairs,
     spawns,
     chests,
+    decorations,
   };
 }
 

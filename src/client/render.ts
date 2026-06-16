@@ -26,6 +26,14 @@ const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   clockwork: "/assets/Tiles/clockwork-tiles.png",
   nightmare: "/assets/Tiles/nightmare-tiles.png",
 };
+const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
+  fantasy: "/assets/Props/fantasy-props.png",
+  cyberpunk: "/assets/Props/cyberpunk-props.png",
+  forest: "/assets/Props/forest-props.png",
+  pirate: "/assets/Props/pirate-props.png",
+  clockwork: "/assets/Props/clockwork-props.png",
+  nightmare: "/assets/Props/nightmare-props.png",
+};
 const ENEMY_ROOTS = ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"].map((n) => `/assets/Enemies/${n}`);
 const MOVE_ANIM_NAMES = [
   "iso_idle_up_right",
@@ -91,11 +99,14 @@ export class Renderer {
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
+  private decorations: THREE.Sprite[] = [];
   private ground: THREE.Mesh;
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
   private wallMaterial = new THREE.MeshBasicMaterial({ color: 0x39445e });
   private tileMaterialCache = new Map<FloorDescriptor["theme"], { floor: THREE.Texture; wall: THREE.Texture }>();
   private tileThemeRequest = 0;
+  private propSheetCache = new Map<FloorDescriptor["theme"], THREE.Texture[]>();
+  private propThemeRequest = 0;
   private collision: CollisionGrid | null = null; // current floor grid, for fog line-of-sight
   // Wall-based fog of war: a shader on the ground + walls darkens any pixel without
   // line-of-sight to the vision center. The collision grid rides along as a texture;
@@ -257,6 +268,61 @@ export class Renderer {
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.generateMipmaps = true;
     return texture;
+  }
+
+  private async applyPropTheme(floor: FloorDescriptor): Promise<void> {
+    const request = ++this.propThemeRequest;
+    this.clearDecorations();
+    this.setStairs(floor.stairs.x, floor.stairs.y, null);
+
+    try {
+      const textures = await this.loadPropTextures(floor.theme);
+      if (request !== this.propThemeRequest) return;
+      this.setStairs(floor.stairs.x, floor.stairs.y, textures[0] ?? null);
+      this.setDecorations(floor, textures);
+    } catch {
+      if (request !== this.propThemeRequest) return;
+      console.warn(`Prop sheet failed to load: ${PROP_SHEETS[floor.theme]}`);
+    }
+  }
+
+  private async loadPropTextures(theme: FloorDescriptor["theme"]): Promise<THREE.Texture[]> {
+    const cached = this.propSheetCache.get(theme);
+    if (cached) return cached;
+
+    const sheet = await this.textureLoader.loadAsync(PROP_SHEETS[theme]);
+    sheet.colorSpace = THREE.SRGBColorSpace;
+    const textures = Array.from({ length: 16 }, (_, i) => this.tileFromSheet(sheet, i));
+    this.propSheetCache.set(theme, textures);
+    return textures;
+  }
+
+  private setDecorations(floor: FloorDescriptor, textures: THREE.Texture[]): void {
+    this.clearDecorations();
+    for (const decoration of floor.decorations) {
+      const texture = textures[decoration.variant] ?? textures[1];
+      if (!texture) continue;
+      const mat = new THREE.SpriteMaterial({
+        map: texture,
+        color: 0xffffff,
+        transparent: true,
+        depthWrite: false,
+      });
+      const sprite = new THREE.Sprite(mat);
+      const size = 58 * decoration.scale;
+      sprite.scale.set(size, size, 1);
+      sprite.position.set(decoration.x, 24, decoration.y);
+      this.scene.add(sprite);
+      this.decorations.push(sprite);
+    }
+  }
+
+  private clearDecorations(): void {
+    for (const sprite of this.decorations) {
+      this.scene.remove(sprite);
+      (sprite.material as THREE.SpriteMaterial).dispose();
+    }
+    this.decorations = [];
   }
 
   private spriteFor(id: string, color: number, size: number): SpriteState {
@@ -595,16 +661,23 @@ export class Renderer {
   }
 
   // The exit. Client rebuilds its position from the floor seed (shared procgen).
-  setStairs(x: number, y: number) {
+  setStairs(x: number, y: number, texture?: THREE.Texture | null) {
     if (!this.stairs) {
       this.stairs = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x5dff9b, transparent: true }));
       this.scene.add(this.stairs);
+    }
+    if (texture !== undefined) {
+      const mat = this.stairs.material as THREE.SpriteMaterial;
+      mat.map = texture;
+      mat.color.setHex(texture ? 0xffffff : 0x5dff9b);
+      mat.needsUpdate = true;
     }
     this.stairs.position.set(x, 30, y);
   }
 
   setFloor(floor: FloorDescriptor): void {
     void this.applyTileTheme(floor.theme);
+    void this.applyPropTheme(floor);
 
     if (this.walls) {
       this.scene.remove(this.walls);
@@ -648,14 +721,16 @@ export class Renderer {
     walls.instanceMatrix.needsUpdate = true;
     this.scene.add(walls);
     this.walls = walls;
-    this.setStairs(floor.stairs.x, floor.stairs.y);
   }
 
   clearStairs() {
+    this.propThemeRequest++;
     if (this.stairs) {
       this.scene.remove(this.stairs);
+      (this.stairs.material as THREE.SpriteMaterial).dispose();
       this.stairs = null;
     }
+    this.clearDecorations();
   }
 
   follow(x: number, y: number) {
@@ -680,12 +755,23 @@ export class Renderer {
     this.fog.uPlayer.value.set(x, y);
     const grid = this.collision;
     if (!grid) return;
+    this.updateStaticVisibility(x, y);
     // Recompute the wall mask only on cell change — stable (no flicker) within a tile.
     const cell = grid.cell;
     const here = Math.floor(y / cell) * grid.w + Math.floor(x / cell);
     if (here === this.lastVisCell) return;
     this.lastVisCell = here;
     this.computeWallVis(x, y);
+  }
+
+  private updateStaticVisibility(x: number, y: number): void {
+    const canSeeSprite = (sprite: THREE.Sprite) => {
+      const dx = sprite.position.x - x;
+      const dy = sprite.position.z - y;
+      return dx * dx + dy * dy <= VISION_RADIUS_SQ && this.canSee(x, y, sprite.position.x, sprite.position.z);
+    };
+    if (this.stairs) this.stairs.visible = canSeeSprite(this.stairs);
+    for (const sprite of this.decorations) sprite.visible = canSeeSprite(sprite);
   }
 
   // A wall is visible if any open floor cell adjacent to it (8-neighbour) has clear

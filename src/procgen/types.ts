@@ -20,4 +20,5 @@ export interface FloorDescriptor {
   stairs: { x: number; y: number; r: number };
   spawns: { x: number; y: number; kind: MonsterKind }[];
   chests: { x: number; y: number }[];
+  decorations: { x: number; y: number; variant: number; scale: number }[];
 }
