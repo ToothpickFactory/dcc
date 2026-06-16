@@ -27,8 +27,8 @@ const ITEM_EMOJI := {
 	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U0001f9ea",
 }
 const ATTR_ABBR := {
-	"power": "PWR", "spirit": "SPR", "haste": "HST",
-	"vitality": "VIT", "agility": "AGI", "armor": "ARM",
+	"strength": "STR", "intellect": "INT", "stamina": "STA",
+	"agility": "AGI", "haste": "HST", "crit": "CRIT", "armor": "ARM",
 }
 # EQUIP_SLOTS order from shared/items.ts (drives the equipped grid layout).
 const EQUIP_SLOTS := ["helmet", "chest", "legs", "gloves", "mainHand", "offHand", "ring1", "ring2", "amulet"]
@@ -280,11 +280,12 @@ func _render_stats(msg: Dictionary) -> void:
 	var rows := [
 		["Max HP", str(roundi(float(d.get("maxHp", 0.0))))],
 		["Move", str(roundi(float(d.get("moveSpeed", 0.0))))],
-		["Power", "%d · %s dmg" % [int(a.get("power", 0)), _pct(float(d.get("spellPower", 1.0)))]],
-		["Spirit", "%d · %s heal" % [int(a.get("spirit", 0)), _pct(float(d.get("healPower", 1.0)))]],
-		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
-		["Vitality", str(int(a.get("vitality", 0)))],
+		["Strength", "%d · %s dmg" % [int(a.get("strength", 0)), _pct(float(d.get("spellPower", 1.0)))]],
+		["Intellect", "%d · %s heal" % [int(a.get("intellect", 0)), _pct(float(d.get("healPower", 1.0)))]],
+		["Stamina", str(int(a.get("stamina", 0)))],
 		["Agility", str(int(a.get("agility", 0)))],
+		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
+		["Crit", "%d · %s" % [int(a.get("crit", 0)), _pct(float(d.get("critChance", 0.0)))]],
 		["Armor", "%d · %s block" % [int(a.get("armor", 0)), _pct(float(d.get("dr", 0.0)))]],
 	]
 	for r in rows:

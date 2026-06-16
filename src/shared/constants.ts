@@ -52,6 +52,7 @@ export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
 };
 
 export const PROJECTILE_RADIUS = 7;
+export const CRIT_MULT = 1.5; // a critical strike deals +50% (see DerivedStats.critChance)
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
 export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost) is active
 

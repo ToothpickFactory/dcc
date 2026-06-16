@@ -1,4 +1,4 @@
-import { MONSTER_RESPAWN_MS } from "../../shared/constants";
+import { CRIT_MULT, MONSTER_RESPAWN_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
@@ -38,16 +38,37 @@ export function applyDamage(
   ability = 0,
   hitRange = 0,
 ): void {
+  // Player attacks can critically strike (scaled by crit chance) and tanks
+  // generate extra threat. Resolve both once, up front, for all target types.
+  let crit = false;
+  let threatMult = 1;
+  if (sourceIsPlayer) {
+    const attacker = ctx.players.get(sourceId);
+    if (attacker) {
+      threatMult = attacker.threatMult;
+      if (dmg > 0 && Math.random() < attacker.derived.critChance) {
+        crit = true;
+        dmg *= CRIT_MULT;
+      }
+    }
+  }
+
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
     if (target.reached) return; // safe in the waiting room — out of play
-    const taken = dmg * (1 - target.derived.dr); // armor mitigates
+    let taken = dmg * (1 - target.derived.dr); // armor mitigates
+    // Absorb shield (support talent) soaks damage before HP.
+    if (target.shieldUntil > ctx.now && target.shield > 0) {
+      const absorbed = Math.min(target.shield, taken);
+      target.shield -= absorbed;
+      taken -= absorbed;
+    }
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "player", range: hitRange, ability });
     }
     target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit });
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
     }
@@ -71,12 +92,12 @@ export function applyDamage(
   if (isBoss(target)) {
     if (target.dead) return;
     if (sourceIsPlayer) {
-      target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + dmg);
+      target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + dmg * threatMult);
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
       ctx.gainXp(sourceId, ability, false);
     }
     target.hp -= dmg;
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId, crit });
     if (target.hp <= 0) {
       target.dead = true;
       ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead" });
@@ -94,14 +115,14 @@ export function applyDamage(
   if (target.dead) return;
   const taken = dmg * (1 - target.derived.dr); // monster armor mitigates too
   if (sourceIsPlayer) {
-    // Threat-based aggro (combat note): damage from a player draws aggro.
-    target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + taken);
+    // Threat-based aggro (combat note): damage from a player draws aggro (tanks ×threatMult).
+    target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + taken * threatMult);
     ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
     ctx.gainXp(sourceId, ability, false);
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   target.hp -= taken;
-  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId });
+  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit });
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;

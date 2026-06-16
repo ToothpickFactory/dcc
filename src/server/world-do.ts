@@ -12,7 +12,7 @@ import {
   PLAYER_SPEED,
   TICK_MS,
 } from "../shared/constants";
-import type { Ability, MonsterKind, Rarity } from "../shared/types";
+import type { Ability, Klass, MonsterKind, Rarity } from "../shared/types";
 import {
   addItem,
   aggregateAttrs,
@@ -35,6 +35,8 @@ import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/h
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
+import { CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
+import { TALENT_TREES, canSpendTalent, pointsForLevel } from "../shared/talents";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor, rng } from "../procgen";
@@ -66,6 +68,7 @@ const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
   brute: 0.45,
 };
 const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
+const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-side validation)
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
 
@@ -79,6 +82,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   projectiles: ProjectileState[] = [];
   boss: BossState | null = null;
   lootBags: LootBagState[] = [];
+  groupHasteReadyAt = 0; // shared cooldown for the group-haste (bloodlust) burst
 
   private events: GameEvent[] = [];
   private loop: ReturnType<typeof setInterval> | null = null;
@@ -231,9 +235,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (killed) {
       const before = charLevelOf(p.charXp);
       p.charXp += amount;
-      if (charLevelOf(p.charXp) > before) {
+      const after = charLevelOf(p.charXp);
+      if (after > before) {
+        // 1 talent point per level gained. Until a class is chosen, the client
+        // shows the class picker (a pending point means "choose your class").
+        p.talentPoints += after - before;
         recomputePlayer(p); // new character level -> more max HP
         p.hp = p.derived.maxHp; // top off on level-up
+        this.persistPlayer(p);
       }
     }
   }
@@ -386,6 +395,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           inv: emptyInventory(),
           gold: 0,
           charXp: 0,
+          chosenClass: null, // fresh run = pick your class again
+          talents: {},
+          talentPoints: 0,
           lastSeen: Date.now(),
         });
       }
@@ -413,6 +425,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.seen.clear();
       p.abilities = starterAbilities(); // fresh run = base sword + rocks, all skill progress wiped
       p.charXp = 0;
+      p.chosenClass = null; // fresh run = re-pick class + re-spend talents
+      p.talents = {};
+      p.talentPoints = 0;
+      p.threatMult = 1;
+      p.shield = 0;
+      p.shieldUntil = 0;
+      p.bloodlustUntil = 0;
       p.base = zeroAttrs(); // fresh run = fresh character: gear wiped
       p.inv = emptyInventory();
       recomputePlayer(p);
@@ -704,12 +723,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : starterAbilities()).map((a) => ({ ...a })),
       charXp: rec?.charXp ?? 0,
+      chosenClass: rec?.chosenClass ?? null,
+      talents: rec?.talents ?? {},
+      talentPoints: rec?.talentPoints ?? 0,
+      threatMult: 1,
+      shield: 0,
+      shieldUntil: 0,
+      bloodlustUntil: 0,
       slowUntil: 0,
       potionReadyAt: 0,
       seen: new Set(),
       base,
       inv,
-      derived: deriveStats(PLAYER_MAX_HP, PLAYER_SPEED, base),
+      derived: deriveStats(PLAYER_MAX_HP, PLAYER_SPEED, base, rec?.chosenClass ? CLASS_MAIN_STAT[rec.chosenClass] : "strength"),
       ws,
       linkdead: false,
     };
@@ -779,7 +805,42 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.swapAbility(player, msg.a | 0, msg.b | 0);
     } else if (msg.t === "evolve") {
       this.evolveAbility(player, msg.slot | 0, String(msg.to));
+    } else if (msg.t === "chooseClass") {
+      this.chooseClass(player, String(msg.cls));
+    } else if (msg.t === "spendTalent") {
+      this.spendTalent(player, String(msg.node));
     }
+  }
+
+  // Pick a WoW-style class — only allowed once (the first level-up's pending
+  // point unlocks it). Sets the main stat (recompute) + opens the talent tree.
+  private chooseClass(p: PlayerState, cls: string): void {
+    if (p.status !== "alive") return;
+    if (p.chosenClass) return; // class is permanent for the run
+    if (!(KLASSES_SET.has(cls))) return;
+    p.chosenClass = cls as Klass;
+    recomputePlayer(p); // pick up the class main stat
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Spend one talent point on a node. Server-authoritative: validates the node is
+  // in the class tree, the row is unlocked, rank room remains, no choice conflict.
+  // Ability grants land on the action bar; passives refold stats.
+  private spendTalent(p: PlayerState, nodeId: string): void {
+    if (p.status !== "alive" || !p.chosenClass) return;
+    if (!canSpendTalent(p.chosenClass, p.talents, p.talentPoints, nodeId)) return;
+    const node = TALENT_TREES[p.chosenClass].find((n) => n.id === nodeId);
+    if (!node) return;
+    p.talents[nodeId] = (p.talents[nodeId] ?? 0) + 1;
+    p.talentPoints -= 1;
+    if (node.grants?.ability) {
+      const grant = ABILITY_NODES[node.grants.ability];
+      if (grant && !p.abilities.some((a) => a.id === grant.id)) this.slotLoot(p, { ...grant, tier: 0, xp: 0, fromTalent: true });
+    }
+    recomputePlayer(p); // passive bonuses (attrs / threat) take effect
+    this.persistPlayer(p);
+    this.sendInv(p);
   }
 
   // Reorder the action bar (e.g. move a found ability into the auto-cast slot).
@@ -1013,6 +1074,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       inv: p.inv,
       gold: p.gold,
       charXp: p.charXp,
+      chosenClass: p.chosenClass,
+      talents: p.talents,
+      talentPoints: p.talentPoints,
       lastSeen: Date.now(),
     };
   }
@@ -1073,16 +1137,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.abilities.push(ability);
       return;
     }
-    let target = BASE;
+    // Random LOOT grants never evict a talent-chosen ability; a talent grant may
+    // replace any extra (talents take priority over loot).
+    const incomingIsTalent = ability.fromTalent === true;
+    let target = -1;
     let worst = Infinity;
     for (let i = BASE; i < p.abilities.length; i++) {
       const a = p.abilities[i];
+      if (!incomingIsTalent && a.fromTalent) continue; // protect chosen talents from loot
       const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
       if (score < worst) {
         worst = score;
         target = i;
       }
     }
+    if (target < 0) return; // every extra slot is a protected talent — keep the chosen kit
     p.abilities[target] = ability;
   }
 
@@ -1184,6 +1253,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         derived: p.derived,
         abilities: p.abilities,
         charXp: p.charXp,
+        chosenClass: p.chosenClass,
+        talents: p.talents,
+        talentPoints: p.talentPoints,
+        shield: p.shieldUntil > this.now ? Math.round(p.shield) : 0,
         status: p.status,
         reached: p.reached,
         lifetimeXp: this.lb.get(p.id)?.xp ?? 0,

@@ -6,6 +6,8 @@ import {
   aggregateAttrs,
   allItems,
   carryCapacity,
+  coerceAttrs,
+  coerceInventory,
   compatibleSlots,
   deriveStats,
   emptyInventory,
@@ -33,25 +35,41 @@ function item(slot: Item["slot"], attrs: Partial<Item["attrs"]> = {}, extra: Par
 
 // ---- attributes ------------------------------------------------------------
 {
-  const a = addAttrs(zeroAttrs(), { power: 3, armor: 10 });
-  check("addAttrs sums", a.power === 3 && a.armor === 10 && a.spirit === 0);
+  const a = addAttrs(zeroAttrs(), { strength: 3, armor: 10 });
+  check("addAttrs sums", a.strength === 3 && a.armor === 10 && a.intellect === 0);
 }
 
 // ---- aggregate + derive ----------------------------------------------------
 {
   const inv = emptyInventory();
-  addItem(inv, item("helmet", { vitality: 5, armor: 20 }));
-  addItem(inv, item("weapon", { power: 10 }));
+  addItem(inv, item("helmet", { stamina: 5, armor: 20 }));
+  addItem(inv, item("weapon", { strength: 10 }));
   equip(inv, inv.carried[0].id);
   equip(inv, inv.carried[0].id); // after first equip, the weapon is now carried[0]
-  const total = aggregateAttrs({ ...zeroAttrs(), power: 1 }, inv);
-  check("aggregate counts equipped only", total.power === 11 && total.vitality === 5 && total.armor === 20, JSON.stringify(total));
+  const total = aggregateAttrs({ ...zeroAttrs(), strength: 1 }, inv);
+  check("aggregate counts equipped only", total.strength === 11 && total.stamina === 5 && total.armor === 20, JSON.stringify(total));
 
-  const d = deriveStats(100, 230, total);
-  check("vitality raises maxHp", d.maxHp === 100 + 5 * 8, String(d.maxHp));
-  check("power raises spellPower", Math.abs(d.spellPower - (1 + 11 * 0.04)) < 1e-9, String(d.spellPower));
+  const d = deriveStats(100, 230, total); // default mainStat = strength
+  check("stamina raises maxHp", d.maxHp === 100 + 5 * 8, String(d.maxHp));
+  check("strength (main stat) raises spellPower", Math.abs(d.spellPower - (1 + 11 * 0.04)) < 1e-9, String(d.spellPower));
   check("armor gives diminishing DR in (0,0.75)", d.dr > 0 && d.dr < 0.75);
   check("no haste → cdMult 1", deriveStats(100, 230, zeroAttrs()).cdMult === 1);
+
+  // main-stat scaling: intellect scales damage for a caster; crit drives critChance
+  const casterAttrs = { ...zeroAttrs(), intellect: 10, crit: 20 };
+  const dc = deriveStats(100, 230, casterAttrs, "intellect");
+  check("intellect main stat scales spellPower", Math.abs(dc.spellPower - (1 + 10 * 0.04)) < 1e-9, String(dc.spellPower));
+  check("crit raises critChance", dc.critChance > 0 && dc.critChance <= 0.75, String(dc.critChance));
+  check("strength main stat ignores intellect for damage", Math.abs(deriveStats(100, 230, casterAttrs).spellPower - 1) < 1e-9);
+}
+
+// ---- legacy attribute migration (persisted old keys → new) -----------------
+{
+  const a = coerceAttrs({ power: 5, spirit: 3, vitality: 7, agility: 2 });
+  check("coerceAttrs migrates power→strength, spirit→intellect, vitality→stamina", a.strength === 5 && a.intellect === 3 && a.stamina === 7 && a.agility === 2, JSON.stringify(a));
+
+  const inv = coerceInventory({ equipped: { mainHand: { id: "x", name: "Old Blade", rarity: "common", slot: "weapon", attrs: { power: 9 } } }, bagEquip: [], carried: [] });
+  check("coerceInventory migrates item attrs", aggregateAttrs(zeroAttrs(), inv).strength === 9, JSON.stringify(inv.equipped.mainHand?.attrs));
 }
 
 // ---- equip placement: rings + weapons fill both slots ----------------------
@@ -131,7 +149,7 @@ function item(slot: Item["slot"], attrs: Partial<Item["attrs"]> = {}, extra: Par
   const res = equip(inv, id);
   check("equipping a consumable is refused", res.ok === false);
   check("consumable stays in carry after a failed equip", inv.carried.some((i) => i.id === id));
-  check("consumable contributes no attrs", aggregateAttrs(zeroAttrs(), inv).power === 0);
+  check("consumable contributes no attrs", aggregateAttrs(zeroAttrs(), inv).strength === 0);
 }
 
 if (failures > 0) {

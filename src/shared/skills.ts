@@ -30,9 +30,14 @@ export const ABILITY_NODES: Record<string, Ability> = {
   multishot: { id: "multishot", category: "ranged", cd: 520, range: 460, dmg: 7, projectile: true, speed: 540, pellets: 3, spread: 0.35, ammo: 30, maxAmmo: 30, name: "Sling Volley", icon: "🎯", color: "#c2b8a4", flavor: "Three stones at once." },
   scattershot: { id: "scattershot", category: "ranged", cd: 560, range: 440, dmg: 6, projectile: true, speed: 540, pellets: 5, spread: 0.55, ammo: 40, maxAmmo: 40, name: "Scattershot", icon: "✴️", color: "#d8cdb4", flavor: "A cone of stinging shot." },
 
-  // ---- Support line (unlocked later; here so the tree can reach it) ----
-  mend: { id: "mend", category: "support", cd: 3200, range: 480, dmg: -28, projectile: true, speed: 520, name: "Mend", icon: "✨", color: "#5dff9b", flavor: "Lob a mending bolt at an ally." },
-  wavemend: { id: "wavemend", category: "support", cd: 4200, range: 520, dmg: -22, projectile: true, speed: 480, pellets: 3, spread: 0.5, name: "Healing Wave", icon: "🌊", color: "#7dffd0", flavor: "A fan of healing that mends several allies." },
+  // ---- Support line (heals only ever land on allies — never the enemy) ----
+  mend: { id: "mend", category: "support", cd: 3200, range: 480, dmg: -28, projectile: true, speed: 520, allyOnly: true, name: "Mend", icon: "✨", color: "#5dff9b", flavor: "Lob a mending bolt at an ally." },
+  wavemend: { id: "wavemend", category: "support", cd: 4200, range: 520, dmg: -22, projectile: true, speed: 480, pellets: 3, spread: 0.5, allyOnly: true, name: "Healing Wave", icon: "🌊", color: "#7dffd0", flavor: "A fan of healing that mends several allies." },
+  shieldward: { id: "shieldward", category: "support", cd: 9000, range: 520, dmg: 0, projectile: true, speed: 560, allyOnly: true, shield: 45, name: "Shield Ward", icon: "🛡️", color: "#9be7ff", flavor: "Bolt an ally with an absorb shield." },
+
+  // ---- Trinity utilities (tank threat + group haste) ----
+  taunt: { id: "taunt", category: "utility", cd: 8000, range: 320, dmg: 0, projectile: false, taunt: true, name: "Taunt", icon: "🗯️", color: "#ff9a4d", flavor: "Roar — nearby foes turn on you." },
+  bloodlust: { id: "bloodlust", category: "support", cd: 60000, range: 0, dmg: 0, projectile: false, groupBuff: "haste", name: "Bloodlust", icon: "🩸", color: "#ff5b6e", flavor: "Hasten the whole party for a short burst." },
 };
 
 // node id -> the evolutions you may choose when it matures.

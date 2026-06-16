@@ -4,18 +4,45 @@
 import type { Rarity } from "./types";
 
 // ---- Attributes -----------------------------------------------------------
-// Six primary attributes. Gear grants them; derived gameplay stats fall out of
+// WoW-style attributes. Gear grants them; derived gameplay stats fall out of
 // them (see deriveStats). Monsters have their own attributes too.
-export type AttrKey = "power" | "spirit" | "haste" | "vitality" | "agility" | "armor";
-export const ATTR_KEYS: AttrKey[] = ["power", "spirit", "haste", "vitality", "agility", "armor"];
+//   strength  — physical main stat (melee/tank ability damage)
+//   intellect — caster main stat (spell ability damage) + healing power
+//   stamina   — max HP
+//   agility   — move speed (and the agility classes' main stat)
+//   haste     — cooldown reduction (secondary)
+//   crit      — critical-strike chance (secondary)
+//   armor     — physical damage reduction
+export type AttrKey = "strength" | "intellect" | "stamina" | "agility" | "haste" | "crit" | "armor";
+export const ATTR_KEYS: AttrKey[] = ["strength", "intellect", "stamina", "agility", "haste", "crit", "armor"];
 export type Attributes = Record<AttrKey, number>;
 
 export function zeroAttrs(): Attributes {
-  return { power: 0, spirit: 0, haste: 0, vitality: 0, agility: 0, armor: 0 };
+  return { strength: 0, intellect: 0, stamina: 0, agility: 0, haste: 0, crit: 0, armor: 0 };
 }
 export function addAttrs(into: Attributes, more: Partial<Attributes>): Attributes {
   for (const k of ATTR_KEYS) into[k] += more[k] ?? 0;
   return into;
+}
+
+// Back-compat: pre-RPG-Phase-2 attribute keys, aliased onto the WoW names so
+// persisted characters/items (stored with the old keys) still load with their
+// stats intact across the deploy. Fresh items/characters never use the old keys.
+const OLD_TO_NEW: Record<string, AttrKey> = {
+  power: "strength",
+  spirit: "intellect",
+  vitality: "stamina",
+  // agility / haste / armor kept their names; crit is new (defaults to 0).
+};
+// Normalize a possibly-legacy attrs blob to the current AttrKey set.
+export function migrateAttrKeys(x: Record<string, unknown>): Partial<Attributes> {
+  const out: Partial<Attributes> = {};
+  for (const [k, v] of Object.entries(x)) {
+    if (typeof v !== "number") continue;
+    const key = (OLD_TO_NEW[k] ?? k) as AttrKey;
+    if (ATTR_KEYS.includes(key)) out[key] = (out[key] ?? 0) + v;
+  }
+  return out;
 }
 
 // ---- Items + slots --------------------------------------------------------
@@ -66,21 +93,29 @@ export function emptyInventory(): Inventory {
 export function coerceAttrs(x: unknown): Attributes {
   const a = zeroAttrs();
   if (x && typeof x === "object") {
-    const o = x as Record<string, unknown>;
-    for (const k of ATTR_KEYS) if (typeof o[k] === "number") a[k] = o[k] as number;
+    addAttrs(a, migrateAttrKeys(x as Record<string, unknown>)); // maps legacy keys (power→strength, …)
   }
   return a;
+}
+// Normalize a persisted item: migrate its attrs keys so legacy gear keeps its stats.
+function coerceItem<T>(it: T): T {
+  if (it && typeof it === "object" && "attrs" in (it as object)) {
+    const o = it as { attrs?: unknown };
+    if (o.attrs && typeof o.attrs === "object") o.attrs = migrateAttrKeys(o.attrs as Record<string, unknown>);
+  }
+  return it;
 }
 export function coerceInventory(x: unknown): Inventory {
   if (!x || typeof x !== "object") return emptyInventory();
   const o = x as Partial<Inventory>;
   const bagEquip = Array.isArray(o.bagEquip) ? o.bagEquip.slice(0, BAG_EQUIP_SLOTS) : [];
   while (bagEquip.length < BAG_EQUIP_SLOTS) bagEquip.push(null);
-  return {
-    equipped: o.equipped && typeof o.equipped === "object" ? o.equipped : {},
-    bagEquip,
-    carried: Array.isArray(o.carried) ? o.carried : [],
-  };
+  const equipped = o.equipped && typeof o.equipped === "object" ? (o.equipped as Inventory["equipped"]) : {};
+  for (const k of Object.keys(equipped) as EquipSlot[]) if (equipped[k]) coerceItem(equipped[k]);
+  for (const b of bagEquip) if (b) coerceItem(b);
+  const carried = Array.isArray(o.carried) ? (o.carried as Item[]) : [];
+  for (const it of carried) coerceItem(it);
+  return { equipped, bagEquip, carried };
 }
 
 export function carryCapacity(inv: Inventory): number {
@@ -121,31 +156,37 @@ export function aggregateAttrs(base: Attributes, inv: Inventory): Attributes {
 export interface DerivedStats {
   maxHp: number;
   moveSpeed: number; // px/s
-  spellPower: number; // outgoing damage multiplier
-  healPower: number; // outgoing heal multiplier
+  spellPower: number; // outgoing ability-damage multiplier (scales off the class MAIN stat)
+  healPower: number; // outgoing heal multiplier (scales off intellect)
   cdMult: number; // cooldown multiplier (<= 1; lower = faster)
-  dr: number; // incoming damage reduction, 0..DR_CAP
+  critChance: number; // chance an ability hit crits, 0..critCap
+  dr: number; // incoming physical damage reduction, 0..drCap
 }
 
 // Scaling factors (one place to balance). baseMaxHp/baseSpeed come from the
 // ENTITY (players vs each monster kind differ), so this stays universal.
 export const STAT = {
-  hpPerVit: 8,
+  hpPerStam: 8,
   speedPerAgi: 0.015, // +1.5% move speed per agility
-  dmgPerPower: 0.04, // +4% damage per power
-  healPerSpirit: 0.05,
+  dmgPerMain: 0.04, // +4% ability damage per point of the class main stat
+  healPerInt: 0.05, // +5% healing per intellect
   cdPerHaste: 0.03,
+  critPerPoint: 0.012, // +1.2% crit chance per crit point
+  critCap: 0.75,
   armorK: 60, // armor for ~50% DR
   drCap: 0.75,
 };
 
-export function deriveStats(baseMaxHp: number, baseSpeed: number, a: Attributes): DerivedStats {
+// `mainStat` is the attribute that scales this entity's ability damage (its class
+// main stat). Defaults to strength so unclassed players + monsters are unchanged.
+export function deriveStats(baseMaxHp: number, baseSpeed: number, a: Attributes, mainStat: AttrKey = "strength"): DerivedStats {
   return {
-    maxHp: baseMaxHp + a.vitality * STAT.hpPerVit,
+    maxHp: baseMaxHp + a.stamina * STAT.hpPerStam,
     moveSpeed: baseSpeed * (1 + a.agility * STAT.speedPerAgi),
-    spellPower: 1 + a.power * STAT.dmgPerPower,
-    healPower: 1 + a.spirit * STAT.healPerSpirit,
+    spellPower: 1 + a[mainStat] * STAT.dmgPerMain,
+    healPower: 1 + a.intellect * STAT.healPerInt,
     cdMult: 1 / (1 + a.haste * STAT.cdPerHaste),
+    critChance: Math.min(STAT.critCap, a.crit * STAT.critPerPoint),
     dr: Math.min(STAT.drCap, a.armor / (a.armor + STAT.armorK)),
   };
 }

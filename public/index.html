@@ -126,6 +126,19 @@
       .itile .badge { position: absolute; top: 2px; right: 4px; font-size: 8px; font-weight: 700; color: #ffd34d; letter-spacing: .3px; }
       #statPanel, #charStats .skstats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 12.5px; color: #d3dcec; }
       #statPanel .k, #charStats .k { color: #86a0c2; }
+      #talentBox .pts { color: #ffd34d; font-weight: 700; }
+      .classGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0; }
+      .classbtn, .talbtn { text-align: left; background: #0e1422; border: 1px solid #2c3a59; border-radius: 10px; color: #d3dcec; padding: 8px 10px; cursor: pointer; font: inherit; display: flex; flex-direction: column; gap: 2px; }
+      .classbtn:hover:not(:disabled), .talbtn:hover:not(:disabled) { border-color: #4a7bd6; background: #131c30; }
+      .classbtn .ico, .talbtn .ico { font-size: 18px; }
+      .classbtn b, .talbtn b { color: #eaf0fb; font-size: 13px; }
+      .classbtn .ed, .talbtn .ed { font-size: 10.5px; color: #9fb0cc; line-height: 1.25; }
+      .classbtn .role { font-size: 9.5px; color: #6b88b8; text-transform: uppercase; letter-spacing: .4px; }
+      .talGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 4px 0; }
+      .talbtn { padding: 6px 8px; }
+      .talbtn:disabled { opacity: 0.5; cursor: default; }
+      .talbtn.taken { border-color: #3fae5a; box-shadow: 0 0 0 1px #3fae5a55; }
+      .talbtn .rk { font-size: 9px; color: #5dff9b; }
       .invHint { font-size: 11px; color: #6b7790; margin-top: 12px; line-height: 1.5; }
       #invGold { font-size: 14px; font-weight: 700; color: #e7c14d; }
 
@@ -163,6 +176,7 @@
         <div id="charLevel"></div>
         <div class="invSection">Stats</div>
         <div id="charStats"></div>
+        <div id="talentBox"></div>
         <div class="invSection">Abilities — use them to earn XP, then evolve</div>
         <div id="skillList"></div>
         <div class="invHint">Each ability levels as you use it. When it's ready, pick a branch to evolve. Permadeath wipes all progress.</div>

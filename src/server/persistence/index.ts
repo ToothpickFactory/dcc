@@ -1,4 +1,4 @@
-import type { Ability, PlayerClass, PlaystyleProfile } from "../../shared/types";
+import type { Ability, Klass, PlayerClass, PlaystyleProfile } from "../../shared/types";
 import { coerceAttrs, coerceInventory, type Attributes, type Inventory } from "../../shared/items";
 
 export interface PlayerRecord {
@@ -12,6 +12,9 @@ export interface PlayerRecord {
   inv: Inventory; // equipped gear + bags + carried items
   gold: number; // currency earned by selling gear
   charXp: number; // character XP (skill system) — drives character level
+  chosenClass: Klass | null; // WoW class picked at first level-up
+  talents: Record<string, number>; // talent node id -> rank
+  talentPoints: number; // unspent talent points
   lastSeen: number;
 }
 export interface RunCheckpoint {
@@ -65,6 +68,9 @@ interface PlayerRow {
   inv: string;
   gold: number;
   char_xp: number;
+  chosen_class: string | null;
+  talents: string;
+  talent_points: number;
   last_seen: number;
   [k: string]: SqlStorageValue;
 }
@@ -100,9 +106,10 @@ export class SqlRunStore implements RunStore {
 
   playerSync(rec: PlayerRecord): void {
     this.sql.exec(
-      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, alive=excluded.alive, cls=excluded.cls,
-         profile=excluded.profile, abilities=excluded.abilities, base=excluded.base, inv=excluded.inv, gold=excluded.gold, char_xp=excluded.char_xp, last_seen=excluded.last_seen`,
+         profile=excluded.profile, abilities=excluded.abilities, base=excluded.base, inv=excluded.inv, gold=excluded.gold, char_xp=excluded.char_xp,
+         chosen_class=excluded.chosen_class, talents=excluded.talents, talent_points=excluded.talent_points, last_seen=excluded.last_seen`,
       rec.playerId,
       rec.name,
       rec.alive ? 1 : 0,
@@ -113,6 +120,9 @@ export class SqlRunStore implements RunStore {
       JSON.stringify(rec.inv),
       rec.gold | 0,
       rec.charXp | 0,
+      rec.chosenClass ?? null,
+      JSON.stringify(rec.talents ?? {}),
+      rec.talentPoints | 0,
       rec.lastSeen,
     );
   }
@@ -140,7 +150,7 @@ export class SqlRunStore implements RunStore {
 
   async loadPlayer(playerId: string): Promise<PlayerRecord | null> {
     const rows = this.sql
-      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, last_seen FROM player_record WHERE player_id = ?", playerId)
+      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, last_seen FROM player_record WHERE player_id = ?", playerId)
       .toArray();
     if (rows.length !== 1) return null;
     try {
@@ -233,6 +243,19 @@ function rowToPlayer(r: PlayerRow): PlayerRecord {
     inv: coerceInventory(JSON.parse(r.inv ?? "{}")),
     gold: r.gold ?? 0,
     charXp: r.char_xp ?? 0,
+    chosenClass: r.chosen_class ? (r.chosen_class as Klass) : null,
+    talents: safeJson(r.talents) as Record<string, number>,
+    talentPoints: r.talent_points ?? 0,
     lastSeen: r.last_seen,
   };
+}
+
+function safeJson(s: string | null | undefined): Record<string, number> {
+  if (!s) return {};
+  try {
+    const o = JSON.parse(s);
+    return o && typeof o === "object" ? (o as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
 }
