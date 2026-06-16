@@ -40,6 +40,16 @@ var ent_id := ""
 var kind := ""
 var is_self := false
 
+# ---- hit flash (juice): brief overbright/red tint on taking damage ----
+const FLASH_MS := 110.0
+var _flash_until := 0.0
+var _flash_color := Color(2.4, 2.4, 2.4)   # overbright white; red for the local player
+
+# Flash this sprite (called by SpriteLayer on a dmg/death event near/at this entity).
+func flash_hit(now_ms: float, hurt: bool = false) -> void:
+	_flash_until = now_ms + FLASH_MS
+	_flash_color = Color(2.6, 0.7, 0.7) if hurt else Color(2.4, 2.4, 2.4)
+
 # ---- facing / movement state (render.ts SpriteState) ----
 var _facing_dir := "down"          # "up" | "down" | "right"
 var _flip := false                 # mirror horizontally (left-facing)
@@ -278,6 +288,11 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		_apply_frame(loaded, frame_index, display_flip)
 	else:
 		_set_fallback()
+
+	# Hit flash overrides the just-set modulate, decaying over FLASH_MS (juice).
+	if now_ms < _flash_until:
+		var ft := clampf((_flash_until - now_ms) / FLASH_MS, 0.0, 1.0)
+		modulate = modulate.lerp(_flash_color, ft)
 
 	_apply_size(sprite_px)
 

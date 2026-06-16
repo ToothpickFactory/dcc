@@ -32,6 +32,10 @@ var _loot_prompt: Label
 var _runover_hint: Label
 var _skill_hint: Label
 var _skill_ready_was := false
+var _sfx: Sfx
+var _shake := 0.0              # screenshake intensity (0..1), decays each frame
+var _cam_xy := Vector2.ZERO    # smoothed camera focus (lerped toward target)
+var _cam_init := false
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -147,6 +151,11 @@ func _ready() -> void:
 	_fx = FxLayer.new()
 	add_child(_fx)
 
+	_sfx = Sfx.new()
+	add_child(_sfx)
+	_inv.set_sfx(_sfx)
+	_skills.set_sfx(_sfx)
+
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
@@ -214,13 +223,35 @@ func _bag_present(id: String) -> bool:
 func _on_events(events: Array) -> void:
 	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_fx.handle_events(events, _net.you)
-	# Boss spawn / death callouts (mirrors main.ts). The boss HP bar is handled by the HUD.
+	# Juice + audio: drive hit-flash, sfx, screenshake, and boss callouts off the same events.
+	var pp := Vector2(_pred.x, _pred.y)
 	for ev in events:
-		if ev is Dictionary and str(ev.get("e", "")) == "boss":
-			if str(ev.get("state", "")) == "spawn":
-				_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
-			else:
-				_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
+		if not (ev is Dictionary):
+			continue
+		match str(ev.get("e", "")):
+			"dmg":
+				var vp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
+				var self_hit := vp.distance_to(pp) < 38.0
+				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit)
+				if self_hit:
+					_shake = 1.0
+					_sfx.play("hurt")
+				else:
+					_sfx.play("hit")
+			"hit":
+				_sfx.play("hit", -3.0)
+			"death":
+				_sprites.flash_id(str(ev.get("id", "")))
+				_sfx.play("death")
+			"cast":
+				# Only your own casts (origin ~ your position) — avoids audio spam from every caster.
+				if Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0))).distance_to(pp) < 40.0:
+					_sfx.play("cast")
+			"boss":
+				if str(ev.get("state", "")) == "spawn":
+					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
+				else:
+					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
 
 # Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
 # of tofu. Prefer a bundled font if someone dropped one in res://fonts/; otherwise use the
@@ -290,13 +321,25 @@ func _process(dt: float) -> void:
 			_net.send_cast(_seq, int(idx), aim)
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
+	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
 	var cam_t: Vector2 = sp.get("cam_target", Vector2(_pred.x, _pred.y))
-	var cx: float = cam_t.x if spectating else _pred.x
-	var cy: float = cam_t.y if spectating else _pred.y
+	var target := cam_t if spectating else Vector2(_pred.x, _pred.y)
+	if not _cam_init or _cam_xy.distance_to(target) > 700.0:
+		_cam_xy = target  # snap on first frame / floor change / spectate jump
+		_cam_init = true
+	else:
+		_cam_xy = _cam_xy.lerp(target, clampf(dt * 14.0, 0.0, 1.0))
+	var shake := Vector2.ZERO
+	if _shake > 0.0:
+		_shake = maxf(0.0, _shake - dt * 3.5)
+		var mag := 26.0 * _shake * _shake
+		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
+	var cx: float = _cam_xy.x + shake.x
+	var cy: float = _cam_xy.y + shake.y
 	_cam.position = Vector3(cx, 820, cy + 460)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
-	_fog.set_vision(cx, cy)
-	_update_decor_visibility(cx, cy)
+	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
+	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
 
 	# Render + UI.
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))

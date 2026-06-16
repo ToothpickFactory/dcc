@@ -28,6 +28,7 @@ const READY_TEXT := Color8(0xff, 0xd3, 0x4d)
 
 # ---- dependencies / state -------------------------------------------------
 var _net: Node = null
+var _sfx: Node = null   # optional Sfx node (play(name)); set by Main
 var _key := ""
 
 # ---- node refs (built in _ready) ------------------------------------------
@@ -44,6 +45,9 @@ func _ready() -> void:
 
 func setup(net: Node) -> void:
 	_net = net
+
+func set_sfx(s: Node) -> void:
+	_sfx = s
 
 
 # =====================================================================
@@ -231,6 +235,8 @@ func _evolve_choice(to: String, node: Dictionary, slot: int) -> PanelContainer:
 	tile.gui_input.connect(func(ev: InputEvent):
 		if _is_tap(ev):
 			_send({"t": "evolve", "slot": slot, "to": to})
+			if _sfx != null and _sfx.has_method("play"):
+				_sfx.play("evolve")
 			var vp := get_viewport()
 			if vp != null:
 				vp.set_input_as_handled())

@@ -17,6 +17,8 @@ func handle_events(events: Array, you_id: String = "") -> void:
 				_float("-" + str(roundi(float(e.get("amount", 0.0)))), Color(1.0, 0.36, 0.30), e)
 			"heal":
 				_float("+" + str(roundi(float(e.get("amount", 0.0)))), Color(0.42, 1.0, 0.55), e)
+			"hit":
+				_impact(e)
 			"death":
 				_poof(e)
 
@@ -42,10 +44,36 @@ func _float(text: String, color: Color, e: Dictionary) -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
 
-func _poof(e: Dictionary) -> void:
-	var lbl := _new_label("✦", Color(1.0, 0.9, 0.55), 40, float(e.get("x", 0.0)), float(e.get("y", 0.0)), 40.0)
+# Projectile/melee impact: a quick bright burst that scales up and fades (the "hit"
+# event is emitted by the server but was previously rendered by neither client).
+func _impact(e: Dictionary) -> void:
+	var x := float(e.get("x", 0.0))
+	var y := float(e.get("y", 0.0))
+	var lbl := _new_label("✷", Color(1.0, 0.95, 0.6), 30, x, y, 26.0)
+	lbl.scale = Vector3(0.4, 0.4, 0.4)
 	var tw := create_tween().set_parallel(true)
-	tw.tween_property(lbl, "scale", Vector3(2.6, 2.6, 2.6), 0.4)
-	tw.tween_property(lbl, "modulate:a", 0.0, 0.4)
+	tw.tween_property(lbl, "scale", Vector3(1.7, 1.7, 1.7), 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.22).set_ease(Tween.EASE_IN)
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
+
+# Enemy death: a bright core burst plus a few sparks flying outward, so kills land.
+func _poof(e: Dictionary) -> void:
+	var x := float(e.get("x", 0.0))
+	var y := float(e.get("y", 0.0))
+	var core := _new_label("✦", Color(1.0, 0.9, 0.55), 44, x, y, 40.0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(core, "scale", Vector3(3.0, 3.0, 3.0), 0.45).set_ease(Tween.EASE_OUT)
+	tw.tween_property(core, "modulate:a", 0.0, 0.45)
+	tw.set_parallel(false)
+	tw.tween_callback(core.queue_free)
+	# Diverging sparks.
+	for i in 5:
+		var ang := TAU * float(i) / 5.0 + randf() * 0.6
+		var dist := randf_range(55.0, 95.0)
+		var spark := _new_label("•", Color(1.0, 0.8, 0.4), 26, x, y, 42.0)
+		var st := create_tween().set_parallel(true)
+		st.tween_property(spark, "position", Vector3(x + cos(ang) * dist, 18.0, y + sin(ang) * dist), 0.4).set_ease(Tween.EASE_OUT)
+		st.tween_property(spark, "modulate:a", 0.0, 0.4).set_ease(Tween.EASE_IN)
+		st.set_parallel(false)
+		st.tween_callback(spark.queue_free)

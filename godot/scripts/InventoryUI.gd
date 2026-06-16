@@ -59,6 +59,7 @@ const TILE_MIN := Vector2(78, 76)
 
 # ---- Dependencies / state -------------------------------------------------
 var _net: Node = null          # provides send_msg(obj) + self_dto (Dictionary)
+var _sfx: Node = null          # optional Sfx node (play(name)); set by Main
 
 # Latest snapshots (raw wire payloads). _inv is the {inv,attrs,derived,capacity,gold} dict.
 var _inv: Dictionary = {}
@@ -96,6 +97,13 @@ func _ready() -> void:
 # Called by Main right after .new() (or set externally) to inject the Net node.
 func setup(net: Node) -> void:
 	_net = net
+
+func set_sfx(s: Node) -> void:
+	_sfx = s
+
+func _sfx_play(name: String) -> void:
+	if _sfx != null and _sfx.has_method("play"):
+		_sfx.play(name)
 
 # =====================================================================
 # Public API (Main calls these)
@@ -321,7 +329,8 @@ func _render_loot() -> void:
 		var tile := _item_tile(it, "")
 		tile.gui_input.connect(func(ev: InputEvent):
 			if _is_tap(ev) and _open_bag_id != "":
-				_send({"t": "takeLoot", "bag": _open_bag_id, "item": item_id}))
+				_send({"t": "takeLoot", "bag": _open_bag_id, "item": item_id})
+				_sfx_play("loot"))
 		_loot_grid.add_child(tile)
 
 # =====================================================================
@@ -571,7 +580,8 @@ func _build_loot_panel() -> void:
 	take_all.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	take_all.pressed.connect(func():
 		if _open_bag_id != "":
-			_send({"t": "takeLoot", "bag": _open_bag_id}))
+			_send({"t": "takeLoot", "bag": _open_bag_id})
+			_sfx_play("loot"))
 	col.add_child(take_all)
 
 	col.add_child(_hint("Tap an item to take it. You must be standing near the bag."))
