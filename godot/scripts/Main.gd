@@ -33,6 +33,8 @@ var _runover_hint: Label
 var _skill_hint: Label
 var _skill_ready_was := false
 var _sfx: Sfx
+var _music: Music
+var _char_level := -1          # last seen character level (for level-up celebration)
 var _shake := 0.0              # screenshake intensity (0..1), decays each frame
 var _cam_xy := Vector2.ZERO    # smoothed camera focus (lerped toward target)
 var _cam_init := false
@@ -155,6 +157,9 @@ func _ready() -> void:
 	add_child(_sfx)
 	_inv.set_sfx(_sfx)
 	_skills.set_sfx(_sfx)
+
+	_music = Music.new()
+	add_child(_music)
 
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
@@ -293,6 +298,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
+	_music.set_theme(str(info.get("theme", "fantasy")))
+	_char_level = -1  # re-sync level baseline on floor/run change (avoids spurious toasts)
 	if OS.get_environment("DCC_DEBUG") != "":
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
@@ -382,6 +389,17 @@ func _process(dt: float) -> void:
 	if skill_ready and not _skill_ready_was:
 		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
 	_skill_ready_was = skill_ready
+
+	# Character level-up celebration (charXp accrues across the run).
+	if not _net.self_dto.is_empty():
+		var lvl := Skills.char_level_of(int(_net.self_dto.get("charXp", 0)))
+		if _char_level < 0:
+			_char_level = lvl
+		elif lvl > _char_level:
+			_char_level = lvl
+			_hud.toast("✦ Level %d!" % lvl, Color8(0x7d, 0xff, 0xd0))
+			_sfx.play("evolve")
+			_sprites.flash_id(_net.you)
 
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
