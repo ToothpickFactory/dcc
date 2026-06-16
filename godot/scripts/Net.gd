@@ -20,6 +20,7 @@ var prev: Dictionary = {}
 var floor_info: Dictionary = {}    # last floor message `info` (depth/theme/seed/...)
 var floor_state: Dictionary = {}   # last floor message `state` (endsAt/living/livingAtStairs)
 var run_state: Dictionary = {}     # last run message `state` (phase/players/spectators)
+var last_inv: Dictionary = {}      # last `inv` message (inv/attrs/derived/capacity/gold) — for the skills stat block
 
 var _ws := WebSocketPeer.new()
 var _was_open := false
@@ -76,6 +77,7 @@ func _handle(m: Dictionary) -> void:
 		"run":
 			run_state = m.get("state", {})
 		"inv":
+			last_inv = m
 			inv_received.emit(m)
 		"bag":
 			bag_received.emit(m)

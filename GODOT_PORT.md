@@ -9,6 +9,10 @@
 > must mirror the *current* `protocol.ts` (incl. `evolve`/`swapAbility`/`charXp`).
 > Re-generate the message catalog from the live `protocol.ts` before coding it.
 
+> **Protocol changelog** (keep `DccConst.PROTOCOL_VERSION` + Godot handling in lockstep with `src/protocol.ts`):
+> - **v6** — added `floor.geometry` (server sends the maze grid for non-procgen clients).
+> - **v7** — added the `useItem` client message (drink carried consumables, e.g. health potions). Godot: `InventoryUI` drinks consumables on tap + `Q` quick-use in `Main.gd`.
+
 ## 1. Executive Summary
 
 DCC is a top-down sprite multiplayer dungeon-crawler. The authoritative simulation runs on Cloudflare Workers + Durable Objects (`src/server`, ~3017 LOC) and broadcasts JSON snapshots over a WebSocket at `/ws` at 20 Hz. The browser client (`src/client/*.ts`, ~1963 LOC, Three.js/WebGL) renders those snapshots, predicts the local player, and captures input. This plan ports **only the browser client** to a native Godot 4 (GDScript) client that connects to the same unchanged `/ws`.

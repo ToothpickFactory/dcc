@@ -28,6 +28,13 @@ export default {
       return env.MY_DURABLE_OBJECT.getByName("world").fetch(request);
     }
 
+    // Leaderboard: public read of the all-time top players (durable; survives resets).
+    if (url.pathname === "/leaderboard") {
+      const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 20));
+      const top = await env.MY_DURABLE_OBJECT.getByName("world").topPlayers(limit);
+      return Response.json({ top });
+    }
+
     // Admin: wipe + start a fresh run (decision #7 — manual during dev).
     if (url.pathname === "/admin/new-run") {
       if (request.method !== "POST") return new Response("method not allowed", { status: 405 });

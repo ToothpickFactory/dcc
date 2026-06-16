@@ -27,6 +27,15 @@ export interface FloorRecord {
   completedAt: number;
   survivors: number;
 }
+// All-time per-player score (survives run resets) — backs the leaderboard.
+export interface LeaderboardEntry {
+  playerId: string;
+  name: string;
+  lifetimeXp: number;
+  bestFloor: number;
+  kills: number;
+  updatedAt: number;
+}
 
 export interface RunStore {
   loadRun(): Promise<RunCheckpoint | null>;
@@ -57,6 +66,15 @@ interface PlayerRow {
   gold: number;
   char_xp: number;
   last_seen: number;
+  [k: string]: SqlStorageValue;
+}
+interface LeaderboardRow {
+  player_id: string;
+  name: string;
+  lifetime_xp: number;
+  best_floor: number;
+  kills: number;
+  updated_at: number;
   [k: string]: SqlStorageValue;
 }
 
@@ -151,6 +169,56 @@ export class SqlRunStore implements RunStore {
   async recordFloorComplete(rec: FloorRecord): Promise<void> {
     this.recordFloorCompleteSync(rec);
   }
+
+  // Upsert an all-time leaderboard row with ABSOLUTE totals (the caller keeps the
+  // running totals in memory and flushes them, so this is an idempotent set — not
+  // an increment — and double-flushing can't inflate a score).
+  leaderboardUpsertSync(e: LeaderboardEntry): void {
+    this.sql.exec(
+      `INSERT INTO leaderboard (player_id, name, lifetime_xp, best_floor, kills, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, lifetime_xp=excluded.lifetime_xp,
+         best_floor=excluded.best_floor, kills=excluded.kills, updated_at=excluded.updated_at`,
+      e.playerId,
+      e.name,
+      e.lifetimeXp | 0,
+      e.bestFloor | 0,
+      e.kills | 0,
+      e.updatedAt,
+    );
+  }
+
+  loadLeaderboardSync(playerId: string): LeaderboardEntry | null {
+    const rows = this.sql
+      .exec<LeaderboardRow>("SELECT player_id, name, lifetime_xp, best_floor, kills, updated_at FROM leaderboard WHERE player_id = ?", playerId)
+      .toArray();
+    if (rows.length !== 1) return null;
+    return rowToLeaderboard(rows[0]);
+  }
+
+  // Top N by lifetime XP (the headline ranking), tie-broken by deepest floor. Only
+  // actual scorers — zero rows can linger (e.g. a player who joined but never scored).
+  topLeaderboardSync(limit: number): LeaderboardEntry[] {
+    return this.sql
+      .exec<LeaderboardRow>(
+        `SELECT player_id, name, lifetime_xp, best_floor, kills, updated_at FROM leaderboard
+         WHERE lifetime_xp > 0 OR best_floor > 0 OR kills > 0
+         ORDER BY lifetime_xp DESC, best_floor DESC LIMIT ?`,
+        Math.max(1, Math.min(100, limit | 0)),
+      )
+      .toArray()
+      .map(rowToLeaderboard);
+  }
+}
+
+function rowToLeaderboard(r: LeaderboardRow): LeaderboardEntry {
+  return {
+    playerId: r.player_id,
+    name: r.name,
+    lifetimeXp: r.lifetime_xp ?? 0,
+    bestFloor: r.best_floor ?? 0,
+    kills: r.kills ?? 0,
+    updatedAt: r.updated_at ?? 0,
+  };
 }
 
 function rowToPlayer(r: PlayerRow): PlayerRecord {

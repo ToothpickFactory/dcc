@@ -1,6 +1,7 @@
 import type { Net } from "./net";
 import type { Ability } from "../shared/types";
 import { ABILITY_NODES, EVOLUTIONS, canEvolve, charLevelOf, charXpForNext, evolveCost } from "../shared/skills";
+import { renderStatRows } from "./inventory";
 
 // The Skills screen (E): per-ability level + XP, and — when an ability has
 // matured — the branching evolution choices to pick. Plus the character level.
@@ -10,6 +11,7 @@ export class SkillsUI {
   private panel = byId("skills");
   private list = byId("skillList");
   private charLevel = byId("charLevel");
+  private charStats = byId("charStats");
   private btn = byId("skillsBtn");
   private key = "";
 
@@ -32,11 +34,18 @@ export class SkillsUI {
   }
   setGlow(on: boolean): void { this.btn.classList.toggle("glow", on); }
 
-  // Re-render while open as XP/level changes come in (cheap key check).
+  // A render key that also tracks stat changes (gear/level), so the stats block
+  // re-renders when attributes or derived stats move — not just on ability XP.
+  private renderKey(): string {
+    const a = this.net.self?.abilities ?? [];
+    const ab = a.map((x) => `${x.id}:${x.tier ?? 0}:${x.xp ?? 0}`).join(",");
+    return `${ab}|${this.net.self?.charXp ?? 0}|${JSON.stringify(this.net.self?.derived ?? {})}|${JSON.stringify(this.net.inv?.attrs ?? {})}`;
+  }
+
+  // Re-render while open as XP/level/stat changes come in (cheap key check).
   syncIfOpen(): void {
     if (!this.isOpen()) return;
-    const a = this.net.self?.abilities ?? [];
-    const k = a.map((x) => `${x.id}:${x.tier ?? 0}:${x.xp ?? 0}`).join(",") + "|" + (this.net.self?.charXp ?? 0);
+    const k = this.renderKey();
     if (k === this.key) return;
     this.key = k;
     this.render();
@@ -46,10 +55,14 @@ export class SkillsUI {
     const self = this.net.self;
     if (!self) return;
     const a = self.abilities ?? [];
-    this.key = a.map((x) => `${x.id}:${x.tier ?? 0}:${x.xp ?? 0}`).join(",") + "|" + self.charXp;
+    this.key = this.renderKey();
     const lvl = charLevelOf(self.charXp);
     const { into, need } = charXpForNext(self.charXp);
     this.charLevel.innerHTML = `<div class="clvl">Character <b>Level ${lvl}</b></div>` + xpBar(into, need);
+    // Live stat breakdown (attrs from the inv message, derived from self). Reuses
+    // the character-screen renderer so the formulas live in one place.
+    const attrs = this.net.inv?.attrs;
+    this.charStats.innerHTML = attrs ? `<div class="skstats">${renderStatRows(attrs, self.derived)}</div>` : "";
     this.list.innerHTML = "";
     a.forEach((ab, i) => this.list.appendChild(this.card(ab, i)));
   }

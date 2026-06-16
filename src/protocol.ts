@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7; // was 6 — added the `useItem` client message (drink consumables)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -23,6 +23,7 @@ export type ClientMsg =
   | { t: "unequipBag"; index: number } // unequip a bag container
   | { t: "sell"; item: string } // sell a carried item for gold (waiting room only)
   | { t: "drop"; item: string } // drop a carried item onto the floor
+  | { t: "useItem"; item: string } // drink/use a carried consumable (e.g. a potion)
   | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "swapAbility"; a: number; b: number } // reorder/swap two action-bar slots
@@ -76,6 +77,9 @@ export interface SelfDTO {
   charXp: number; // character XP (skill system) — client derives level via charLevelOf
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
+  bestFloor?: number; // deepest floor ever reached (all-time)
+  kills?: number; // all-time kills (all-time)
 }
 
 export type GameEvent =

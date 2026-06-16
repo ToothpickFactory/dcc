@@ -32,6 +32,13 @@ var _loot_prompt: Label
 var _runover_hint: Label
 var _skill_hint: Label
 var _skill_ready_was := false
+var _sfx: Sfx
+var _music: Music
+var _char_level := -1          # last seen character level (for level-up celebration)
+var _char_xp := -1             # last seen charXp (for "+N XP" floaters on kills)
+var _shake := 0.0              # screenshake intensity (0..1), decays each frame
+var _cam_xy := Vector2.ZERO    # smoothed camera focus (lerped toward target)
+var _cam_init := false
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -147,6 +154,14 @@ func _ready() -> void:
 	_fx = FxLayer.new()
 	add_child(_fx)
 
+	_sfx = Sfx.new()
+	add_child(_sfx)
+	_inv.set_sfx(_sfx)
+	_skills.set_sfx(_sfx)
+
+	_music = Music.new()
+	add_child(_music)
+
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
@@ -214,13 +229,36 @@ func _bag_present(id: String) -> bool:
 func _on_events(events: Array) -> void:
 	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_fx.handle_events(events, _net.you)
-	# Boss spawn / death callouts (mirrors main.ts). The boss HP bar is handled by the HUD.
+	# Juice + audio: drive hit-flash, sfx, screenshake, and boss callouts off the same events.
+	var pp := Vector2(_pred.x, _pred.y)
 	for ev in events:
-		if ev is Dictionary and str(ev.get("e", "")) == "boss":
-			if str(ev.get("state", "")) == "spawn":
-				_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
-			else:
-				_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
+		if not (ev is Dictionary):
+			continue
+		match str(ev.get("e", "")):
+			"dmg":
+				var vp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
+				var self_hit := vp.distance_to(pp) < 38.0
+				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit)
+				if self_hit:
+					_shake = 1.0
+					_sfx.play("hurt")
+					Input.start_joy_vibration(0, 0.35, 0.6, 0.18)  # gamepad rumble (no-op if none)
+				else:
+					_sfx.play("hit")
+			"hit":
+				_sfx.play("hit", -3.0)
+			"death":
+				_sprites.flash_id(str(ev.get("id", "")))
+				_sfx.play("death")
+			"cast":
+				# Only your own casts (origin ~ your position) — avoids audio spam from every caster.
+				if Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0))).distance_to(pp) < 40.0:
+					_sfx.play("cast")
+			"boss":
+				if str(ev.get("state", "")) == "spawn":
+					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
+				else:
+					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
 
 # Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
 # of tofu. Prefer a bundled font if someone dropped one in res://fonts/; otherwise use the
@@ -262,6 +300,9 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
+	_music.set_theme(str(info.get("theme", "fantasy")))
+	_char_level = -1  # re-sync level/xp baselines on floor/run change (avoids spurious toasts)
+	_char_xp = -1
 	if OS.get_environment("DCC_DEBUG") != "":
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
@@ -290,13 +331,25 @@ func _process(dt: float) -> void:
 			_net.send_cast(_seq, int(idx), aim)
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
+	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
 	var cam_t: Vector2 = sp.get("cam_target", Vector2(_pred.x, _pred.y))
-	var cx: float = cam_t.x if spectating else _pred.x
-	var cy: float = cam_t.y if spectating else _pred.y
+	var target := cam_t if spectating else Vector2(_pred.x, _pred.y)
+	if not _cam_init or _cam_xy.distance_to(target) > 700.0:
+		_cam_xy = target  # snap on first frame / floor change / spectate jump
+		_cam_init = true
+	else:
+		_cam_xy = _cam_xy.lerp(target, clampf(dt * 14.0, 0.0, 1.0))
+	var shake := Vector2.ZERO
+	if _shake > 0.0:
+		_shake = maxf(0.0, _shake - dt * 3.5)
+		var mag := 26.0 * _shake * _shake
+		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
+	var cx: float = _cam_xy.x + shake.x
+	var cy: float = _cam_xy.y + shake.y
 	_cam.position = Vector3(cx, 820, cy + 460)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
-	_fog.set_vision(cx, cy)
-	_update_decor_visibility(cx, cy)
+	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
+	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
 
 	# Render + UI.
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
@@ -339,6 +392,23 @@ func _process(dt: float) -> void:
 	if skill_ready and not _skill_ready_was:
 		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
 	_skill_ready_was = skill_ready
+
+	# XP feel: float "+N XP" on kills (charXp accrues from kills) + level-up celebration.
+	if not _net.self_dto.is_empty():
+		var cxp := int(_net.self_dto.get("charXp", 0))
+		if _char_xp < 0:
+			_char_xp = cxp
+		elif cxp > _char_xp:
+			_fx.xp_popup(_pred.x, _pred.y, cxp - _char_xp)
+			_char_xp = cxp
+		var lvl := Skills.char_level_of(cxp)
+		if _char_level < 0:
+			_char_level = lvl
+		elif lvl > _char_level:
+			_char_level = lvl
+			_hud.toast("✦ Level %d!" % lvl, Color8(0x7d, 0xff, 0xd0))
+			_sfx.play("evolve")
+			_sprites.flash_id(_net.you)
 
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
@@ -390,6 +460,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_E:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
+			KEY_Q:
+				_inv.use_first_potion()
 			KEY_F2:
 				_reset_run()
 			KEY_TAB:

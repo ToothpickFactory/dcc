@@ -24,8 +24,9 @@ export type EquipSlot = "helmet" | "chest" | "legs" | "gloves" | "mainHand" | "o
 export const EQUIP_SLOTS: EquipSlot[] = ["helmet", "chest", "legs", "gloves", "mainHand", "offHand", "ring1", "ring2", "amulet"];
 
 // What an item IS — drives which equip slot(s) accept it. `weapon` fits either
-// hand; `ring` fits either ring slot; `bag` goes into a bag-equip slot.
-export type ItemSlot = "helmet" | "chest" | "legs" | "gloves" | "weapon" | "ring" | "amulet" | "bag";
+// hand; `ring` fits either ring slot; `bag` goes into a bag-equip slot;
+// `consumable` is never equipped (carried-only; drink it via the useItem message).
+export type ItemSlot = "helmet" | "chest" | "legs" | "gloves" | "weapon" | "ring" | "amulet" | "bag" | "consumable";
 
 export interface Item {
   id: string;
@@ -34,6 +35,7 @@ export interface Item {
   slot: ItemSlot;
   attrs: Partial<Attributes>; // stat bonuses while equipped
   bagSlots?: number; // bags only: extra carry slots this container grants
+  consumable?: { heal?: number; healPct?: number }; // consumables: effect on use (drink)
   icon?: string;
   flavor?: string;
 }
@@ -165,6 +167,7 @@ export function compatibleSlots(slot: ItemSlot): EquipSlot[] {
     case "weapon": return ["mainHand", "offHand"];
     case "ring": return ["ring1", "ring2"];
     case "bag": return [];
+    case "consumable": return []; // never equipped — drink it from the carry grid
   }
 }
 

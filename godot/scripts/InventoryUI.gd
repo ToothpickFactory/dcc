@@ -24,7 +24,7 @@ const SLOT_EMOJI := {
 const ITEM_EMOJI := {
 	"helmet": "⛑️", "chest": "\U01f6e1️", "legs": "\U01f456",
 	"gloves": "\U01f9e4", "weapon": "⚔️", "ring": "\U01f48d",
-	"amulet": "\U01f4ff", "bag": "\U01f392",
+	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U0001f9ea",
 }
 const ATTR_ABBR := {
 	"power": "PWR", "spirit": "SPR", "haste": "HST",
@@ -59,6 +59,7 @@ const TILE_MIN := Vector2(78, 76)
 
 # ---- Dependencies / state -------------------------------------------------
 var _net: Node = null          # provides send_msg(obj) + self_dto (Dictionary)
+var _sfx: Node = null          # optional Sfx node (play(name)); set by Main
 
 # Latest snapshots (raw wire payloads). _inv is the {inv,attrs,derived,capacity,gold} dict.
 var _inv: Dictionary = {}
@@ -96,6 +97,13 @@ func _ready() -> void:
 # Called by Main right after .new() (or set externally) to inject the Net node.
 func setup(net: Node) -> void:
 	_net = net
+
+func set_sfx(s: Node) -> void:
+	_sfx = s
+
+func _sfx_play(name: String) -> void:
+	if _sfx != null and _sfx.has_method("play"):
+		_sfx.play(name)
 
 # =====================================================================
 # Public API (Main calls these)
@@ -164,6 +172,14 @@ func sync() -> void:
 func request_loot(bag_id: String) -> void:
 	_send({"t": "openLoot", "bag": bag_id})
 
+# Quick-use (Q key): drink the first carried consumable.
+func use_first_potion() -> void:
+	var inv: Dictionary = _inv.get("inv", {})
+	for it in inv.get("carried", []):
+		if it is Dictionary and str(it.get("slot", "")) == "consumable":
+			_send({"t": "useItem", "item": str(it.get("id", ""))})
+			return
+
 func loot_open_bag_id() -> String:
 	return _open_bag_id if (_loot_root != null and _loot_root.visible) else ""
 
@@ -224,9 +240,12 @@ func _render(msg: Dictionary) -> void:
 		if not (it is Dictionary):
 			continue
 		var item_id := str(it.get("id", ""))
+		var is_consumable := str(it.get("slot", "")) == "consumable"
 		var tile := _item_tile(it, "")
 		var body := _tile_body(tile)
-		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send({"t": "equip", "item": item_id}))
+		# Consumables drink (heal self); everything else equips on tap.
+		var tap_msg := {"t": "useItem", "item": item_id} if is_consumable else {"t": "equip", "item": item_id}
+		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send(tap_msg))
 		# Drop affordance (top-right).
 		var drop := _corner_label("\U01f5d1", DROP_COLOR, false)
 		drop.tooltip_text = "Drop on the floor"
@@ -321,7 +340,8 @@ func _render_loot() -> void:
 		var tile := _item_tile(it, "")
 		tile.gui_input.connect(func(ev: InputEvent):
 			if _is_tap(ev) and _open_bag_id != "":
-				_send({"t": "takeLoot", "bag": _open_bag_id, "item": item_id}))
+				_send({"t": "takeLoot", "bag": _open_bag_id, "item": item_id})
+				_sfx_play("loot"))
 		_loot_grid.add_child(tile)
 
 # =====================================================================
@@ -571,7 +591,8 @@ func _build_loot_panel() -> void:
 	take_all.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	take_all.pressed.connect(func():
 		if _open_bag_id != "":
-			_send({"t": "takeLoot", "bag": _open_bag_id}))
+			_send({"t": "takeLoot", "bag": _open_bag_id})
+			_sfx_play("loot"))
 	col.add_child(take_all)
 
 	col.add_child(_hint("Tap an item to take it. You must be standing near the bag."))

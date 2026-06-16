@@ -30,7 +30,7 @@ import {
   type Item,
 } from "../shared/items";
 import { recomputeMonster, recomputePlayer } from "./sim/stats";
-import { generateItem, rollGearRarity } from "./loot/itemgen";
+import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES, starterAbilities } from "../shared/abilities";
@@ -46,14 +46,27 @@ import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
 import { castAbility, stepProjectiles } from "./sim/projectiles";
+import { applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
-import { SqlRunStore, type PlayerRecord, type RunCheckpoint } from "./persistence";
+import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
 import { MIGRATIONS, SCHEMA } from "./persistence/schema";
 import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
 const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 ticks)
 const FIRST_SEED = 0xdcc;
 const MAX_ABILITY_SLOTS = 6; // base kit (4) + up to 2 granted; bounded under permadeath
+
+// Per-kind chance that a monster drops a (fresh, floor-appropriate) gear item on
+// death — trash rarely, elites/brutes often — so the floor isn't buried in loot.
+const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
+  swarm: 0.08,
+  grunt: 0.12,
+  ranged: 0.2,
+  healer: 0.25,
+  brute: 0.45,
+};
+const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
+const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
 
 // The single global world. It IS the authoritative server: a fixed-rate tick over
@@ -84,6 +97,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private flavorEnabled = false; // feature flag (env FLAVOR_ENABLED); default off
   private sql: SqlStorage;
   private store: SqlRunStore;
+  // All-time per-player score, accumulated in memory and flushed to the durable
+  // `leaderboard` table on the persist heartbeat (batches the frequent per-hit XP).
+  private lb = new Map<string, { name: string; xp: number; floor: number; kills: number }>();
   floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile (public: part of WorldCtx)
   private runId = "run-dev";
   private phase: RunPhase = "running";
@@ -186,6 +202,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, expiresAt: Date.now() + LOOT_BAG_TTL });
   }
 
+  // On monster death: chance-gated, floor-appropriate drops. NOT every kill drops
+  // gear (per-kind odds — trash rarely, elites often), and when it does it's a
+  // FRESH item rolled on the floor's rarity curve (not a copy of the monster's own
+  // stat gear). Potions are a separate, frequent roll so healing stays available.
+  rollDrops(m: MonsterState): void {
+    const drops: Item[] = [];
+    if (this.gearRng() < (GEAR_DROP_CHANCE[m.kind] ?? 0.12)) {
+      drops.push(generateItem(this.floor.depth, rollGearRarity(this.floor.depth, this.gearRng), this.gearRng));
+    }
+    if (this.gearRng() < POTION_DROP_CHANCE) {
+      drops.push(generatePotion(this.floor.depth, this.gearRng));
+    }
+    this.dropLoot(m.x, m.y, drops);
+  }
+
   // Award XP to the ability that landed a hit/kill, plus character XP on kills.
   // Ability XP matures an ability toward its next evolution; character XP raises
   // the character level (passive HP). Both persist; permadeath wipes them.
@@ -196,6 +227,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (!ab) return;
     const amount = killed ? (kind ? MONSTER_XP[kind] : PVP_KILL_XP) : HIT_XP;
     ab.xp = (ab.xp ?? 0) + amount;
+    this.bumpLb(p, amount, killed); // all-time leaderboard score (every hit + kill)
     if (killed) {
       const before = charLevelOf(p.charXp);
       p.charXp += amount;
@@ -204,6 +236,52 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         p.hp = p.derived.maxHp; // top off on level-up
       }
     }
+  }
+
+  // ---- Leaderboard accumulation (in memory; flushed on the persist heartbeat) ----
+
+  // Lazily seed a player's running totals from the durable table (so all-time XP
+  // continues across reconnects/runs). Called on join.
+  private seedLb(playerId: string, name: string): void {
+    if (this.lb.has(playerId)) return;
+    const row = this.store.loadLeaderboardSync(playerId);
+    this.lb.set(playerId, row
+      ? { name: row.name, xp: row.lifetimeXp, floor: row.bestFloor, kills: row.kills }
+      : { name, xp: 0, floor: 0, kills: 0 });
+  }
+
+  private bumpLb(p: PlayerState, dxp: number, killed: boolean): void {
+    const r = this.lb.get(p.id) ?? { name: p.name, xp: 0, floor: 0, kills: 0 };
+    r.name = p.name;
+    r.xp += dxp;
+    if (killed) r.kills += 1;
+    this.lb.set(p.id, r);
+  }
+
+  private bumpLbFloor(p: PlayerState, depth: number): void {
+    const r = this.lb.get(p.id) ?? { name: p.name, xp: 0, floor: 0, kills: 0 };
+    r.name = p.name;
+    if (depth > r.floor) r.floor = depth;
+    this.lb.set(p.id, r);
+  }
+
+  // Write the in-memory totals to the durable table (idempotent absolute upserts).
+  private flushLb(): void {
+    const now = Date.now();
+    for (const [playerId, r] of this.lb) {
+      if (r.xp === 0 && r.floor === 0 && r.kills === 0) continue; // don't clutter the board with non-scorers
+      this.store.leaderboardUpsertSync({ playerId, name: r.name, lifetimeXp: r.xp, bestFloor: r.floor, kills: r.kills, updatedAt: now });
+    }
+  }
+
+  // RPC (GET /leaderboard): flush latest in-memory totals, then return the top N.
+  topPlayers(limit = 20): LeaderboardEntry[] {
+    try {
+      this.ctx.storage.transactionSync(() => this.flushLb());
+    } catch {
+      /* fall through to whatever is already persisted */
+    }
+    return this.store.topLeaderboardSync(limit);
   }
 
   private spawnMonsters() {
@@ -426,6 +504,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.slowUntil = 0;
       p.reached = false; // fresh floor: everyone back in play
       p.seen.clear(); // fresh floor = fresh exploration
+      this.bumpLbFloor(p, this.floor.depth); // record deepest floor reached (all-time)
     }
     this.floorEndsAt = Date.now() + this.floor.durationMs;
     void this.ctx.storage.setAlarm(this.floorEndsAt);
@@ -560,6 +639,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private register(ws: WebSocket, name: string, ident: { playerId: string; token: string; rec: PlayerRecord | null }): PlayerState {
     const { playerId, token, rec } = ident;
     const finalName = (name || rec?.name || "Hero").slice(0, 16);
+    this.seedLb(playerId, finalName); // resume all-time leaderboard totals
 
     // Rebind a character already live in this run (reconnect / second tab).
     const existing = this.players.get(playerId);
@@ -625,6 +705,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       abilities: (rec?.abilities?.length ? rec.abilities : starterAbilities()).map((a) => ({ ...a })),
       charXp: rec?.charXp ?? 0,
       slowUntil: 0,
+      potionReadyAt: 0,
       seen: new Set(),
       base,
       inv,
@@ -688,6 +769,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.applyInv(player, () => unequipBag(player.inv, msg.index | 0));
     } else if (msg.t === "drop") {
       this.dropItem(player, String(msg.item));
+    } else if (msg.t === "useItem") {
+      this.useItem(player, String(msg.item));
     } else if (msg.t === "openLoot") {
       this.openLoot(player, String(msg.bag));
     } else if (msg.t === "takeLoot") {
@@ -746,6 +829,24 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (!it) return;
     this.dropLoot(p.x, p.y, [it]);
     recomputePlayer(p);
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Drink/use a carried consumable (e.g. a potion). Server-authoritative: validates
+  // it's a consumable and off cooldown, applies the heal to SELF, removes the item.
+  private useItem(p: PlayerState, itemId: string): void {
+    if (p.status !== "alive" || p.reached) return; // not while dead or in the waiting room
+    if (this.now < p.potionReadyAt) return; // shared consumable cooldown
+    const idx = findCarried(p.inv, itemId);
+    if (idx < 0) return;
+    const it = p.inv.carried[idx]!;
+    if (!it.consumable) return; // only consumables are drinkable
+    const amount = it.consumable.heal ?? Math.round(p.derived.maxHp * (it.consumable.healPct ?? 0));
+    if (amount <= 0) return;
+    p.inv.carried.splice(idx, 1); // consume it
+    p.potionReadyAt = this.now + POTION_CD;
+    applyHeal(this, p, amount, p.id); // clamps to maxHp, pushes the heal fx
     this.persistPlayer(p);
     this.sendInv(p);
   }
@@ -885,6 +986,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           savedAt: Date.now(),
         });
         for (const p of this.players.values()) this.store.playerSync(this.recordOf(p));
+        this.flushLb(); // persist all-time leaderboard totals (batched)
       });
     } catch {
       /* a failed checkpoint must never break the sim loop */
@@ -1084,6 +1186,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         charXp: p.charXp,
         status: p.status,
         reached: p.reached,
+        lifetimeXp: this.lb.get(p.id)?.xp ?? 0,
+        bestFloor: this.lb.get(p.id)?.floor ?? 0,
+        kills: this.lb.get(p.id)?.kills ?? 0,
       };
       this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });
     }

@@ -40,6 +40,26 @@ func set_net(net) -> void:
 func set_grid(grid: Dictionary) -> void:
 	_grid = grid
 
+# ---- hit flash dispatch (juice) -------------------------------------------
+# Flash a specific entity's sprite (death event carries an id).
+func flash_id(id: String, hurt: bool = false) -> void:
+	var spr: EntitySprite = _sprites.get(id)
+	if spr != null:
+		spr.flash_hit(float(Time.get_ticks_msec()), hurt)
+
+# Flash the sprite nearest a world point (dmg/heal events carry only x,y).
+func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false) -> void:
+	var best_id := ""
+	var best_sq := radius * radius
+	for id in _last_pos.keys():
+		var p: Vector2 = _last_pos[id]
+		var dsq := (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y)
+		if dsq <= best_sq:
+			best_sq = dsq
+			best_id = id
+	if best_id != "":
+		flash_id(best_id, hurt)
+
 # ---------------------------------------------------------------------------
 # Per-frame sync. ents = the latest server snapshot's entity list (Net.cur.ents).
 # you_id = local player id; self_pos = predicted local world position.
@@ -66,6 +86,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
+			if k != "proj":  # projectiles are too fleeting to pop; everything else scales in
+				spr.spawn(now_ms)
 		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.
