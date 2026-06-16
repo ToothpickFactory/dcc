@@ -26,6 +26,8 @@ var _pred := Predictor.new()
 var _seq := 0
 var _input_accum := 0.0
 var _dbg_accum := 0.0
+var _nearest_bag_id := ""
+var _loot_prompt: Label
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -86,6 +88,19 @@ func _ready() -> void:
 	_minimap = Minimap.new()
 	add_child(_minimap)
 
+	# "Loot (E)" prompt — shown when a loot bag is within reach.
+	var loot_layer := CanvasLayer.new()
+	loot_layer.layer = 20
+	add_child(loot_layer)
+	_loot_prompt = Label.new()
+	_loot_prompt.text = "Loot (E)"
+	_loot_prompt.add_theme_font_size_override("font_size", 20)
+	_loot_prompt.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	_loot_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_loot_prompt.position.y -= 170
+	_loot_prompt.visible = false
+	loot_layer.add_child(_loot_prompt)
+
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
 
@@ -118,6 +133,12 @@ func _skip_login() -> bool:
 		return true
 	for v in ["DCC_SMOKE", "DCC_AUTOMOVE", "DCC_NOLOGIN"]:
 		if OS.get_environment(v) != "":
+			return true
+	return false
+
+func _bag_present(id: String) -> bool:
+	for e in _net.ents:
+		if typeof(e) == TYPE_DICTIONARY and str(e.get("id", "")) == id:
 			return true
 	return false
 
@@ -188,6 +209,25 @@ func _process(dt: float) -> void:
 	_hud.set_waiting(spectating, bool(sp.get("reached", false)), remaining, str(sp.get("mode", "follow")))
 	_inv.set_reached(bool(_net.self_dto.get("reached", false)))
 
+	# Loot: nearest bag within reach -> "Loot (E)" prompt; auto-close the loot panel
+	# when its bag is gone (looted / despawned / walked away). Press E to open it.
+	_nearest_bag_id = ""
+	if alive:
+		var best := DccConst.LOOT_REACH * DccConst.LOOT_REACH
+		for e in _net.ents:
+			if typeof(e) != TYPE_DICTIONARY or str(e.get("kind", "")) != "lootbag":
+				continue
+			var bdx := float(e.get("x", 0.0)) - _pred.x
+			var bdy := float(e.get("y", 0.0)) - _pred.y
+			var bd := bdx * bdx + bdy * bdy
+			if bd <= best:
+				best = bd
+				_nearest_bag_id = str(e.get("id", ""))
+	_loot_prompt.visible = _nearest_bag_id != ""
+	var open_bag := _inv.loot_open_bag_id()
+	if open_bag != "" and not _bag_present(open_bag):
+		_inv.close_loot()
+
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
 		if _dbg_accum >= 1.0:
@@ -209,6 +249,9 @@ func _unhandled_input(e: InputEvent) -> void:
 		match e.keycode:
 			KEY_I:
 				_inv.toggle()
+			KEY_E:
+				if _nearest_bag_id != "":
+					_inv.request_loot(_nearest_bag_id)
 			KEY_TAB:
 				_spectate.cycle()
 			KEY_V:
