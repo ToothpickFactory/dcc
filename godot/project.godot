@@ -1,21 +1,34 @@
-; DCC — native Godot 4 client (Phase 0 scaffold). See ../GODOT_PORT.md.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; DCC — native Godot 4 client. See ../GODOT_PORT.md.
+
 config_version=5
 
 [application]
+
 config/name="DCC — The Infinite Descent (Godot client)"
 run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 
 [dotnet]
+
 project/assembly_name="dcc"
 
 [editor_plugins]
+
 enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
-# Movement actions (move_left/right/up/down) are registered in code at runtime by
-# InputCtl.gd (_ensure_action) with physical WASD + arrow keys — robust across
-# keyboard layouts and avoids project.godot's fragile InputEvent text format.
+; Movement actions (move_left/right/up/down) are registered in code at runtime by
+; InputCtl.gd (_ensure_action) with physical WASD + arrow keys — robust across
+; keyboard layouts and avoids project.godot's fragile InputEvent text format.
 
 [rendering]
+
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+; VRAM compression variants the exporters need (ETC2/ASTC is required for the
+; universal/arm64 macOS export; S3TC/BPTC for Windows + Linux desktop).
+textures/vram_compression/import_s3tc_bptc=true
+textures/vram_compression/import_etc2_astc=true
