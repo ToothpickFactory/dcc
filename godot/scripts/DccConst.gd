@@ -9,5 +9,5 @@ const LOOT_REACH := 90.0       # px a player must be within to loot a bag
 const VISION_RADIUS := 520.0
 const WORLD := Vector2(2400, 2400)
 const INPUT_MS := 100          # client -> server input cadence
-const PROTOCOL_VERSION := 7  # v7: + useItem client message (drink consumables)
+const PROTOCOL_VERSION := 8  # v8: RPG Phase 2 — class/talents on SelfDTO, chooseClass/spendTalent, crit
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"

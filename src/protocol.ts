@@ -7,10 +7,10 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 7; // was 6 — added the `useItem` client message (drink consumables)
+export const PROTOCOL_VERSION = 8; // was 7 — RPG Phase 2: class/talents on SelfDTO, chooseClass/spendTalent msgs, crit flag
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -28,6 +28,8 @@ export type ClientMsg =
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "swapAbility"; a: number; b: number } // reorder/swap two action-bar slots
   | { t: "evolve"; slot: number; to: string } // evolve a matured ability into a chosen branch
+  | { t: "chooseClass"; cls: string } // pick a WoW class at the first level-up (one-time)
+  | { t: "spendTalent"; node: string } // spend a talent point on a tree node
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -75,6 +77,11 @@ export interface SelfDTO {
   derived: DerivedStats; // gear-derived stats (HUD + client movement prediction)
   abilities: Ability[]; // the action bar (slot 1 auto-casts) — incl. live ammo + xp/tier
   charXp: number; // character XP (skill system) — client derives level via charLevelOf
+  // ---- WoW-style class & talents (RPG Phase 2) ----
+  chosenClass: Klass | null; // picked at the first level-up; null = picker pending
+  talents: Record<string, number>; // talent node id -> rank
+  talentPoints: number; // unspent talent points (a pending point w/ no class = "pick a class")
+  shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
@@ -83,7 +90,7 @@ export interface SelfDTO {
 }
 
 export type GameEvent =
-  | { e: "dmg"; x: number; y: number; amount: number; by?: string }
+  | { e: "dmg"; x: number; y: number; amount: number; by?: string; crit?: boolean }
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
   | { e: "cast"; x: number; y: number; ability: number }

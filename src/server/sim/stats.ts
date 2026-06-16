@@ -1,5 +1,7 @@
 import { MONSTER_KINDS, PLAYER_MAX_HP, PLAYER_SPEED } from "../../shared/constants";
-import { aggregateAttrs, deriveStats } from "../../shared/items";
+import { addAttrs, aggregateAttrs, deriveStats } from "../../shared/items";
+import { CLASS_MAIN_STAT } from "../../shared/classes";
+import { talentPassives } from "../../shared/talents";
 import { CHAR_HP_PER_LEVEL, charLevelOf } from "../../shared/skills";
 import type { MonsterState, PlayerState } from "../state";
 
@@ -10,7 +12,13 @@ import type { MonsterState, PlayerState } from "../state";
 
 export function recomputePlayer(p: PlayerState): void {
   const baseHp = PLAYER_MAX_HP + charLevelOf(p.charXp) * CHAR_HP_PER_LEVEL;
-  p.derived = deriveStats(baseHp, PLAYER_SPEED, aggregateAttrs(p.base, p.inv));
+  const mainStat = p.chosenClass ? CLASS_MAIN_STAT[p.chosenClass] : "strength";
+  // Gear + talent passive attribute bonuses; talents also set the threat multiplier.
+  const attrs = aggregateAttrs(p.base, p.inv);
+  const passive = talentPassives(p.talents);
+  addAttrs(attrs, passive.attrs);
+  p.threatMult = passive.threatMult;
+  p.derived = deriveStats(baseHp, PLAYER_SPEED, attrs, mainStat);
   if (p.hp > p.derived.maxHp) p.hp = p.derived.maxHp;
 }
 

@@ -1,4 +1,4 @@
-import type { Ability, MonsterKind } from "../shared/types";
+import type { Ability, Klass, MonsterKind } from "../shared/types";
 import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
@@ -20,6 +20,15 @@ export interface PlayerState {
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
   charXp: number; // total character XP (from kills); drives character level + passive bonuses
+  // ---- WoW-style class & talents (RPG Phase 2) ----
+  chosenClass: Klass | null; // picked at the first level-up; drives main-stat scaling + talent tree
+  talents: Record<string, number>; // talent node id -> rank spent
+  talentPoints: number; // unspent talent points (1 granted per character level)
+  // ---- Tank/support state (set by talents; read by the sim) ----
+  threatMult: number; // multiplier on threat this player generates (tank talent raises it)
+  shield: number; // current absorb shield (consumed before HP)
+  shieldUntil: number; // shield expires at this tick
+  bloodlustUntil: number; // group-haste buff active while now < this
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
   potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
@@ -79,6 +88,8 @@ export interface ProjectileState {
   ttl: number; // seconds remaining
   hitR: number; // projectile's own collision radius (px), added to the target's
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players
+  allyOnly?: boolean; // support projectile: only ever resolves on allied players (heals/shields)
+  shield?: number; // support projectile: absorb shield applied to the struck ally
 }
 
 // A bag of dropped items sitting on the floor. Spawned when ANY entity dies
@@ -101,6 +112,7 @@ export interface WorldCtx {
   projectiles: ProjectileState[];
   boss: BossState | null;
   lootBags: LootBagState[];
+  groupHasteReadyAt: number; // shared cooldown for the group-haste (bloodlust) burst
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;

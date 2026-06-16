@@ -18,14 +18,27 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   const ab = caster.abilities[idx];
   if (!ab) return false;
   if ((caster.cds[idx] ?? 0) > ctx.now) return false;
+  if (ab.groupBuff === "haste" && ctx.groupHasteReadyAt > ctx.now) return false; // shared party cooldown
   if (ab.ammo !== undefined && ab.ammo <= 0) return false; // out of charges (e.g. rocks)
   if (ab.ammo !== undefined) ab.ammo -= 1; // consume a charge
   // Gear/attributes scale the cast: haste lowers cooldown, power raises damage,
-  // spirit raises healing. Numbers stay on the existing Ability untouched.
-  caster.cds[idx] = ctx.now + ab.cd * caster.derived.cdMult;
+  // intellect raises healing. The bloodlust group buff shortens cooldowns further.
+  const hasteFactor = caster.bloodlustUntil > ctx.now ? 0.6 : 1;
+  caster.cds[idx] = ctx.now + ab.cd * caster.derived.cdMult * hasteFactor;
   caster.aim = aim;
   const dmg = ab.dmg < 0 ? ab.dmg * caster.derived.healPower : ab.dmg * caster.derived.spellPower;
   ctx.pushFx({ e: "cast", x: caster.x, y: caster.y, ability: idx });
+
+  // Taunt: instant — yank nearby foes' aggro onto the caster (tank tool).
+  if (ab.taunt) {
+    tauntNearby(ctx, caster, ab.range);
+    return true;
+  }
+  // Group haste (bloodlust): shared cooldown; buffs every nearby ally for a burst.
+  if (ab.groupBuff === "haste") {
+    applyGroupHaste(ctx, caster);
+    return true;
+  }
 
   if (ab.projectile) {
     const speed = ab.speed ?? 600;
@@ -46,6 +59,8 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
         ttl: ab.range / speed,
         hitR: PROJECTILE_RADIUS,
         boss: false,
+        allyOnly: ab.allyOnly, // support: only lands on allies
+        shield: ab.shield, // support: absorb shield applied to the ally
       });
     }
     // Casting a heal aggravates nearby foes (ported): support play has a cost.
@@ -76,6 +91,33 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
   }
   return true;
+}
+
+// Taunt: set every foe within range to top-threat + a margin on the caster, so
+// they peel onto the tank. Reuses the existing threat maps.
+function tauntNearby(ctx: WorldCtx, caster: PlayerState, range: number): void {
+  const TAUNT_BONUS = 50;
+  const yank = (threat: Map<string, number>) => {
+    let top = 0;
+    for (const v of threat.values()) if (v > top) top = v;
+    threat.set(caster.id, top + TAUNT_BONUS);
+  };
+  for (const m of ctx.monsters) if (!m.dead && near(caster, m, range)) yank(m.threat);
+  if (ctx.boss && !ctx.boss.dead && near(caster, ctx.boss, range)) yank(ctx.boss.threat);
+}
+
+// Group haste: buff every alive ally near the caster for a short burst, on a
+// shared party cooldown so it's a once-a-fight team power.
+function applyGroupHaste(ctx: WorldCtx, caster: PlayerState): void {
+  const RADIUS = 700;
+  const DURATION = 8000; // ms of haste
+  const SHARED_CD = 60000;
+  ctx.groupHasteReadyAt = ctx.now + SHARED_CD;
+  for (const p of ctx.players.values()) {
+    if (p.status !== "alive" || p.reached) continue;
+    if (near(caster, p, RADIUS)) p.bloodlustUntil = ctx.now + DURATION;
+  }
+  ctx.pushFx({ e: "heal", x: caster.x, y: caster.y, amount: 0 }); // a visible pop at the caster
 }
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -128,19 +170,24 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
     }
 
     const isHeal = pr.dmg < 0;
-    for (const m of ctx.monsters) {
-      if (m.dead) continue;
-      if (hit(pr.x, pr.y, m.x, m.y, pr.hitR + MONSTER_KINDS[m.kind].radius)) {
-        resolve(ctx, m, pr, isHeal);
+    // Support projectiles (heals/shields) pass harmlessly THROUGH foes and only
+    // ever land on an ally — so a healer/shielder can fire across a fight.
+    if (!pr.allyOnly) {
+      for (const m of ctx.monsters) {
+        if (m.dead) continue;
+        if (hit(pr.x, pr.y, m.x, m.y, pr.hitR + MONSTER_KINDS[m.kind].radius)) {
+          resolve(ctx, m, pr, isHeal);
+          return false;
+        }
+      }
+      if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, pr.hitR + BOSS_RADIUS)) {
+        resolve(ctx, ctx.boss, pr, isHeal);
         return false;
       }
     }
-    if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, pr.hitR + BOSS_RADIUS)) {
-      resolve(ctx, ctx.boss, pr, isHeal);
-      return false;
-    }
     for (const p of ctx.players.values()) {
-      if (p.id === pr.ownerId || p.status !== "alive" || p.reached) continue; // can't hit yourself / waiting-room players
+      // Support can land on the caster too (self-shield/heal); offensive can't.
+      if ((!pr.allyOnly && p.id === pr.ownerId) || p.status !== "alive" || p.reached) continue;
       if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
         resolve(ctx, p, pr, isHeal);
         return false;
@@ -156,6 +203,13 @@ function resolve(
   pr: ProjectileState,
   isHeal: boolean,
 ): void {
+  // Absorb shield (support): only meaningful on a player ally.
+  if (pr.shield && pr.shield > 0 && "status" in target) {
+    target.shield = Math.max(target.shield, pr.shield);
+    target.shieldUntil = ctx.now + 8000;
+    ctx.pushFx({ e: "heal", x: pr.x, y: pr.y, amount: 0 }); // shield pop reuses the heal fx
+    return;
+  }
   if (isHeal) {
     applyHeal(ctx, target, -pr.dmg, pr.ownerId);
   } else {

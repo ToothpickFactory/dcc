@@ -12,6 +12,7 @@
 > **Protocol changelog** (keep `DccConst.PROTOCOL_VERSION` + Godot handling in lockstep with `src/protocol.ts`):
 > - **v6** — added `floor.geometry` (server sends the maze grid for non-procgen clients).
 > - **v7** — added the `useItem` client message (drink carried consumables, e.g. health potions). Godot: `InventoryUI` drinks consumables on tap + `Q` quick-use in `Main.gd`.
+> - **v8** — RPG Phase 2. Attributes renamed to WoW stats (Strength/Intellect/Stamina/Agility/Haste/Crit/Armor); `SelfDTO` gains `chosenClass`/`talents`/`talentPoints`/`shield` + `derived.critChance`; new `chooseClass`/`spendTalent` client messages; `dmg` event gains an optional `crit` flag. Godot: `Talents.gd` (class + tree data, mirrors classes.ts/talents.ts), class picker + talent grid in `SkillsUI.gd`, updated stat labels in `SkillsUI`/`InventoryUI`.
 
 ## 1. Executive Summary
 
