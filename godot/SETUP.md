@@ -141,7 +141,12 @@ The bundle is **unsigned** — to run it locally without Gatekeeper griping:
 ## 10. Troubleshooting
 - **Black screen / "No floor geometry" toast** → the server isn't on protocol v6. Run a
   local server (step 5) and use `DCC_WS=ws://127.0.0.1:8787/ws`, or have someone `npm run deploy`.
-- **Missing textures / blank sprites** → you skipped step 3b/3c. Copy `public/assets` → `godot/assets`, then re-import.
+- **Missing textures / blank sprites, or an entity shows a flat colored square** (e.g. the
+  boss renders as a purple box) → your `godot/assets` copy is **stale or incomplete**. The art
+  is gitignored and copied locally, so when new art lands in `public/assets` (a new boss/enemy)
+  your local copy won't have it. Re-run `./godot/setup.sh` (it wipes + re-copies + re-imports),
+  or manually `cp -R public/assets/<Dir> godot/assets/` and re-import. Then **relaunch** — a
+  running client caches missing clips and won't re-probe them.
 - **`GdUnitCmdTool.gd` not found / tests won't run** → you skipped step 3a (GdUnit4 vendor).
 - **UI too big/small** → it scales with window size; resize the window (it re-scales live).
 - **`godot: command not found`** → use the full app path, or symlink the CLI (step 2).
