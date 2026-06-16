@@ -66,6 +66,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
+		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.
 		var wpos: Vector2

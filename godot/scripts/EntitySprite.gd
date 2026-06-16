@@ -21,6 +21,10 @@ const MOVEMENT_HOLD_MS := 150
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const BOSS_ROOT := "res://assets/Bosses/Slime"
+const JAILOR_NAME := "Iron Jailor"
+const JAILOR_MODEL_PATH := "res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb"
+const JAILOR_MODEL_SCALE := 504.0
+const JAILOR_LIGHT_ENERGY := 2.2
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
@@ -39,6 +43,11 @@ const COL_LOOT := Color8(0xff, 0xcc, 0x44)
 var ent_id := ""
 var kind := ""
 var is_self := false
+var _entity_name := ""
+var _model_root: Node3D
+var _model_anim: AnimationPlayer
+var _model_anim_name := ""
+var _jailor_slash_index := 0
 
 # ---- facing / movement state (render.ts SpriteState) ----
 var _facing_dir := "down"          # "up" | "down" | "right"
@@ -81,6 +90,13 @@ func setup(id: String, k: String, self_flag: bool) -> void:
 	kind = k
 	is_self = self_flag
 
+func set_entity_name(v: String) -> void:
+	if _entity_name == v:
+		return
+	_entity_name = v
+	if kind == "boss" and _entity_name == JAILOR_NAME:
+		_ensure_jailor_model()
+
 # ---------------------------------------------------------------------------
 # FNV-1a (render.ts hash()) -> pick a stable enemy variant root per entity id.
 # ---------------------------------------------------------------------------
@@ -95,6 +111,147 @@ static func _fnv1a(s: String) -> int:
 func _enemy_root() -> String:
 	var idx := _fnv1a(ent_id) % ENEMY_ROOTS.size()
 	return "res://assets/Enemies/" + str(ENEMY_ROOTS[idx])
+
+func _ensure_jailor_model() -> void:
+	if _model_root != null:
+		return
+	var scene := _load_jailor_scene()
+	if scene == null:
+		push_warning("Iron Jailor model failed to load: %s" % JAILOR_MODEL_PATH)
+		return
+	var inst := scene.instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		push_warning("Iron Jailor model root is not Node3D: %s" % JAILOR_MODEL_PATH)
+		return
+	_model_root = inst
+	_model_root.scale = Vector3.ONE * JAILOR_MODEL_SCALE
+	add_child(_model_root)
+	_model_anim = _find_animation_player(_model_root)
+	_brighten_model(_model_root)
+	_add_model_light()
+	texture = null
+	modulate.a = 0.0
+	print("[DCC] Iron Jailor model active")
+	_play_model_anim("idle")
+
+func _load_jailor_scene() -> PackedScene:
+	var imported := load(JAILOR_MODEL_PATH)
+	if imported is PackedScene:
+		return imported
+
+	if not FileAccess.file_exists(JAILOR_MODEL_PATH):
+		return null
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	var err := doc.append_from_file(JAILOR_MODEL_PATH, state)
+	if err != OK:
+		push_warning("Iron Jailor GLB parse failed: %s" % error_string(err))
+		return null
+	var root := doc.generate_scene(state)
+	if root == null:
+		return null
+	var packed := PackedScene.new()
+	err = packed.pack(root)
+	root.queue_free()
+	if err != OK:
+		push_warning("Iron Jailor scene pack failed: %s" % error_string(err))
+		return null
+	return packed
+
+func _find_animation_player(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node
+	for child in node.get_children():
+		var found := _find_animation_player(child)
+		if found != null:
+			return found
+	return null
+
+func _brighten_model(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mesh_instance := node as MeshInstance3D
+		var surface_count := mesh_instance.mesh.get_surface_count() if mesh_instance.mesh != null else 0
+		for i in surface_count:
+			var mat := mesh_instance.get_surface_override_material(i)
+			if mat == null and mesh_instance.mesh != null:
+				mat = mesh_instance.mesh.surface_get_material(i)
+			if mat is StandardMaterial3D:
+				var copy := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+				copy.albedo_color = _contrast_color(copy.albedo_color, 1.45, 1.45)
+				copy.emission_enabled = false
+				mesh_instance.set_surface_override_material(i, copy)
+	for child in node.get_children():
+		_brighten_model(child)
+
+func _contrast_color(color: Color, contrast: float, saturation: float) -> Color:
+	var r := clampf((color.r - 0.5) * contrast + 0.5, 0.0, 1.0)
+	var g := clampf((color.g - 0.5) * contrast + 0.5, 0.0, 1.0)
+	var b := clampf((color.b - 0.5) * contrast + 0.5, 0.0, 1.0)
+	var gray := r * 0.299 + g * 0.587 + b * 0.114
+	return Color(
+		clampf(gray + (r - gray) * saturation, 0.0, 1.0),
+		clampf(gray + (g - gray) * saturation, 0.0, 1.0),
+		clampf(gray + (b - gray) * saturation, 0.0, 1.0),
+		color.a,
+	)
+
+func _add_model_light() -> void:
+	var light := OmniLight3D.new()
+	light.light_energy = JAILOR_LIGHT_ENERGY
+	light.omni_range = 520.0
+	light.position = Vector3(0.0, 180.0, 0.0)
+	add_child(light)
+
+func _play_model_anim(intent: String) -> void:
+	if _model_anim == null:
+		return
+	var names := _model_anim.get_animation_list()
+	if names.is_empty():
+		return
+	var needles: Array[String] = []
+	match intent:
+		"run":
+			needles = ["run", "walk", "move"]
+		"slash_a":
+			needles = ["slash a", "slash_a", "slasha", "slash 1", "slash_1", "attack a", "attack_a", "attack 1"]
+		"slash_b":
+			needles = ["slash b", "slash_b", "slashb", "slash 2", "slash_2", "attack b", "attack_b", "attack 2"]
+		"slash_c":
+			needles = ["slash c", "slash_c", "slashc", "slash 3", "slash_3", "attack c", "attack_c", "attack 3"]
+		"strike", "punch", "kick":
+			needles = ["attack", "strike", "punch", "slash", "hit"]
+		"cast", "bolt":
+			needles = ["cast", "spell", "attack", "strike"]
+		"death":
+			needles = ["death", "die"]
+		_:
+			needles = ["idle"]
+	var chosen := String(names[0])
+	var matched := false
+	for anim_name in names:
+		var lower := String(anim_name).to_lower()
+		for needle in needles:
+			if lower.contains(needle):
+				chosen = String(anim_name)
+				matched = true
+				break
+		if matched:
+			break
+	if not matched and intent.begins_with("slash_"):
+		for anim_name in names:
+			var lower := String(anim_name).to_lower()
+			for needle in ["slash", "attack", "strike"]:
+				if lower.contains(needle):
+					chosen = String(anim_name)
+					matched = true
+					break
+			if matched:
+				break
+	if chosen == _model_anim_name and _model_anim.is_playing():
+		return
+	_model_anim_name = chosen
+	_model_anim.play(chosen)
 
 # ---------------------------------------------------------------------------
 # Facing helpers (render.ts: facingFromVector / facingFromAngle / facingWithHysteresis).
@@ -160,6 +317,16 @@ func _clip_duration_ms(clip: Variant, is_enemy: bool, frame_count: int) -> float
 # event (cast/melee) targets this entity. Latches the CURRENT facing for the duration.
 # ---------------------------------------------------------------------------
 func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_count: int = 0, frame_speed: float = ACTION_FRAME_SPEED) -> void:
+	if _model_root != null:
+		var model_action := action
+		if action == "strike":
+			var slash_names := ["slash_a", "slash_b", "slash_c"]
+			model_action = slash_names[_jailor_slash_index % slash_names.size()]
+			_jailor_slash_index += 1
+		_action = model_action
+		_action_until = now_ms + 650.0
+		_play_model_anim(model_action)
+		return
 	_action_facing_dir = _facing_dir
 	_action_flip = _flip
 	_action_frame_start = frame_start
@@ -210,6 +377,19 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 	# Expire a finished action.
 	if _action != "" and now_ms >= _action_until:
 		_action = ""
+
+	if _model_root != null:
+		position = Vector3(wx, 0.0, wy)
+		scale = Vector3.ONE
+		texture = null
+		modulate.a = 0.0
+		var face_angle := aim
+		if position_changed:
+			face_angle = atan2(dy, dx)
+		_model_root.rotation.y = -face_angle + PI * 0.5
+		if _action == "":
+			_play_model_anim("run" if moving else "idle")
+		return
 
 	# Position. Height offset is kind-dependent (render.ts h).
 	var h := _height_for_kind()

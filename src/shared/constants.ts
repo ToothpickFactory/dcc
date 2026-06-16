@@ -76,5 +76,6 @@ export const BOSS_PROJ_DMG = Math.round((MONSTER_KINDS.ranged.ranged?.projDmg ??
 export const BOSS_PROJ_LIFE = 4.5; // seconds before a stray bolt despawns
 export const BOSS_PROJ_SPREAD = 0.2; // radians between bolts in a volley
 export const BOSS_PROJ_RADIUS = 30; // collision radius vs players
+export const FIRST_BOSS_NAME = "Iron Jailor";
 export const BOSS_NAME = "Slime Guardian";
 export const BOSS_BOLT_SPRITE = 99; // EntityDTO.sprite marker so the client styles boss bolts

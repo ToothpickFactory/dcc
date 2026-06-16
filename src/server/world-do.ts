@@ -3,6 +3,7 @@ import {
   BOSS_MAX_HP,
   BOSS_NAME,
   BOSS_RADIUS,
+  FIRST_BOSS_NAME,
   LOOT_BAG_TTL,
   LOOT_REACH,
   MAX_FLOORS,
@@ -255,7 +256,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
-      name: BOSS_NAME,
+      name: this.floor.depth === 1 ? FIRST_BOSS_NAME : BOSS_NAME,
       x,
       y,
       aim: 0,

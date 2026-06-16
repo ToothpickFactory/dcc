@@ -55,7 +55,7 @@ export interface EntityDTO {
   hp?: number;
   maxHp?: number;
   dead?: boolean;
-  name?: string; // players only
+  name?: string; // players + named bosses
   cls?: PlayerClass; // players only
   sprite?: number; // atlas frame id (kind-specific)
   n?: number; // item count (loot bags)
