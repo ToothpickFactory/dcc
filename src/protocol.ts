@@ -77,6 +77,9 @@ export interface SelfDTO {
   charXp: number; // character XP (skill system) — client derives level via charLevelOf
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
+  bestFloor?: number; // deepest floor ever reached (all-time)
+  kills?: number; // all-time kills (all-time)
 }
 
 export type GameEvent =

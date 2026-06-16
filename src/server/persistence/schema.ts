@@ -32,6 +32,16 @@ export const SCHEMA: string[] = [
      completed_at INTEGER NOT NULL,
      survivors INTEGER NOT NULL
    )`,
+  // All-time per-player score for the leaderboard. UNLIKE player_record (run-scoped,
+  // wiped on /admin/new-run), this survives run resets — it's the durable ranking.
+  `CREATE TABLE IF NOT EXISTS leaderboard (
+     player_id TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     lifetime_xp INTEGER NOT NULL DEFAULT 0,
+     best_floor INTEGER NOT NULL DEFAULT 0,
+     kills INTEGER NOT NULL DEFAULT 0,
+     updated_at INTEGER NOT NULL
+   )`,
 ];
 
 // Additive migrations for DBs created before a column existed. Each ALTER throws

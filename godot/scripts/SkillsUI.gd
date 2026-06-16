@@ -130,6 +130,12 @@ func _render() -> void:
 			row.add_child(v)
 			_stats_box.add_child(row)
 
+	# All-time stats (durable across runs; backs the leaderboard) — from the self DTO.
+	_stats_box.add_child(_stat_row_node("— All-time —", ""))
+	_stats_box.add_child(_stat_row_node("Lifetime XP", str(int(self_dto.get("lifetimeXp", 0)))))
+	_stats_box.add_child(_stat_row_node("Best floor", str(int(self_dto.get("bestFloor", 0)))))
+	_stats_box.add_child(_stat_row_node("Kills", str(int(self_dto.get("kills", 0)))))
+
 	# Per-ability cards.
 	_clear(_list)
 	var abilities := _abilities()
@@ -454,6 +460,22 @@ func _abilities() -> Array:
 
 
 # The stat rows, mirroring InventoryUI._render_stats / inventory.ts renderStatRows.
+func _stat_row_node(k_text: String, v_text: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	var k := Label.new()
+	k.text = k_text
+	k.add_theme_color_override("font_color", TEXT_SUB)
+	k.add_theme_font_size_override("font_size", 13)
+	var v := Label.new()
+	v.text = v_text
+	v.add_theme_color_override("font_color", TEXT_NAME)
+	v.add_theme_font_size_override("font_size", 13)
+	row.add_child(k)
+	row.add_child(v)
+	return row
+
+
 func _stat_rows(a: Dictionary, d: Dictionary) -> Array:
 	return [
 		["Max HP", str(roundi(float(d.get("maxHp", 0.0))))],

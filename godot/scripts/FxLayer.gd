@@ -44,6 +44,18 @@ func _float(text: String, color: Color, e: Dictionary) -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
 
+# "+N XP" gain popup (gold), driven by Main off the self charXp delta on kills. Floats
+# higher/slower than damage numbers and offset up so it reads as a reward, not a hit.
+func xp_popup(x: float, y: float, amount: int) -> void:
+	if amount <= 0:
+		return
+	var lbl := _new_label("+%d XP" % amount, Color(1.0, 0.86, 0.35), 34, x, y, 80.0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "position:y", 200.0, 1.0)
+	tw.tween_property(lbl, "modulate:a", 0.0, 1.0).set_ease(Tween.EASE_IN)
+	tw.set_parallel(false)
+	tw.tween_callback(lbl.queue_free)
+
 # Projectile/melee impact: a quick bright burst that scales up and fades (the "hit"
 # event is emitted by the server but was previously rendered by neither client).
 func _impact(e: Dictionary) -> void:

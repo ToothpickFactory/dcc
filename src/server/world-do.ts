@@ -47,7 +47,7 @@ import { updateBoss } from "./sim/boss";
 import { castAbility, stepProjectiles } from "./sim/projectiles";
 import { applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
-import { SqlRunStore, type PlayerRecord, type RunCheckpoint } from "./persistence";
+import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
 import { MIGRATIONS, SCHEMA } from "./persistence/schema";
 import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
@@ -96,6 +96,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private flavorEnabled = false; // feature flag (env FLAVOR_ENABLED); default off
   private sql: SqlStorage;
   private store: SqlRunStore;
+  // All-time per-player score, accumulated in memory and flushed to the durable
+  // `leaderboard` table on the persist heartbeat (batches the frequent per-hit XP).
+  private lb = new Map<string, { name: string; xp: number; floor: number; kills: number }>();
   floor!: FloorDescriptor; // set in the constructor's blockConcurrencyWhile (public: part of WorldCtx)
   private runId = "run-dev";
   private phase: RunPhase = "running";
@@ -223,6 +226,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (!ab) return;
     const amount = killed ? (kind ? MONSTER_XP[kind] : PVP_KILL_XP) : HIT_XP;
     ab.xp = (ab.xp ?? 0) + amount;
+    this.bumpLb(p, amount, killed); // all-time leaderboard score (every hit + kill)
     if (killed) {
       const before = charLevelOf(p.charXp);
       p.charXp += amount;
@@ -231,6 +235,52 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         p.hp = p.derived.maxHp; // top off on level-up
       }
     }
+  }
+
+  // ---- Leaderboard accumulation (in memory; flushed on the persist heartbeat) ----
+
+  // Lazily seed a player's running totals from the durable table (so all-time XP
+  // continues across reconnects/runs). Called on join.
+  private seedLb(playerId: string, name: string): void {
+    if (this.lb.has(playerId)) return;
+    const row = this.store.loadLeaderboardSync(playerId);
+    this.lb.set(playerId, row
+      ? { name: row.name, xp: row.lifetimeXp, floor: row.bestFloor, kills: row.kills }
+      : { name, xp: 0, floor: 0, kills: 0 });
+  }
+
+  private bumpLb(p: PlayerState, dxp: number, killed: boolean): void {
+    const r = this.lb.get(p.id) ?? { name: p.name, xp: 0, floor: 0, kills: 0 };
+    r.name = p.name;
+    r.xp += dxp;
+    if (killed) r.kills += 1;
+    this.lb.set(p.id, r);
+  }
+
+  private bumpLbFloor(p: PlayerState, depth: number): void {
+    const r = this.lb.get(p.id) ?? { name: p.name, xp: 0, floor: 0, kills: 0 };
+    r.name = p.name;
+    if (depth > r.floor) r.floor = depth;
+    this.lb.set(p.id, r);
+  }
+
+  // Write the in-memory totals to the durable table (idempotent absolute upserts).
+  private flushLb(): void {
+    const now = Date.now();
+    for (const [playerId, r] of this.lb) {
+      if (r.xp === 0 && r.floor === 0 && r.kills === 0) continue; // don't clutter the board with non-scorers
+      this.store.leaderboardUpsertSync({ playerId, name: r.name, lifetimeXp: r.xp, bestFloor: r.floor, kills: r.kills, updatedAt: now });
+    }
+  }
+
+  // RPC (GET /leaderboard): flush latest in-memory totals, then return the top N.
+  topPlayers(limit = 20): LeaderboardEntry[] {
+    try {
+      this.ctx.storage.transactionSync(() => this.flushLb());
+    } catch {
+      /* fall through to whatever is already persisted */
+    }
+    return this.store.topLeaderboardSync(limit);
   }
 
   private spawnMonsters() {
@@ -453,6 +503,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.slowUntil = 0;
       p.reached = false; // fresh floor: everyone back in play
       p.seen.clear(); // fresh floor = fresh exploration
+      this.bumpLbFloor(p, this.floor.depth); // record deepest floor reached (all-time)
     }
     this.floorEndsAt = Date.now() + this.floor.durationMs;
     void this.ctx.storage.setAlarm(this.floorEndsAt);
@@ -587,6 +638,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private register(ws: WebSocket, name: string, ident: { playerId: string; token: string; rec: PlayerRecord | null }): PlayerState {
     const { playerId, token, rec } = ident;
     const finalName = (name || rec?.name || "Hero").slice(0, 16);
+    this.seedLb(playerId, finalName); // resume all-time leaderboard totals
 
     // Rebind a character already live in this run (reconnect / second tab).
     const existing = this.players.get(playerId);
@@ -933,6 +985,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           savedAt: Date.now(),
         });
         for (const p of this.players.values()) this.store.playerSync(this.recordOf(p));
+        this.flushLb(); // persist all-time leaderboard totals (batched)
       });
     } catch {
       /* a failed checkpoint must never break the sim loop */
@@ -1132,6 +1185,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         charXp: p.charXp,
         status: p.status,
         reached: p.reached,
+        lifetimeXp: this.lb.get(p.id)?.xp ?? 0,
+        bestFloor: this.lb.get(p.id)?.floor ?? 0,
+        kills: this.lb.get(p.id)?.kills ?? 0,
       };
       this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });
     }

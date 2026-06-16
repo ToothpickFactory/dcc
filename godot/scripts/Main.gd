@@ -35,6 +35,7 @@ var _skill_ready_was := false
 var _sfx: Sfx
 var _music: Music
 var _char_level := -1          # last seen character level (for level-up celebration)
+var _char_xp := -1             # last seen charXp (for "+N XP" floaters on kills)
 var _shake := 0.0              # screenshake intensity (0..1), decays each frame
 var _cam_xy := Vector2.ZERO    # smoothed camera focus (lerped toward target)
 var _cam_init := false
@@ -300,7 +301,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
 	_music.set_theme(str(info.get("theme", "fantasy")))
-	_char_level = -1  # re-sync level baseline on floor/run change (avoids spurious toasts)
+	_char_level = -1  # re-sync level/xp baselines on floor/run change (avoids spurious toasts)
+	_char_xp = -1
 	if OS.get_environment("DCC_DEBUG") != "":
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
@@ -391,9 +393,15 @@ func _process(dt: float) -> void:
 		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
 	_skill_ready_was = skill_ready
 
-	# Character level-up celebration (charXp accrues across the run).
+	# XP feel: float "+N XP" on kills (charXp accrues from kills) + level-up celebration.
 	if not _net.self_dto.is_empty():
-		var lvl := Skills.char_level_of(int(_net.self_dto.get("charXp", 0)))
+		var cxp := int(_net.self_dto.get("charXp", 0))
+		if _char_xp < 0:
+			_char_xp = cxp
+		elif cxp > _char_xp:
+			_fx.xp_popup(_pred.x, _pred.y, cxp - _char_xp)
+			_char_xp = cxp
+		var lvl := Skills.char_level_of(cxp)
 		if _char_level < 0:
 			_char_level = lvl
 		elif lvl > _char_level:
