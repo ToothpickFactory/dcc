@@ -39,7 +39,7 @@ const MOVEMENT_HOLD_MS = 150;
 // Fog of war (client-cosmetic): monsters/boss/projectiles are only drawn within
 // this radius AND with clear line-of-sight to the player (walls block). Allies and
 // the local player are always drawn. Pairs with the #fog vignette in index.html.
-const VISION_RADIUS = 520;
+export const VISION_RADIUS = 520;
 const VISION_RADIUS_SQ = VISION_RADIUS * VISION_RADIUS;
 
 interface LoadedClip {

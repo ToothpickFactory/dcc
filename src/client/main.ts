@@ -4,6 +4,7 @@ import { Predictor } from "./predict";
 import { Renderer } from "./render";
 import { Hud } from "./hud";
 import { InventoryUI } from "./inventory";
+import { Minimap } from "./minimap";
 import { generateFloor } from "../procgen";
 import { LOOT_REACH } from "../shared/constants";
 
@@ -13,6 +14,7 @@ const input = new Input();
 const predictor = new Predictor();
 const renderer = new Renderer(canvas);
 const invUI = new InventoryUI(net);
+const minimap = new Minimap();
 const lootBtn = document.getElementById("lootBtn") as HTMLButtonElement;
 const hudEl = document.getElementById("hud") as HTMLElement;
 const waitingEl = document.getElementById("waiting") as HTMLElement;
@@ -206,6 +208,9 @@ function frame(now: number) {
   }
 
   renderer.setVision(camX, camY); // wall-fog shader centers on the camera target
+  // Discovery minimap: reveal from the player's own position while in play; the
+  // "you" dot + allies still draw while waiting/spectating.
+  minimap.update(predictor.x, predictor.y, net.cur?.ents ?? [], net.you, net.self?.status === "alive" && !reached);
   if (net.cur) {
     renderer.sync(net.cur.ents, net.you, { x: camX, y: camY });
     renderer.follow(camX, camY);
@@ -241,6 +246,7 @@ function frame(now: number) {
     const f = generateFloor(net.floor.info.seed, net.floor.info.depth);
     predictor.setCollision(f.collision);
     renderer.setFloor(f);
+    minimap.setFloor(f.collision, f.stairs); // fresh floor = fresh discovery
     showToast(`⬇ Floor ${net.floor.info.depth} — ${net.floor.info.theme}`, "#9be7ff");
   }
   if (net.run && net.run.phase !== lastRunPhase) {

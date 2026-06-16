@@ -43,8 +43,12 @@
       .slot .auto { position: absolute; top: 2px; right: 4px; font-size: 8px; font-weight: 700; color: #ffd34d; letter-spacing: .5px; }
       #status { position: fixed; top: 12px; left: 12px; z-index: 10; font-size: 13px; color: #97a3bb; }
       #status b { color: #e6e9ef; }
-      #help { position: fixed; top: 12px; right: 12px; z-index: 10; font-size: 12px; color: #6b7790; text-align: right; line-height: 1.6; }
+      #help { position: fixed; top: 192px; right: 12px; z-index: 10; font-size: 12px; color: #6b7790; text-align: right; line-height: 1.6; }
       #help b { color: #aab6cf; }
+      /* Discovery minimap — top-right; revealed cells drawn in render loop. */
+      #minimap { display: none; position: fixed; top: 12px; right: 12px; z-index: 11;
+        width: 168px; height: 168px; border-radius: 8px; border: 1px solid #2c3a59;
+        background: #080b12c4; box-shadow: 0 6px 18px #0007; pointer-events: none; }
 
       /* ---- Boss banner ---- */
       #bossbar { display: none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
@@ -121,6 +125,7 @@
     </div>
     <div id="toast"></div>
     <div id="waiting"></div>
+    <canvas id="minimap"></canvas>
     <div id="help">
       <div><b>WASD / arrows</b> move · <b>tap-hold</b> on mobile</div>
       <div><b>mouse</b> aim · <b>1-4 / click / tap slot</b> cast (ballistic)</div>
