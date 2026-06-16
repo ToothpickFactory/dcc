@@ -171,3 +171,6 @@ public/client.js
 
 # Local OpenAI key for the art generator (scripts/gen-art.mjs)
 .openai-key
+
+# Claude Code local plugin/tooling state (machine-specific, not shared)
+.claude/settings.json
