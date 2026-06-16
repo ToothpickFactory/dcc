@@ -29,7 +29,8 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
-var _runover_hint: Label
+var _runover_panel: PanelContainer
+var _runover_stats: Label
 var _skill_hint: Label
 var _skill_ready_was := false
 var _sfx: Sfx
@@ -134,15 +135,41 @@ func _ready() -> void:
 	_loot_prompt.visible = false
 	loot_layer.add_child(_loot_prompt)
 
-	# Run-over prompt: how to start a fresh run (admin reset over HTTP).
-	_runover_hint = Label.new()
-	_runover_hint.text = "🏁 Run over — press F2 to start a new run"
-	_runover_hint.add_theme_font_size_override("font_size", 22)
-	_runover_hint.add_theme_color_override("font_color", Color(1.0, 0.83, 0.30))
-	_runover_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_runover_hint.position.y += 120
-	_runover_hint.visible = false
-	loot_layer.add_child(_runover_hint)
+	# Run-over death summary: a centered card with your run stats + how to restart.
+	_runover_panel = PanelContainer.new()
+	_runover_panel.visible = false
+	_runover_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_runover_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_runover_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	var ro_sb := StyleBoxFlat.new()
+	ro_sb.bg_color = Color8(0x12, 0x10, 0x16, 0xee)
+	ro_sb.border_color = Color8(0xd0, 0x8a, 0x2a)
+	ro_sb.set_border_width_all(2)
+	ro_sb.set_corner_radius_all(16)
+	ro_sb.set_content_margin_all(28)
+	_runover_panel.add_theme_stylebox_override("panel", ro_sb)
+	var ro_col := VBoxContainer.new()
+	ro_col.alignment = BoxContainer.ALIGNMENT_CENTER
+	ro_col.add_theme_constant_override("separation", 12)
+	var ro_title := Label.new()
+	ro_title.text = "🏁 RUN OVER"
+	ro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ro_title.add_theme_font_size_override("font_size", 40)
+	ro_title.add_theme_color_override("font_color", Color(1.0, 0.83, 0.30))
+	_runover_stats = Label.new()
+	_runover_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_runover_stats.add_theme_font_size_override("font_size", 18)
+	_runover_stats.add_theme_color_override("font_color", Color(0.84, 0.88, 0.95))
+	var ro_hint := Label.new()
+	ro_hint.text = "Press F2 to start a new run"
+	ro_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ro_hint.add_theme_font_size_override("font_size", 16)
+	ro_hint.add_theme_color_override("font_color", Color(0.55, 0.62, 0.74))
+	ro_col.add_child(ro_title)
+	ro_col.add_child(_runover_stats)
+	ro_col.add_child(ro_hint)
+	_runover_panel.add_child(ro_col)
+	loot_layer.add_child(_runover_panel)
 
 	# Skill-ready glow: nudge the player to open the Skills screen when an ability matures.
 	_skill_hint = Label.new()
@@ -444,7 +471,15 @@ func _process(dt: float) -> void:
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()
 
-	_runover_hint.visible = str(_net.run_state.get("phase", "")) == "ended"
+	# Run-over death summary: show the card + this run's stats when the run has ended.
+	var ended := str(_net.run_state.get("phase", "")) == "ended"
+	_runover_panel.visible = ended
+	if ended:
+		var floor_reached := int(_net.run_state.get("currentFloor", _net.floor_info.get("depth", 1)))
+		var lvl_now := Skills.char_level_of(int(_net.self_dto.get("charXp", 0)))
+		var kills := int(_net.self_dto.get("kills", 0))
+		var life := int(_net.self_dto.get("lifetimeXp", 0))
+		_runover_stats.text = "Reached Floor %d · Level %d\n%d kills · %d lifetime XP" % [floor_reached, lvl_now, kills, life]
 
 	# Skills: keep XP bars live while open; nudge + glow when an ability matures.
 	if _skills.is_open():

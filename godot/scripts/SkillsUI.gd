@@ -50,6 +50,10 @@ func setup(net: Node) -> void:
 func set_sfx(s: Node) -> void:
 	_sfx = s
 
+func _sfx_play(name: String) -> void:
+	if _sfx != null and _sfx.has_method("play"):
+		_sfx.play(name)
+
 
 # =====================================================================
 # Public API (Main calls these)
@@ -63,11 +67,15 @@ func toggle() -> void:
 	else: open()
 
 func open() -> void:
+	if not _root.visible:
+		_sfx_play("ui_open")
 	_root.visible = true
 	_key = ""
 	_render()
 
 func close() -> void:
+	if _root.visible:
+		_sfx_play("ui_close")
 	_root.visible = false
 
 # Any ability ready to evolve? Drives Main's "skill ready" glow + level-up toast.
