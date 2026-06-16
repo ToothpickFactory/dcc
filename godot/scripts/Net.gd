@@ -31,6 +31,11 @@ var _name := "GodotHero"
 func start(url: String, player_name: String) -> void:
 	_url = url
 	_name = player_name
+	# Dev hook: rebind to an existing character by signed token (e.g. to inspect a
+	# leveled save). Mirrors the web client's stored identity token.
+	var tok := OS.get_environment("DCC_TOKEN")
+	if tok != "":
+		token = tok
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
 		push_error("WS connect_to_url failed: %s" % error_string(err))
