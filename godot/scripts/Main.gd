@@ -15,6 +15,7 @@ var _world: World
 var _fog: Fog
 var _decor: WorldDecor
 var _sprites: SpriteLayer
+var _fx: FxLayer
 var _cam: Camera3D
 var _inp                       # InputCtl (Node)
 var _hud: Hud
@@ -82,11 +83,36 @@ func _ready() -> void:
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
 
+	_fx = FxLayer.new()
+	add_child(_fx)
+
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
+	_net.events_received.connect(_on_events)
 	_net.welcomed.connect(func(you): print("[DCC] welcome you=", you))
-	_net.start(server_url, player_name)
+
+	# Name screen before connecting (skipped headless / in diagnostic modes).
+	if _skip_login():
+		_net.start(server_url, player_name)
+	else:
+		var login := Login.new()
+		add_child(login)
+		login.submitted.connect(func(n):
+			player_name = n
+			_net.start(server_url, n))
+
+func _skip_login() -> bool:
+	if DisplayServer.get_name() == "headless":
+		return true
+	for v in ["DCC_SMOKE", "DCC_AUTOMOVE", "DCC_NOLOGIN"]:
+		if OS.get_environment(v) != "":
+			return true
+	return false
+
+func _on_events(events: Array) -> void:
+	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
+	_fx.handle_events(events)
 
 func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if geometry.is_empty():
@@ -127,6 +153,11 @@ func _process(dt: float) -> void:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
+			# Slot-1 auto-cast (web parity: slot 1 auto-fires when off cooldown).
+			var cds: Dictionary = _net.self_dto.get("cds", {})
+			if int(cds.get("0", 0)) <= int(_net.cur.get("tick", 0)):
+				_seq += 1
+				_net.send_cast(_seq, 0, aim)
 		for idx in _inp.take_casts():
 			_seq += 1
 			_net.send_cast(_seq, int(idx), aim)

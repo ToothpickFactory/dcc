@@ -8,6 +8,7 @@ signal welcomed(you)
 signal floor_received(geometry, info)
 signal inv_received(msg)
 signal bag_received(msg)
+signal events_received(events)
 signal closed
 
 var you := ""
@@ -69,6 +70,9 @@ func _handle(m: Dictionary) -> void:
 			prev = cur
 			ents = m.get("ents", [])
 			cur = {"tick": int(m.get("tick", 0)), "ents": ents, "recv": Time.get_ticks_msec()}
+			var evs: Array = m.get("events", [])
+			if not evs.is_empty():
+				events_received.emit(evs)
 		"run":
 			run_state = m.get("state", {})
 		"inv":
