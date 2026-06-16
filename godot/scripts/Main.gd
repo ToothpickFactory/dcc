@@ -111,6 +111,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 
 func _process(dt: float) -> void:
 	var mv: Vector2 = _inp.move_vec()
+	if OS.get_environment("DCC_AUTOMOVE") != "":
+		mv = Vector2(1, 0)  # diagnostic: simulate holding right to test the move pipeline
 	_pred.update(_net.self_dto, mv, dt)
 	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y)
 

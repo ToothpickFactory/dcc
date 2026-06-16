@@ -45,6 +45,26 @@ var _cast_queue: Array[int] = []
 # when the stick is idle so callers can fall back to the pointer aim.
 var _stick_aim: float = NAN
 
+func _ready() -> void:
+	# Register movement actions in CODE so they don't depend on project.godot's
+	# (fragile) text serialization. Physical keycodes => layout-independent WASD.
+	_ensure_action(&"move_left", [KEY_A, KEY_LEFT])
+	_ensure_action(&"move_right", [KEY_D, KEY_RIGHT])
+	_ensure_action(&"move_up", [KEY_W, KEY_UP])
+	_ensure_action(&"move_down", [KEY_S, KEY_DOWN])
+	if OS.get_environment("DCC_DEBUG") != "":
+		print("[DBG] move actions bound: right=", InputMap.action_get_events(&"move_right").size(),
+			" up=", InputMap.action_get_events(&"move_up").size())
+
+func _ensure_action(action: StringName, keys: Array) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action, 0.5)
+	InputMap.action_erase_events(action)
+	for k in keys:
+		var ev := InputEventKey.new()
+		ev.physical_keycode = k
+		InputMap.action_add_event(action, ev)
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Keyboard slot keys 1-6 (queue a cast; never normalized through actions so we
 	# get one discrete press per keystroke, matching the TS keydown handler).

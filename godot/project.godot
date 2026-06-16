@@ -12,23 +12,9 @@ project/assembly_name="dcc"
 [editor_plugins]
 enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
-[input]
-move_left={
-"deadzone": 0.5,
-"events": [{"type":"key","keycode":65,"physical_keycode":0,"unicode":0,"echo":false},{"type":"key","keycode":4194319,"physical_keycode":0,"unicode":0,"echo":false}]
-}
-move_right={
-"deadzone": 0.5,
-"events": [{"type":"key","keycode":68,"physical_keycode":0,"unicode":0,"echo":false},{"type":"key","keycode":4194321,"physical_keycode":0,"unicode":0,"echo":false}]
-}
-move_up={
-"deadzone": 0.5,
-"events": [{"type":"key","keycode":87,"physical_keycode":0,"unicode":0,"echo":false},{"type":"key","keycode":4194320,"physical_keycode":0,"unicode":0,"echo":false}]
-}
-move_down={
-"deadzone": 0.5,
-"events": [{"type":"key","keycode":83,"physical_keycode":0,"unicode":0,"echo":false},{"type":"key","keycode":4194322,"physical_keycode":0,"unicode":0,"echo":false}]
-}
+# Movement actions (move_left/right/up/down) are registered in code at runtime by
+# InputCtl.gd (_ensure_action) with physical WASD + arrow keys — robust across
+# keyboard layouts and avoids project.godot's fragile InputEvent text format.
 
 [rendering]
 renderer/rendering_method="gl_compatibility"
