@@ -95,6 +95,31 @@ func _bake() -> void:
 		var sig := sin(TAU * f * t) * 0.7 + sin(TAU * f * 2.0 * t) * 0.3
 		return env * 0.5 * sig)
 
+	# heartbeat: a low lub-dub — played on an interval when HP is critical.
+	_bank["heartbeat"] = _synth(0.34, func(t: float) -> float:
+		var beat := func(tt: float) -> float: return exp(-tt * 26.0) * sin(TAU * 58.0 * tt)
+		var s: float = beat.call(t)
+		if t > 0.14:
+			s += 0.85 * float(beat.call(t - 0.14))
+		return clampf(s, -1.0, 1.0))
+
+	# descent: a downward swoosh into a soft boom — floor transition.
+	_bank["descent"] = _synth(0.55, func(t: float) -> float:
+		var f := 520.0 * exp(-t * 4.5) + 70.0
+		var env := exp(-t * 3.4)
+		var noise := (randf() * 2.0 - 1.0) * exp(-t * 10.0) * 0.3
+		return clampf(env * (0.6 * sin(TAU * f * t) + noise), -1.0, 1.0))
+
+	# UI blips — soft, short, distinct open (rising) vs close (falling) vs click (tick).
+	_bank["ui_open"] = _synth(0.10, func(t: float) -> float:
+		var f := 480.0 + 700.0 * t / 0.10
+		return exp(-t * 16.0) * 0.4 * sin(TAU * f * t))
+	_bank["ui_close"] = _synth(0.10, func(t: float) -> float:
+		var f := 760.0 - 480.0 * t / 0.10
+		return exp(-t * 16.0) * 0.4 * sin(TAU * f * t))
+	_bank["click"] = _synth(0.05, func(t: float) -> float:
+		return exp(-t * 60.0) * 0.4 * sin(TAU * 900.0 * t))
+
 
 # Build a mono 16-bit AudioStreamWAV by sampling `gen(t)` (returns [-1,1]) for `dur` seconds.
 func _synth(dur: float, gen: Callable) -> AudioStreamWAV:
