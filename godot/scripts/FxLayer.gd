@@ -14,9 +14,9 @@ func handle_events(events: Array, you_id: String = "") -> void:
 			"dmg":
 				if e.has("by") and you_id != "" and str(e.get("by", "")) != you_id:
 					continue
-				_float("-" + str(roundi(float(e.get("amount", 0.0)))), Color(1.0, 0.36, 0.30), e)
+				_dmg_number(roundi(float(e.get("amount", 0.0))), e)
 			"heal":
-				_float("+" + str(roundi(float(e.get("amount", 0.0)))), Color(0.42, 1.0, 0.55), e)
+				_float("+" + str(roundi(float(e.get("amount", 0.0)))), Color(0.42, 1.0, 0.55), e, 44)
 			"hit":
 				_impact(e)
 			"death":
@@ -36,13 +36,42 @@ func _new_label(text: String, color: Color, size: int, x: float, y: float, h: fl
 	add_child(lbl)
 	return lbl
 
-func _float(text: String, color: Color, e: Dictionary) -> void:
-	var lbl := _new_label(text, color, 48, float(e.get("x", 0.0)), float(e.get("y", 0.0)), 60.0)
+func _float(text: String, color: Color, e: Dictionary, size: int = 44) -> void:
+	var lbl := _new_label(text, color, size, float(e.get("x", 0.0)), float(e.get("y", 0.0)), 60.0)
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(lbl, "position:y", 150.0, 0.85)
 	tw.tween_property(lbl, "modulate:a", 0.0, 0.85).set_ease(Tween.EASE_IN)
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
+
+# Damage number scaled by hit size: small chip vs a meaty crit-style hit (bigger, hotter,
+# with a pop). Reads the blow's weight at a glance instead of uniform numbers.
+func _dmg_number(amount: int, e: Dictionary) -> void:
+	var size := clampi(34 + amount, 34, 92)
+	var big := amount >= 40
+	var color := Color(1.0, 0.78, 0.2) if big else Color(1.0, 0.36, 0.30)
+	var txt := ("-%d!" % amount) if big else ("-%d" % amount)
+	var lbl := _new_label(txt, color, size, float(e.get("x", 0.0)), float(e.get("y", 0.0)), 62.0)
+	if big:
+		lbl.scale = Vector3(0.5, 0.5, 0.5)
+	var tw := create_tween().set_parallel(true)
+	if big:
+		tw.tween_property(lbl, "scale", Vector3(1.25, 1.25, 1.25), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "position:y", 165.0, 0.9)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.9).set_ease(Tween.EASE_IN)
+	tw.set_parallel(false)
+	tw.tween_callback(lbl.queue_free)
+
+# A short-lived fading trail dot behind a projectile (Main calls this for in-vision
+# projectiles, throttled). Boss bolts get a violet trail; player/monster shots get gold.
+func proj_trail(x: float, y: float, boss: bool) -> void:
+	var col := Color(0.78, 0.32, 1.0, 0.7) if boss else Color(1.0, 0.83, 0.4, 0.7)
+	var dot := _new_label("•", col, 18, x, y, 12.0)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(dot, "scale", Vector3(0.3, 0.3, 0.3), 0.24)
+	tw.tween_property(dot, "modulate:a", 0.0, 0.24)
+	tw.set_parallel(false)
+	tw.tween_callback(dot.queue_free)
 
 # "+N XP" gain popup (gold), driven by Main off the self charXp delta on kills. Floats
 # higher/slower than damage numbers and offset up so it reads as a reward, not a hit.

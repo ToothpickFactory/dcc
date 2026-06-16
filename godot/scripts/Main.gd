@@ -44,6 +44,7 @@ var _hb_accum := 999.0         # heartbeat timer (fires promptly when danger beg
 var _hitstop_until := 0.0      # wall-clock ms; Engine.time_scale dips until then
 var _last_hitstop := 0.0       # throttle hit-stop so swarms don't strobe
 var _boss_present_was := false # tracks boss presence for the combat-music layer
+var _trail_frame := 0          # throttles projectile trail dots
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -349,6 +350,7 @@ func _process(dt: float) -> void:
 		for idx in _inp.take_casts():
 			_seq += 1
 			_net.send_cast(_seq, int(idx), aim)
+			_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
 	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
@@ -398,6 +400,18 @@ func _process(dt: float) -> void:
 	if boss_present != _boss_present_was:
 		_boss_present_was = boss_present
 		_music.set_combat(boss_present)
+
+	# Projectile trails: drop a fading dot behind in-vision projectiles (throttled).
+	_trail_frame += 1
+	if _trail_frame % 2 == 0:
+		var vsq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
+		for e in _net.ents:
+			if typeof(e) != TYPE_DICTIONARY or str(e.get("kind", "")) != "proj":
+				continue
+			var ex := float(e.get("x", 0.0))
+			var ey := float(e.get("y", 0.0))
+			if (ex - _pred.x) * (ex - _pred.x) + (ey - _pred.y) * (ey - _pred.y) <= vsq:
+				_fx.proj_trail(ex, ey, int(e.get("sprite", 0)) == 99)
 
 	# Render + UI.
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))

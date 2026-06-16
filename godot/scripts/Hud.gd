@@ -290,6 +290,18 @@ func set_bar_visible(v: bool) -> void:
 	_bar_wrap.visible = v
 
 
+## Punch an ability-bar slot when it's cast (Main calls this on a local cast).
+func pulse_slot(i: int) -> void:
+	if i < 0 or i >= _slots.size():
+		return
+	var slot: Control = _slots[i]
+	slot.pivot_offset = slot.size / 2.0  # scale about the slot center
+	slot.scale = Vector2.ONE
+	var tw := create_tween()
+	tw.tween_property(slot, "scale", Vector2(1.22, 1.22), 0.07).set_ease(Tween.EASE_OUT)
+	tw.tween_property(slot, "scale", Vector2.ONE, 0.13).set_ease(Tween.EASE_IN)
+
+
 ## Center fade toast (~3.5s), mirrors showToast in main.ts.
 func toast(text: String, color: Color) -> void:
 	_toast.text = text
