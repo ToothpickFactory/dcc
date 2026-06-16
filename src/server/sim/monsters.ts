@@ -1,5 +1,5 @@
 import { moveWithCollisions, randomWalkablePosition } from "../../procgen/collision";
-import { MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
+import { BRUTE_WINDUP_MULT, KNOCK_MS, MELEE_WINDUP_MS, MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage, applyHeal } from "./combat";
 
@@ -37,6 +37,30 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       else m.threat.set(id, nv);
     }
 
+    // Knockback: shoved back + staggered by a player hit — no AI act this tick.
+    if (m.knockUntil > ctx.now) {
+      const kf = (m.knockUntil - ctx.now) / KNOCK_MS; // 1 -> 0 decay over the impulse
+      moveWithCollisions(ctx.floor.collision, m, m.knockVx * kf * dt, m.knockVy * kf * dt, def.radius);
+      continue;
+    }
+
+    // Resolve a pending melee wind-up: the hit lands now — UNLESS you stepped out of
+    // range during the tell (the dodge payoff). Then it whiffs.
+    if (m.windupUntil > 0 && ctx.now >= m.windupUntil) {
+      m.windupUntil = 0;
+      const tgt = ctx.players.get(m.windupTarget);
+      if (tgt && tgt.status === "alive" && !tgt.reached && Math.hypot(tgt.x - m.x, tgt.y - m.y) <= def.meleeRange + 10) {
+        ctx.pushFx({ e: "melee", by: m.id });
+        applyDamage(ctx, tgt, def.dmg * m.dmgMult, m.id, false);
+      }
+    }
+    // While winding up, the monster is committed to the swing — plant + face, no move.
+    if (m.windupUntil > ctx.now) {
+      const t = ctx.players.get(m.windupTarget);
+      if (t) m.aim = Math.atan2(t.y - m.y, t.x - m.x);
+      continue;
+    }
+
     const speed = m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
 
@@ -69,9 +93,12 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       }
     } else if (d <= def.meleeRange) {
       if (ctx.now >= m.attackReadyAt) {
-        m.attackReadyAt = ctx.now + def.attackCd;
-        ctx.pushFx({ e: "melee", by: m.id });
-        applyDamage(ctx, prey, def.dmg * m.dmgMult, m.id, false);
+        // Telegraph: start a wind-up; damage lands later (resolved above) if you stay close.
+        const windup = MELEE_WINDUP_MS * (m.kind === "brute" ? BRUTE_WINDUP_MULT : 1);
+        m.windupUntil = ctx.now + windup;
+        m.windupTarget = prey.id;
+        m.attackReadyAt = ctx.now + def.attackCd + windup;
+        ctx.pushFx({ e: "windup", by: m.id, x: m.x, y: m.y, ms: Math.round(windup) });
       }
     } else {
       moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);

@@ -328,6 +328,10 @@ func _on_events(events: Array) -> void:
 				# Only your own casts (origin ~ your position) — avoids audio spam from every caster.
 				if Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0))).distance_to(pp) < 40.0:
 					_sfx.play("cast")
+			"windup":
+				# Enemy attack telegraph: charge tint on the attacker + a warning marker.
+				_sprites.windup_id(str(ev.get("by", "")), float(ev.get("ms", 300.0)))
+				_fx.windup_marker(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)), float(ev.get("ms", 300.0)))
 			"boss":
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))

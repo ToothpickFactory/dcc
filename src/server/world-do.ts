@@ -330,6 +330,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         derived: deriveStats(def.hp, def.speed, base),
         threat: new Map(),
         dmgMult,
+        windupUntil: 0,
+        windupTarget: "",
+        knockUntil: 0,
+        knockVx: 0,
+        knockVy: 0,
       };
     });
     for (const m of this.monsters) this.gearUpMonster(m);
@@ -372,6 +377,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       meleeReadyAt: 0,
       threat: new Map(),
       dmgMult: 1 + depthSteps * FLOOR_DMG_SCALE,
+      meleeWindupUntil: 0,
+      castWindupUntil: 0,
+      castTarget: "",
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }

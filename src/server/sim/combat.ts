@@ -1,4 +1,4 @@
-import { CRIT_MULT, MONSTER_RESPAWN_MS } from "../../shared/constants";
+import { CRIT_MULT, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
@@ -120,6 +120,17 @@ export function applyDamage(
     target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + taken * threatMult);
     ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
     ctx.gainXp(sourceId, ability, false);
+    // Knockback: shove the monster away from the attacker (per-kind resistance) so hits
+    // have weight and interrupt its wind-up — a swarm bug flies, a brute barely budges.
+    if (dmg > 0) {
+      const src = ctx.players.get(sourceId);
+      const ang = src ? Math.atan2(target.y - src.y, target.x - src.x) : target.aim;
+      const resist = KNOCK_RESIST[target.kind] ?? 1;
+      target.knockVx = Math.cos(ang) * KNOCK_SPEED * resist;
+      target.knockVy = Math.sin(ang) * KNOCK_SPEED * resist;
+      target.knockUntil = ctx.now + KNOCK_MS;
+      target.windupUntil = 0; // stagger cancels a pending swing
+    }
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   target.hp -= taken;

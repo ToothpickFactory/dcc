@@ -63,6 +63,13 @@ export interface MonsterState {
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
   threat: Map<string, number>; // playerId -> accumulated threat
   dmgMult: number; // per-floor damage scaling (1 at floor 1, grows with depth)
+  // ---- Attack telegraph (melee wind-up) ----
+  windupUntil: number; // melee lands when now >= this (0 = not winding up)
+  windupTarget: string; // player id the wind-up is aimed at
+  // ---- Knockback (player hits shove + stagger) ----
+  knockUntil: number; // knockback impulse active while now < this
+  knockVx: number;
+  knockVy: number;
 }
 
 // The boss (ported from the monolith). Its own type so combat can tell it apart
@@ -81,6 +88,10 @@ export interface BossState {
   meleeReadyAt: number;
   threat: Map<string, number>;
   dmgMult: number; // per-floor damage scaling
+  // ---- Attack telegraphs (wind-up before melee / cast) ----
+  meleeWindupUntil: number; // boss melee lands when now >= this
+  castWindupUntil: number; // boss bolt-fan fires when now >= this
+  castTarget: string; // player id the pending cast is aimed at
 }
 
 export interface ProjectileState {

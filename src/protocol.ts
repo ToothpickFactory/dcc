@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 9; // was 8 — added the `dash` client message (dodge/evade)
+export const PROTOCOL_VERSION = 10; // was 9 — added the `windup` event (enemy attack telegraphs)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -98,6 +98,7 @@ export type GameEvent =
   | { e: "cast"; x: number; y: number; ability: number }
   | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
+  | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
 
 // Static floor geometry shipped to clients that don't run the TS procgen (e.g. the

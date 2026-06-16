@@ -47,6 +47,12 @@ func flash_id(id: String, hurt: bool = false, reaction: String = "hit") -> void:
 	if spr != null:
 		spr.flash_hit(float(Time.get_ticks_msec()), hurt, reaction)
 
+# Telegraph: an enemy (by id) is winding up an attack — pulse its charge tint.
+func windup_id(id: String, ms: float) -> void:
+	var spr: EntitySprite = _sprites.get(id)
+	if spr != null:
+		spr.windup(float(Time.get_ticks_msec()), ms)
+
 # Flash the sprite nearest a world point (dmg/heal events carry only x,y).
 func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false, reaction: String = "hit") -> void:
 	var best_id := ""

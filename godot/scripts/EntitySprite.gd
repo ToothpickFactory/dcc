@@ -64,6 +64,11 @@ const FLASH_MS := 110.0
 var _flash_until := 0.0
 var _flash_color := Color(2.4, 2.4, 2.4)   # overbright white; red for the local player
 
+# ---- attack telegraph: pulsing orange "charge" tint while winding up a melee ----
+var _windup_until := 0.0
+func windup(now_ms: float, ms: float) -> void:
+	_windup_until = now_ms + ms
+
 # Flash this sprite (called by SpriteLayer on a dmg/death event near/at this entity).
 func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> void:
 	_flash_until = now_ms + FLASH_MS
@@ -554,6 +559,11 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		_apply_frame(loaded, frame_index, display_flip)
 	else:
 		_set_fallback()
+
+	# Attack telegraph: pulsing orange "charge" tint while the enemy winds up (the tell).
+	if now_ms < _windup_until:
+		var wp := 0.5 + 0.5 * sin(now_ms * 0.025)
+		modulate = modulate.lerp(Color(2.6, 1.3, 0.25), 0.4 + 0.5 * wp)
 
 	# Hit flash overrides the just-set modulate, decaying over FLASH_MS (juice).
 	if now_ms < _flash_until:
