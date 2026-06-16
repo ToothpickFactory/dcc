@@ -21,6 +21,7 @@ export interface PlayerState {
   abilities: Ability[];
   charXp: number; // total character XP (from kills); drives character level + passive bonuses
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)
   inv: Inventory; // equipped gear + bags + carried items
@@ -104,6 +105,7 @@ export interface WorldCtx {
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
   dropLoot(x: number, y: number, items: Item[]): void; // spawn a loot bag (no-op if empty)
+  rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
   // Award ability + character XP to a player for a hit/kill with action slot `idx`.
   gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;
 }

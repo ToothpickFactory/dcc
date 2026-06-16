@@ -433,6 +433,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_E:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
+			KEY_Q:
+				_inv.use_first_potion()
 			KEY_F2:
 				_reset_run()
 			KEY_TAB:

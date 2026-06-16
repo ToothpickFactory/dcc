@@ -133,6 +133,7 @@ addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
   if (k === "i") invUI.toggle();
   else if (k === "e") skillsUI.toggle();
+  else if (k === "q") invUI.useFirstPotion();
   else if (k === "f") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
   else if (k === "escape") { invUI.close(); invUI.closeLoot(); skillsUI.close(); }
   else if (net.self?.reached || net.self?.status === "spectator") {

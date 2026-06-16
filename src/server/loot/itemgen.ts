@@ -18,6 +18,7 @@ const SLOT_NOUN: Record<ItemSlot, string> = {
   ring: "Band",
   amulet: "Pendant",
   bag: "Satchel",
+  consumable: "Potion",
 };
 // Each slot favours a themed set of attributes.
 const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
@@ -29,7 +30,10 @@ const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
   ring: ["power", "spirit", "haste", "agility"],
   amulet: ["spirit", "power", "vitality"],
   bag: ["vitality"],
+  consumable: [], // potions carry no equip stats
 };
+// Slots the generic gear roller can produce. Consumables are minted only via
+// generatePotion(), so a routine gear drop never accidentally rolls a potion.
 const ALL_SLOTS: ItemSlot[] = ["helmet", "chest", "legs", "gloves", "weapon", "ring", "amulet", "bag"];
 
 export function generateItem(depth: number, rarity: Rarity, rng: () => number, slot?: ItemSlot): Item {
@@ -58,6 +62,22 @@ export function generateItem(depth: number, rarity: Rarity, rng: () => number, s
     budget -= give;
   }
   return item;
+}
+
+// A health potion — a carried-only consumable you drink (useItem) to heal a % of
+// your max HP. Frequent floor drops keep healing available without a dedicated
+// healer. Heal % ticks up slightly with depth so they stay relevant.
+export function generatePotion(depth: number, rng: () => number): Item {
+  const healPct = Math.min(0.6, 0.3 + depth * 0.01);
+  return {
+    id: `potion-${depth}-${Math.floor(rng() * 1e9).toString(36)}`,
+    name: "Healing Potion",
+    rarity: "common",
+    slot: "consumable",
+    attrs: {},
+    consumable: { healPct },
+    icon: "🧪",
+  };
 }
 
 // Roll a rarity for a routine drop, skewing richer with depth. Bosses/chests
