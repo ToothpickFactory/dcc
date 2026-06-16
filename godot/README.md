@@ -6,6 +6,9 @@ additive `floor.geometry` field that lets a non-procgen client render the maze.
 
 **Engine:** Godot **4.6.x** (GDScript — *not* the .NET/mono build).
 
+> **New here? Full onboarding (install Godot, vendor GdUnit4, copy assets, run client +
+> server, troubleshooting) is in [SETUP.md](SETUP.md).** The quick version follows.
+
 ## Layout
 ```
 godot/
