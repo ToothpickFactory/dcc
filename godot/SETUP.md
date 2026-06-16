@@ -20,29 +20,42 @@ cd dcc
 ## 2. Install Godot 4.6 (Standard / GDScript)
 - **macOS (Homebrew):** `brew install --cask godot`
   Optional CLI on PATH (Apple Silicon): `ln -s /Applications/Godot.app/Contents/MacOS/Godot /opt/homebrew/bin/godot`
-- **macOS/Windows/Linux (manual):** download "Godot Engine 4.6.x" (the plain build, not .NET) from <https://godotengine.org/download>.
+- **Windows:** `winget install GodotEngine.GodotEngine` **or** `scoop install godot` **or** download
+  `Godot_v4.6.x-stable_win64.exe` (the plain build, *not* `…_mono_…`) from <https://godotengine.org/download>.
+  To use `godot` from PowerShell, add its folder to PATH, or rename the exe to `godot.exe` on PATH,
+  or set `$env:GODOT` to the full exe path before the commands below.
+- **Linux:** download the Godot 4.6.x Standard zip from <https://godotengine.org/download>, unzip,
+  and put the binary on PATH as `godot` (or use Flatpak: `flatpak run org.godotengine.Godot`).
 - Verify: `godot --version` → `4.6.x.stable…` (or launch the app).
 
 ## 3. One-time project setup (the gitignored bits)
-Run from the **repo root**:
+**Easiest — run the setup script** (does 3a–3c: vendor GdUnit4, copy assets, import):
+```bash
+# macOS / Linux:
+./godot/setup.sh
+# Windows (PowerShell):
+pwsh godot/setup.ps1
+```
+Set `GODOT`/`$env:GODOT` first if Godot isn't on PATH (e.g. `$env:GODOT="C:\Tools\Godot.exe"`).
+
+<details><summary>Or do the three steps manually (from the repo root)</summary>
 
 **3a. Vendor the GdUnit4 test addon** (tested with 6.2.0):
 ```bash
 git clone --depth 1 https://github.com/MikeSchulze/gdUnit4.git /tmp/gdunit4 \
   && cp -R /tmp/gdunit4/addons/gdUnit4 godot/addons/gdUnit4
 ```
-
 **3b. Copy the art assets** (source of truth lives in `public/assets`):
 ```bash
-cp -R public/assets godot/assets
+cp -R public/assets godot/assets        # Windows: Copy-Item -Recurse public/assets godot/assets
 ```
-
 **3c. Import** (generates texture `.import` files + the class cache):
 ```bash
 godot --headless --path godot --import
 ```
-(If `godot` isn't on PATH, use the full app path, e.g. on macOS
-`/Applications/Godot.app/Contents/MacOS/Godot --headless --path godot --import`.)
+(If `godot` isn't on PATH, use the full path, e.g. macOS
+`/Applications/Godot.app/Contents/MacOS/Godot …`.)
+</details>
 
 ## 4. Run the game
 You need a server that speaks **protocol v6** (sends `floor.geometry`). Easiest is local
@@ -53,12 +66,15 @@ You need a server that speaks **protocol v6** (sends `floor.geometry`). Easiest 
 To point at a local server, edit the **Main** node's `server_url` export, or set the
 `DCC_WS` env var before launching.
 
-**From the CLI:**
+**From the CLI (macOS / Linux):**
 ```bash
-# Live (deployed) server — the default:
-godot --path godot res://scenes/Main.tscn
-# Local server (no deploy needed):
-DCC_WS=ws://127.0.0.1:8787/ws godot --path godot res://scenes/Main.tscn
+godot --path godot res://scenes/Main.tscn                               # live server (default)
+DCC_WS=ws://127.0.0.1:8787/ws godot --path godot res://scenes/Main.tscn  # local server
+```
+**From the CLI (Windows / PowerShell):**
+```powershell
+godot --path godot res://scenes/Main.tscn                               # live server (default)
+$env:DCC_WS="ws://127.0.0.1:8787/ws"; godot --path godot res://scenes/Main.tscn  # local server
 ```
 Launch it twice to test two players.
 
@@ -66,7 +82,7 @@ Launch it twice to test two players.
 From the repo root:
 ```bash
 npm install                 # once
-cp .dev.vars.example .dev.vars   # once (local secrets)
+cp .dev.vars.example .dev.vars               # once (local secrets); Windows: copy .dev.vars.example .dev.vars
 npm run dev                 # wrangler dev on http://127.0.0.1:8787  (WS at /ws)
 ```
 Reset the run anytime (local admin is open): `curl -X POST http://127.0.0.1:8787/admin/new-run`
