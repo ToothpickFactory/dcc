@@ -42,13 +42,13 @@ func set_grid(grid: Dictionary) -> void:
 
 # ---- hit flash dispatch (juice) -------------------------------------------
 # Flash a specific entity's sprite (death event carries an id).
-func flash_id(id: String, hurt: bool = false) -> void:
+func flash_id(id: String, hurt: bool = false, reaction: String = "hit") -> void:
 	var spr: EntitySprite = _sprites.get(id)
 	if spr != null:
-		spr.flash_hit(float(Time.get_ticks_msec()), hurt)
+		spr.flash_hit(float(Time.get_ticks_msec()), hurt, reaction)
 
 # Flash the sprite nearest a world point (dmg/heal events carry only x,y).
-func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false) -> void:
+func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false, reaction: String = "hit") -> void:
 	var best_id := ""
 	var best_sq := radius * radius
 	for id in _last_pos.keys():
@@ -58,7 +58,7 @@ func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false) -> v
 			best_sq = dsq
 			best_id = id
 	if best_id != "":
-		flash_id(best_id, hurt)
+		flash_id(best_id, hurt, reaction)
 
 # ---------------------------------------------------------------------------
 # Per-frame sync. ents = the latest server snapshot's entity list (Net.cur.ents).
@@ -126,7 +126,10 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 	# Remove sprites for entities no longer in the snapshot.
 	for id in _sprites.keys():
 		if not seen.has(id):
-			(_sprites[id] as EntitySprite).queue_free()
+			var spr: EntitySprite = _sprites[id]
+			if spr.is_waiting_for_death_anim(now_ms):
+				continue
+			spr.queue_free()
 			_sprites.erase(id)
 			_last_pos.erase(id)
 

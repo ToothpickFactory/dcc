@@ -246,7 +246,7 @@ func _on_events(events: Array) -> void:
 			"dmg":
 				var vp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
 				var self_hit := vp.distance_to(pp) < 38.0
-				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit)
+				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
 				if self_hit:
 					_shake = 1.0
 					_sfx.play("hurt")
@@ -256,7 +256,7 @@ func _on_events(events: Array) -> void:
 			"hit":
 				_sfx.play("hit", -3.0)
 			"death":
-				_sprites.flash_id(str(ev.get("id", "")))
+				_sprites.flash_id(str(ev.get("id", "")), false, "death")
 				_sfx.play("death")
 				# Hit-stop on a nearby kill (throttled so swarms don't strobe).
 				var dp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))

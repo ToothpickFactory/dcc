@@ -18,13 +18,21 @@ const DIR_SWITCH_BIAS := 1.2
 const ENEMY_FRAME_SLOWDOWN := 1.6
 const ACTION_FRAME_SPEED := 1.25
 const MOVEMENT_HOLD_MS := 150
+const MODEL_HIT_MS := 360.0
+const MODEL_DEATH_MS := 1400.0
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
+const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Barbarian-3d-animated.glb"
+const HERO_MODEL_SCALE := 84.0
+const HERO_LIGHT_ENERGY := 1.35
 const BOSS_ROOT := "res://assets/Bosses/Slime"
 const JAILOR_NAME := "Iron Jailor"
 const JAILOR_MODEL_PATH := "res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb"
 const JAILOR_MODEL_SCALE := 504.0
 const JAILOR_LIGHT_ENERGY := 2.2
+const TROLL_MODEL_PATH := "res://assets/Enemies/Troll/Troll-3d-animated.glb"
+const TROLL_MODEL_SCALE := 132.0
+const TROLL_LIGHT_ENERGY := 1.6
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
@@ -47,7 +55,9 @@ var _entity_name := ""
 var _model_root: Node3D
 var _model_anim: AnimationPlayer
 var _model_anim_name := ""
-var _jailor_slash_index := 0
+var _model_profile: Dictionary = {}
+var _model_slash_index := 0
+var _dead_until := 0.0
 
 # ---- hit flash (juice): brief overbright/red tint on taking damage ----
 const FLASH_MS := 110.0
@@ -55,9 +65,23 @@ var _flash_until := 0.0
 var _flash_color := Color(2.4, 2.4, 2.4)   # overbright white; red for the local player
 
 # Flash this sprite (called by SpriteLayer on a dmg/death event near/at this entity).
-func flash_hit(now_ms: float, hurt: bool = false) -> void:
+func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> void:
 	_flash_until = now_ms + FLASH_MS
 	_flash_color = Color(2.6, 0.7, 0.7) if hurt else Color(2.4, 2.4, 2.4)
+	if _model_root == null:
+		return
+	if reaction == "death":
+		_action = "death"
+		_action_until = now_ms + MODEL_DEATH_MS
+		_dead_until = _action_until
+		_play_model_anim("death")
+	elif _action != "death":
+		_action = "hit"
+		_action_until = now_ms + MODEL_HIT_MS
+		_play_model_anim("hit")
+
+func is_waiting_for_death_anim(now_ms: float) -> bool:
+	return _dead_until > now_ms
 
 # ---- spawn pop (juice): a quick over-shooting scale-in when first seen ----
 const SPAWN_MS := 200.0
@@ -107,13 +131,13 @@ func setup(id: String, k: String, self_flag: bool) -> void:
 	ent_id = id
 	kind = k
 	is_self = self_flag
+	_ensure_model_for_entity()
 
 func set_entity_name(v: String) -> void:
 	if _entity_name == v:
 		return
 	_entity_name = v
-	if kind == "boss" and _entity_name == JAILOR_NAME:
-		_ensure_jailor_model()
+	_ensure_model_for_entity()
 
 # ---------------------------------------------------------------------------
 # FNV-1a (render.ts hash()) -> pick a stable enemy variant root per entity id.
@@ -130,41 +154,83 @@ func _enemy_root() -> String:
 	var idx := _fnv1a(ent_id) % ENEMY_ROOTS.size()
 	return "res://assets/Enemies/" + str(ENEMY_ROOTS[idx])
 
-func _ensure_jailor_model() -> void:
+func _model_profile_for_entity() -> Dictionary:
+	if kind == "player":
+		return {
+			"label": "Kevin Barbarian",
+			"path": HERO_MODEL_PATH,
+			"scale": HERO_MODEL_SCALE,
+			"light_energy": HERO_LIGHT_ENERGY,
+			"light_range": 260.0,
+			"light_y": 95.0,
+			"contrast": 1.2,
+			"saturation": 1.2,
+		}
+	if kind == "monster" and _enemy_root().ends_with("/Troll"):
+		return {
+			"label": "Troll",
+			"path": TROLL_MODEL_PATH,
+			"scale": TROLL_MODEL_SCALE,
+			"light_energy": TROLL_LIGHT_ENERGY,
+			"light_range": 320.0,
+			"light_y": 120.0,
+			"contrast": 1.25,
+			"saturation": 1.25,
+		}
+	if kind == "boss" and _entity_name == JAILOR_NAME:
+		return {
+			"label": JAILOR_NAME,
+			"path": JAILOR_MODEL_PATH,
+			"scale": JAILOR_MODEL_SCALE,
+			"light_energy": JAILOR_LIGHT_ENERGY,
+			"light_range": 520.0,
+			"light_y": 180.0,
+			"contrast": 1.45,
+			"saturation": 1.45,
+		}
+	return {}
+
+func _ensure_model_for_entity() -> void:
 	if _model_root != null:
 		return
-	var scene := _load_jailor_scene()
+	var profile := _model_profile_for_entity()
+	if profile.is_empty():
+		return
+	_model_profile = profile
+	var model_path := str(profile.get("path", ""))
+	var label := str(profile.get("label", "3D model"))
+	var scene := _load_model_scene(model_path, label)
 	if scene == null:
-		push_warning("Iron Jailor model failed to load: %s" % JAILOR_MODEL_PATH)
+		push_warning("%s model failed to load: %s" % [label, model_path])
 		return
 	var inst := scene.instantiate()
 	if not (inst is Node3D):
 		inst.queue_free()
-		push_warning("Iron Jailor model root is not Node3D: %s" % JAILOR_MODEL_PATH)
+		push_warning("%s model root is not Node3D: %s" % [label, model_path])
 		return
 	_model_root = inst
-	_model_root.scale = Vector3.ONE * JAILOR_MODEL_SCALE
+	_model_root.scale = Vector3.ONE * float(profile.get("scale", 1.0))
 	add_child(_model_root)
 	_model_anim = _find_animation_player(_model_root)
-	_brighten_model(_model_root)
-	_add_model_light()
+	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))
+	_add_model_light(profile)
 	texture = null
 	modulate.a = 0.0
-	print("[DCC] Iron Jailor model active")
+	print("[DCC] %s model active" % label)
 	_play_model_anim("idle")
 
-func _load_jailor_scene() -> PackedScene:
-	var imported := load(JAILOR_MODEL_PATH)
+func _load_model_scene(model_path: String, label: String) -> PackedScene:
+	var imported := load(model_path)
 	if imported is PackedScene:
 		return imported
 
-	if not FileAccess.file_exists(JAILOR_MODEL_PATH):
+	if not FileAccess.file_exists(model_path):
 		return null
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
-	var err := doc.append_from_file(JAILOR_MODEL_PATH, state)
+	var err := doc.append_from_file(model_path, state)
 	if err != OK:
-		push_warning("Iron Jailor GLB parse failed: %s" % error_string(err))
+		push_warning("%s GLB parse failed: %s" % [label, error_string(err)])
 		return null
 	var root := doc.generate_scene(state)
 	if root == null:
@@ -173,7 +239,7 @@ func _load_jailor_scene() -> PackedScene:
 	err = packed.pack(root)
 	root.queue_free()
 	if err != OK:
-		push_warning("Iron Jailor scene pack failed: %s" % error_string(err))
+		push_warning("%s scene pack failed: %s" % [label, error_string(err)])
 		return null
 	return packed
 
@@ -186,7 +252,7 @@ func _find_animation_player(node: Node) -> AnimationPlayer:
 			return found
 	return null
 
-func _brighten_model(node: Node) -> void:
+func _brighten_model(node: Node, contrast: float, saturation: float) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
 		var surface_count := mesh_instance.mesh.get_surface_count() if mesh_instance.mesh != null else 0
@@ -196,11 +262,11 @@ func _brighten_model(node: Node) -> void:
 				mat = mesh_instance.mesh.surface_get_material(i)
 			if mat is StandardMaterial3D:
 				var copy := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
-				copy.albedo_color = _contrast_color(copy.albedo_color, 1.45, 1.45)
+				copy.albedo_color = _contrast_color(copy.albedo_color, contrast, saturation)
 				copy.emission_enabled = false
 				mesh_instance.set_surface_override_material(i, copy)
 	for child in node.get_children():
-		_brighten_model(child)
+		_brighten_model(child, contrast, saturation)
 
 func _contrast_color(color: Color, contrast: float, saturation: float) -> Color:
 	var r := clampf((color.r - 0.5) * contrast + 0.5, 0.0, 1.0)
@@ -214,11 +280,11 @@ func _contrast_color(color: Color, contrast: float, saturation: float) -> Color:
 		color.a,
 	)
 
-func _add_model_light() -> void:
+func _add_model_light(profile: Dictionary) -> void:
 	var light := OmniLight3D.new()
-	light.light_energy = JAILOR_LIGHT_ENERGY
-	light.omni_range = 520.0
-	light.position = Vector3(0.0, 180.0, 0.0)
+	light.light_energy = float(profile.get("light_energy", 1.0))
+	light.omni_range = float(profile.get("light_range", 260.0))
+	light.position = Vector3(0.0, float(profile.get("light_y", 100.0)), 0.0)
 	add_child(light)
 
 func _play_model_anim(intent: String) -> void:
@@ -241,8 +307,10 @@ func _play_model_anim(intent: String) -> void:
 			needles = ["attack", "strike", "punch", "slash", "hit"]
 		"cast", "bolt":
 			needles = ["cast", "spell", "attack", "strike"]
+		"hit", "hurt":
+			needles = ["hit", "hurt", "damage", "impact", "react"]
 		"death":
-			needles = ["death", "die"]
+			needles = ["death", "die", "dead"]
 		_:
 			needles = ["idle"]
 	var chosen := String(names[0])
@@ -336,11 +404,13 @@ func _clip_duration_ms(clip: Variant, is_enemy: bool, frame_count: int) -> float
 # ---------------------------------------------------------------------------
 func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_count: int = 0, frame_speed: float = ACTION_FRAME_SPEED) -> void:
 	if _model_root != null:
+		if _action == "death":
+			return
 		var model_action := action
 		if action == "strike":
 			var slash_names := ["slash_a", "slash_b", "slash_c"]
-			model_action = slash_names[_jailor_slash_index % slash_names.size()]
-			_jailor_slash_index += 1
+			model_action = slash_names[_model_slash_index % slash_names.size()]
+			_model_slash_index += 1
 		_action = model_action
 		_action_until = now_ms + 650.0
 		_play_model_anim(model_action)
