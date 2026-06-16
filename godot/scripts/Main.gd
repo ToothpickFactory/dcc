@@ -186,7 +186,7 @@ func _bag_present(id: String) -> bool:
 
 func _on_events(events: Array) -> void:
 	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
-	_fx.handle_events(events)
+	_fx.handle_events(events, _net.you)
 
 func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if geometry.is_empty():

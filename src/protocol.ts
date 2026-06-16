@@ -79,7 +79,7 @@ export interface SelfDTO {
 }
 
 export type GameEvent =
-  | { e: "dmg"; x: number; y: number; amount: number }
+  | { e: "dmg"; x: number; y: number; amount: number; by?: string }
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
   | { e: "cast"; x: number; y: number; ability: number }

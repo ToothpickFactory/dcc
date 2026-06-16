@@ -47,7 +47,7 @@ export function applyDamage(
     }
     target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId });
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
     }
@@ -76,7 +76,7 @@ export function applyDamage(
       ctx.gainXp(sourceId, ability, false);
     }
     target.hp -= dmg;
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId });
     if (target.hp <= 0) {
       target.dead = true;
       ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead" });
@@ -101,7 +101,7 @@ export function applyDamage(
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   target.hp -= taken;
-  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken });
+  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId });
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;

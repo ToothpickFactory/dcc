@@ -5,13 +5,15 @@ extends Node3D
 ## cover: damage/heal numbers and a death poof. Billboarded Label3D that floats up
 ## and fades, then frees itself.
 
-func handle_events(events: Array) -> void:
+func handle_events(events: Array, you_id: String = "") -> void:
 	for ev in events:
 		if typeof(ev) != TYPE_DICTIONARY:
 			continue
 		var e: Dictionary = ev
 		match str(e.get("e", "")):
 			"dmg":
+				if e.has("by") and you_id != "" and str(e.get("by", "")) != you_id:
+					continue
 				_float("-" + str(roundi(float(e.get("amount", 0.0)))), Color(1.0, 0.36, 0.30), e)
 			"heal":
 				_float("+" + str(roundi(float(e.get("amount", 0.0)))), Color(0.42, 1.0, 0.55), e)
@@ -23,6 +25,7 @@ func _new_label(text: String, color: Color, size: int, x: float, y: float, h: fl
 	lbl.text = text
 	lbl.modulate = color
 	lbl.font_size = size
+	lbl.pixel_size = 1.0
 	lbl.outline_size = 10
 	lbl.outline_modulate = Color(0, 0, 0, 0.7)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED

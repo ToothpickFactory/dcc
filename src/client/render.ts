@@ -86,6 +86,14 @@ interface SpriteState {
   actionUntil: number;
 }
 
+interface FloatingText {
+  sprite: THREE.Sprite;
+  texture: THREE.Texture;
+  bornAt: number;
+  duration: number;
+  startY: number;
+}
+
 export class Renderer {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -101,6 +109,7 @@ export class Renderer {
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
   private decorations: THREE.Sprite[] = [];
+  private floatingTexts: FloatingText[] = [];
   private ground: THREE.Mesh;
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
   private wallMaterial = new THREE.MeshBasicMaterial({ color: 0x39445e });
@@ -507,6 +516,11 @@ export class Renderer {
   handleEvents(events: GameEvent[], ents: EntityDTO[], selfId: string): void {
     const now = performance.now();
     for (const event of events) {
+      if (event.e === "dmg" && (event.by === undefined || event.by === selfId)) {
+        this.floatText(`-${Math.round(event.amount)}`, event.x, event.y, "#ff5c4d");
+        continue;
+      }
+
       if (event.e === "cast") {
         const caster = this.nearestEntity(ents, event.x, event.y, ["player", "monster", "boss"], 90);
         if (!caster) continue;
@@ -533,6 +547,31 @@ export class Renderer {
         this.queueAction(attacker.id, attacker.kind === "boss" ? BOSS_ROOT : this.enemyRoot(attacker.id), "strike", now);
       }
     }
+  }
+
+  private floatText(text: string, x: number, y: number, color: string): void {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.font = "700 54px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.78)";
+    ctx.fillStyle = color;
+    ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(92, 46, 1);
+    sprite.position.set(x, 78, y);
+    this.scene.add(sprite);
+    this.floatingTexts.push({ sprite, texture, bornAt: performance.now(), duration: 850, startY: sprite.position.y });
   }
 
   // World (x,y) maps to the ground plane (x, z).
@@ -933,6 +972,7 @@ export class Renderer {
   }
 
   draw() {
+    this.updateFloatingTexts();
     // Pulse the stairs marker (size + opacity) so the exit reads as a beacon.
     if (this.stairs) {
       const t = performance.now();
@@ -942,5 +982,20 @@ export class Renderer {
       (this.stairs.material as THREE.SpriteMaterial).opacity = 0.65 + 0.35 * pulse;
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private updateFloatingTexts(): void {
+    if (!this.floatingTexts.length) return;
+    const now = performance.now();
+    this.floatingTexts = this.floatingTexts.filter((text) => {
+      const t = Math.min(1, (now - text.bornAt) / text.duration);
+      text.sprite.position.y = text.startY + 85 * t;
+      (text.sprite.material as THREE.SpriteMaterial).opacity = 1 - t;
+      if (t < 1) return true;
+      this.scene.remove(text.sprite);
+      (text.sprite.material as THREE.SpriteMaterial).dispose();
+      text.texture.dispose();
+      return false;
+    });
   }
 }
