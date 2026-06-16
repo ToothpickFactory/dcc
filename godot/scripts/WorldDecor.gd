@@ -46,17 +46,20 @@ var _sheet_cache: Dictionary = {}
 
 var _stairs_pulse := 0.0
 var _stairs_tex_h := 64.0  # cached stairs texture height, for the pulse pixel_size
+var _stairs_base := Color.WHITE  # base tint (white for art, green for the fallback)
 
 
 func _process(dt: float) -> void:
-	# Pulse the stairs marker so the exit reads as a beacon (render.ts draw()).
+	# Pulse + shimmer the stairs marker so the exit reads as a glowing portal.
 	if stairs_sprite == null or not stairs_sprite.visible:
 		return
 	_stairs_pulse += dt
 	var pulse := 0.5 + 0.5 * sin(_stairs_pulse * (1000.0 / 280.0))
-	var s := 120.0 + 35.0 * pulse
+	var shimmer := 0.5 + 0.5 * sin(_stairs_pulse * 6.3)  # faster sparkle on top of the slow swell
+	var s := 130.0 + 55.0 * pulse
 	stairs_sprite.pixel_size = s / _stairs_tex_h
-	stairs_sprite.modulate.a = 0.65 + 0.35 * pulse
+	var glow := 1.0 + 0.7 * shimmer  # overbright flicker for a "portal" feel
+	stairs_sprite.modulate = Color(_stairs_base.r * glow, _stairs_base.g * glow, _stairs_base.b * glow, 0.6 + 0.4 * pulse)
 
 
 ## Theme the floor: retexture World's ground/wall materials and spawn decoration +
@@ -86,6 +89,9 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		_stairs_tex_h = float(stairs_tex.get_height()) if (stairs_tex != null and stairs_tex.get_height() > 0) else 64.0
 		if stairs_tex == null:
 			stairs_sprite.modulate = STAIRS_FALLBACK
+			_stairs_base = STAIRS_FALLBACK
+		else:
+			_stairs_base = Color.WHITE
 		add_child(stairs_sprite)
 
 	# 4) Decorations (render.ts setDecorations). variant indexes the prop sheet,

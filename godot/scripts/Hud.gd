@@ -61,6 +61,8 @@ var _boss_fill: ColorRect
 var _boss_fill_bg: ColorRect
 var _toast: Label
 var _toast_tween: Tween
+var _floortitle: Label
+var _ft_tween: Tween
 var _waiting: PanelContainer
 var _waiting_label: RichTextLabel
 
@@ -89,6 +91,7 @@ func _ready() -> void:
 	_build_bar()
 	_build_toast()
 	_build_waiting()
+	_build_floortitle()
 
 
 # ===========================================================================
@@ -210,6 +213,26 @@ func _build_toast() -> void:
 	add_child(_toast)
 
 
+# Big centered "Floor N · Theme" card that fades in/holds/out on each floor change.
+func _build_floortitle() -> void:
+	_floortitle = Label.new()
+	_floortitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_floortitle.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_floortitle.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_floortitle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_floortitle.add_theme_font_size_override("font_size", 46)
+	_floortitle.add_theme_color_override("font_color", COL_TEXT)
+	_floortitle.add_theme_constant_override("shadow_offset_x", 0)
+	_floortitle.add_theme_constant_override("shadow_offset_y", 3)
+	_floortitle.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	_floortitle.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_floortitle.offset_top = 200
+	_floortitle.offset_bottom = 270
+	_floortitle.modulate.a = 0.0
+	_apply_font(_floortitle)
+	add_child(_floortitle)
+
+
 func _build_waiting() -> void:
 	_waiting = PanelContainer.new()
 	_waiting.visible = false
@@ -267,6 +290,18 @@ func set_bar_visible(v: bool) -> void:
 	_bar_wrap.visible = v
 
 
+## Punch an ability-bar slot when it's cast (Main calls this on a local cast).
+func pulse_slot(i: int) -> void:
+	if i < 0 or i >= _slots.size():
+		return
+	var slot: Control = _slots[i]
+	slot.pivot_offset = slot.size / 2.0  # scale about the slot center
+	slot.scale = Vector2.ONE
+	var tw := create_tween()
+	tw.tween_property(slot, "scale", Vector2(1.22, 1.22), 0.07).set_ease(Tween.EASE_OUT)
+	tw.tween_property(slot, "scale", Vector2.ONE, 0.13).set_ease(Tween.EASE_IN)
+
+
 ## Center fade toast (~3.5s), mirrors showToast in main.ts.
 func toast(text: String, color: Color) -> void:
 	_toast.text = text
@@ -277,6 +312,20 @@ func toast(text: String, color: Color) -> void:
 	_toast_tween = create_tween()
 	_toast_tween.tween_interval(3.1)
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.4)
+
+
+## Floor-intro title card: "Floor N · Theme" fades in, holds, fades out. Called by Main
+## on each floor change (alongside the descent sound).
+func floor_title(depth: int, theme: String) -> void:
+	var t := theme.capitalize() if theme != "" else ""
+	_floortitle.text = ("Floor %d · %s" % [depth, t]) if t != "" else ("Floor %d" % depth)
+	if _ft_tween and _ft_tween.is_valid():
+		_ft_tween.kill()
+	_floortitle.modulate.a = 0.0
+	_ft_tween = create_tween()
+	_ft_tween.tween_property(_floortitle, "modulate:a", 1.0, 0.45)
+	_ft_tween.tween_interval(1.5)
+	_ft_tween.tween_property(_floortitle, "modulate:a", 0.0, 0.6)
 
 
 ## Spectate banner. mode is "follow" or "free"; remaining = players still on the

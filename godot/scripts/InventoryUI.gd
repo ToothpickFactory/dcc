@@ -120,11 +120,15 @@ func open() -> void:
 	if not _has_inv:
 		return
 	_selected_slot = -1
+	if not _inv_root.visible:
+		_sfx_play("ui_open")
 	_inv_root.visible = true
 	_render(_inv)
 	_render_bar()
 
 func close() -> void:
+	if _inv_root.visible:
+		_sfx_play("ui_close")
 	_inv_root.visible = false
 
 # Feed the raw net 'inv' message: {inv, attrs, derived, capacity, gold}.
@@ -142,6 +146,8 @@ func on_bag(msg: Dictionary) -> void:
 	if _open_bag_items.is_empty():
 		close_loot()   # emptied -> auto-close
 		return
+	if not _loot_root.visible:
+		_sfx_play("ui_open")
 	_loot_root.visible = true
 	_render_loot()
 
@@ -184,6 +190,8 @@ func loot_open_bag_id() -> String:
 	return _open_bag_id if (_loot_root != null and _loot_root.visible) else ""
 
 func close_loot() -> void:
+	if _loot_root.visible:
+		_sfx_play("ui_close")
 	_loot_root.visible = false
 	_open_bag_id = ""
 
