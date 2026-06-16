@@ -8,11 +8,79 @@ extends Node3D
 var grid: Dictionary = {}
 var _walls: MultiMeshInstance3D
 var _ground: MeshInstance3D
+var _ground_mat: StandardMaterial3D
+var _wall_mat: StandardMaterial3D
+var _fog: Node  # set by Fog.attach(); themed tiles route into the fog shader when present
 
 func build(geometry: Dictionary) -> void:
 	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]))
 	_build_ground()
 	_build_walls()
+
+## --- Fog hooks (Phase 2) -----------------------------------------------------
+## Fog.attach(world) calls this so the line-of-sight shader can override the
+## ground + wall meshes. After registration, themed tiles route into the fog
+## shader (one material carries tile + fog, mirroring render.ts patchFog).
+
+## The ground MeshInstance3D (null until build()). For Fog.material_override.
+func ground_instance() -> GeometryInstance3D:
+	return _ground
+
+## The wall MultiMeshInstance3D (null until build()). For Fog.material_override.
+func wall_instance() -> GeometryInstance3D:
+	return _walls
+
+## Base albedo of the flat ground (render.ts floor 0x161d2e), for the fog fallback.
+func ground_color() -> Color:
+	return Color8(0x16, 0x1d, 0x2e)
+
+## Base albedo of the flat wall (render.ts wall 0x39445e), for the fog fallback.
+func wall_color() -> Color:
+	return Color8(0x39, 0x44, 0x5e)
+
+## Floor tile repeat count (2400px / 80px = 30), mirroring floor.repeat.set(30,30).
+func ground_uv_repeat() -> float:
+	return DccConst.WORLD.x / 80.0
+
+## Register the fog node; subsequent set_*_texture calls also update its shader.
+func set_fog(fog: Node) -> void:
+	_fog = fog
+
+## Themed tiling: set the ground albedo to a 1-cell tile that repeats across the
+## floor (render.ts repeats the floor tile 30x over the 2400px plane). null reverts
+## to the flat fallback colour. Called by WorldDecor.apply().
+func set_ground_texture(tex: Texture2D) -> void:
+	if _fog != null and _fog.has_method("set_ground_texture"):
+		_fog.set_ground_texture(tex)
+		return
+	if _ground_mat == null:
+		return
+	if tex == null:
+		_ground_mat.albedo_texture = null
+		_ground_mat.albedo_color = Color8(0x16, 0x1d, 0x2e)
+		_ground_mat.uv1_scale = Vector3.ONE
+		return
+	tex.set_meta("dcc_tile", true)
+	_ground_mat.albedo_texture = tex
+	_ground_mat.albedo_color = Color.WHITE
+	# 2400px plane / 80px cell = 30 repeats — matches floor.repeat.set(30,30).
+	var reps := DccConst.WORLD.x / 80.0
+	_ground_mat.uv1_scale = Vector3(reps, reps, 1.0)
+
+## Themed walls: set the wall albedo to the theme's wall tile (render.ts tile 8).
+## null reverts to the flat fallback colour. Called by WorldDecor.apply().
+func set_wall_texture(tex: Texture2D) -> void:
+	if _fog != null and _fog.has_method("set_wall_texture"):
+		_fog.set_wall_texture(tex)
+		return
+	if _wall_mat == null:
+		return
+	if tex == null:
+		_wall_mat.albedo_texture = null
+		_wall_mat.albedo_color = Color8(0x39, 0x44, 0x5e)
+		return
+	_wall_mat.albedo_texture = tex
+	_wall_mat.albedo_color = Color.WHITE
 
 func _build_ground() -> void:
 	if _ground:
@@ -22,7 +90,9 @@ func _build_ground() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x16, 0x1d, 0x2e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	plane.material = mat
+	_ground_mat = mat
 	_ground = MeshInstance3D.new()
 	_ground.mesh = plane
 	_ground.position = Vector3(DccConst.WORLD.x * 0.5, 0, DccConst.WORLD.y * 0.5)
@@ -43,7 +113,9 @@ func _build_walls() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x39, 0x44, 0x5e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	box.material = mat
+	_wall_mat = mat
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.mesh = box

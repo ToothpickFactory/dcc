@@ -5,3 +5,6 @@ reports/
 
 # Vendored test framework — install with the command in README.md (not committed)
 addons/gdUnit4/
+
+# Game art — copied from ../public/assets (source of truth); not committed twice.
+assets/

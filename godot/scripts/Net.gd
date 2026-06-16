@@ -6,6 +6,8 @@ extends Node
 
 signal welcomed(you)
 signal floor_received(geometry, info)
+signal inv_received(msg)
+signal bag_received(msg)
 signal closed
 
 var you := ""
@@ -14,6 +16,9 @@ var self_dto: Dictionary = {}
 var ents: Array = []
 var cur: Dictionary = {}
 var prev: Dictionary = {}
+var floor_info: Dictionary = {}    # last floor message `info` (depth/theme/seed/...)
+var floor_state: Dictionary = {}   # last floor message `state` (endsAt/living/livingAtStairs)
+var run_state: Dictionary = {}     # last run message `state` (phase/players/spectators)
 
 var _ws := WebSocketPeer.new()
 var _was_open := false
@@ -56,17 +61,32 @@ func _handle(m: Dictionary) -> void:
 				push_warning("Protocol mismatch: server=%d client=%d" % [sv, DccConst.PROTOCOL_VERSION])
 			welcomed.emit(you)
 		"floor":
-			floor_received.emit(m.get("geometry", {}), m.get("info", {}))
+			floor_info = m.get("info", {})
+			floor_state = m.get("state", {})
+			floor_received.emit(m.get("geometry", {}), floor_info)
 		"state":
 			self_dto = m.get("self", {})
 			prev = cur
 			ents = m.get("ents", [])
 			cur = {"tick": int(m.get("tick", 0)), "ents": ents, "recv": Time.get_ticks_msec()}
+		"run":
+			run_state = m.get("state", {})
+		"inv":
+			inv_received.emit(m)
+		"bag":
+			bag_received.emit(m)
 		_:
 			pass
 
 func send_input(seq: int, mv: Vector2, aim: float) -> void:
 	_send({"t": "input", "seq": seq, "mv": [mv.x, mv.y], "aim": aim})
+
+func send_cast(seq: int, ability: int, aim: float) -> void:
+	_send({"t": "cast", "seq": seq, "ability": ability, "aim": aim})
+
+## Generic outbound for inventory/sell/swap/loot messages (see src/protocol.ts ClientMsg).
+func send_msg(obj: Dictionary) -> void:
+	_send(obj)
 
 func _send(obj: Dictionary) -> void:
 	if _ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
