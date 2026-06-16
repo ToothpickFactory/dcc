@@ -6,6 +6,7 @@ import {
   aggregateAttrs,
   allItems,
   carryCapacity,
+  compatibleSlots,
   deriveStats,
   emptyInventory,
   equip,
@@ -118,6 +119,19 @@ function item(slot: Item["slot"], attrs: Partial<Item["attrs"]> = {}, extra: Par
 
   const gone = removeAnywhere(inv, inv.equipped.helmet!.id);
   check("removeAnywhere pulls from a gear slot", gone !== null && inv.equipped.helmet === undefined);
+}
+
+// ---- consumables are carried-only (never equippable) -----------------------
+{
+  check("consumable has no compatible equip slots", compatibleSlots("consumable").length === 0);
+
+  const inv = emptyInventory();
+  addItem(inv, item("consumable", {}, { consumable: { healPct: 0.35 } }));
+  const id = inv.carried[0].id;
+  const res = equip(inv, id);
+  check("equipping a consumable is refused", res.ok === false);
+  check("consumable stays in carry after a failed equip", inv.carried.some((i) => i.id === id));
+  check("consumable contributes no attrs", aggregateAttrs(zeroAttrs(), inv).power === 0);
 }
 
 if (failures > 0) {

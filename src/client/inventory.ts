@@ -1,5 +1,5 @@
 import type { BagState, InvState, Net } from "./net";
-import { EQUIP_SLOTS, sellValue, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
+import { EQUIP_SLOTS, sellValue, type Attributes, type DerivedStats, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
 import type { Ability } from "../shared/types";
 
 // The character / inventory screen + the loot-bag panel. Pure DOM over the
@@ -14,7 +14,7 @@ const SLOT_EMOJI: Record<EquipSlot, string> = {
   helmet: "⛑️", chest: "🛡️", legs: "👖", gloves: "🧤", mainHand: "⚔️", offHand: "🗡️", ring1: "💍", ring2: "💍", amulet: "📿",
 };
 const ITEM_EMOJI: Record<ItemSlot, string> = {
-  helmet: "⛑️", chest: "🛡️", legs: "👖", gloves: "🧤", weapon: "⚔️", ring: "💍", amulet: "📿", bag: "🎒",
+  helmet: "⛑️", chest: "🛡️", legs: "👖", gloves: "🧤", weapon: "⚔️", ring: "💍", amulet: "📿", bag: "🎒", consumable: "🧪",
 };
 const ATTR_ABBR: Record<string, string> = { power: "PWR", spirit: "SPR", haste: "HST", vitality: "VIT", agility: "AGI", armor: "ARM" };
 
@@ -115,14 +115,21 @@ export class InventoryUI {
       if (b) tile.addEventListener("click", () => this.net.send({ t: "unequipBag", index: i }));
       this.bags.appendChild(tile);
     });
-    this.statPanel.innerHTML = statRows(s);
+    this.statPanel.innerHTML = renderStatRows(s.attrs, s.derived);
     this.goldEl.textContent = `🪙 ${s.gold}`;
     this.carryCount.textContent = `${inv.carried.length}/${s.capacity}`;
     this.carry.innerHTML = inv.carried.length ? "" : `<div class="invHint">Empty — loot bags or unequip gear here.</div>`;
     const canSell = this.net.self?.reached === true; // selling is a waiting-room action
     for (const it of inv.carried) {
       const tile = itemTile(it);
-      tile.addEventListener("click", () => this.net.send({ t: "equip", item: it.id }));
+      // Consumables drink (heal self); everything else equips on tap.
+      if (it.slot === "consumable") {
+        tile.classList.add("usable");
+        tile.title = "Drink to heal";
+        tile.addEventListener("click", () => this.net.send({ t: "useItem", item: it.id }));
+      } else {
+        tile.addEventListener("click", () => this.net.send({ t: "equip", item: it.id }));
+      }
       const drop = document.createElement("span");
       drop.className = "drop";
       drop.textContent = "🗑";
@@ -145,6 +152,12 @@ export class InventoryUI {
       }
       this.carry.appendChild(tile);
     }
+  }
+
+  // Quick-use (Q key / mobile button): drink the first carried consumable.
+  useFirstPotion(): void {
+    const it = this.net.inv?.inv.carried.find((c) => c.slot === "consumable");
+    if (it) this.net.send({ t: "useItem", item: it.id });
   }
 
   // ---- Loot bag ----
@@ -209,9 +222,9 @@ function emptyTile(emoji: string, label: string): HTMLDivElement {
   return d;
 }
 
-function statRows(s: InvState): string {
-  const a = s.attrs;
-  const d = s.derived;
+// Shared stat renderer — used by the character screen AND the skills panel so the
+// formulas live in exactly one place.
+export function renderStatRows(a: Attributes, d: DerivedStats): string {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   const row = (k: string, v: string) => `<div><span class="k">${k}</span> ${v}</div>`;
   return [

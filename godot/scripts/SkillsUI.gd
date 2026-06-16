@@ -34,6 +34,7 @@ var _key := ""
 # ---- node refs (built in _ready) ------------------------------------------
 var _root: Control
 var _char_box: VBoxContainer
+var _stats_box: VBoxContainer
 var _list: VBoxContainer
 
 
@@ -107,6 +108,27 @@ func _render() -> void:
 	head.add_theme_color_override("font_color", TEXT_NAME)
 	_char_box.add_child(head)
 	_char_box.add_child(_xp_bar(int(nx.get("into", 0)), int(nx.get("need", 1))))
+
+	# Live stat breakdown (attrs from the last `inv` message, derived from self).
+	_clear(_stats_box)
+	var inv: Variant = _net.get("last_inv")
+	if inv is Dictionary and not (inv as Dictionary).is_empty():
+		var a: Dictionary = (inv as Dictionary).get("attrs", {})
+		var d: Dictionary = self_dto.get("derived", (inv as Dictionary).get("derived", {}))
+		for r in _stat_rows(a, d):
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 5)
+			var k := Label.new()
+			k.text = r[0]
+			k.add_theme_color_override("font_color", TEXT_SUB)
+			k.add_theme_font_size_override("font_size", 13)
+			var v := Label.new()
+			v.text = r[1]
+			v.add_theme_color_override("font_color", TEXT_NAME)
+			v.add_theme_font_size_override("font_size", 13)
+			row.add_child(k)
+			row.add_child(v)
+			_stats_box.add_child(row)
 
 	# Per-ability cards.
 	_clear(_list)
@@ -372,6 +394,17 @@ func _build_panel() -> void:
 	_char_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_char_box)
 
+	var statsect := Label.new()
+	statsect.text = "STATS"
+	statsect.add_theme_font_size_override("font_size", 11)
+	statsect.add_theme_color_override("font_color", TEXT_SECTION)
+	col.add_child(statsect)
+
+	_stats_box = VBoxContainer.new()
+	_stats_box.add_theme_constant_override("separation", 3)
+	_stats_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_stats_box)
+
 	var sect := Label.new()
 	sect.text = "ABILITIES"
 	sect.add_theme_font_size_override("font_size", 11)
@@ -397,11 +430,16 @@ func _state_key() -> String:
 		if a is Dictionary:
 			parts.append("%s:%d:%d" % [str(a.get("id", "")), int(a.get("tier", 0)), int(a.get("xp", 0))])
 	var cx := 0
+	var sig := ""
 	if _net != null:
 		var sd: Variant = _net.get("self_dto")
 		if sd is Dictionary:
 			cx = int(sd.get("charXp", 0))
-	return ",".join(parts) + "|" + str(cx)
+			sig = JSON.stringify(sd.get("derived", {}))
+		var inv: Variant = _net.get("last_inv")
+		if inv is Dictionary:
+			sig += JSON.stringify((inv as Dictionary).get("attrs", {}))
+	return ",".join(parts) + "|" + str(cx) + "|" + sig
 
 
 func _abilities() -> Array:
@@ -413,6 +451,24 @@ func _abilities() -> Array:
 		if ab is Array:
 			return ab
 	return []
+
+
+# The stat rows, mirroring InventoryUI._render_stats / inventory.ts renderStatRows.
+func _stat_rows(a: Dictionary, d: Dictionary) -> Array:
+	return [
+		["Max HP", str(roundi(float(d.get("maxHp", 0.0))))],
+		["Move", str(roundi(float(d.get("moveSpeed", 0.0))))],
+		["Power", "%d · %s dmg" % [int(a.get("power", 0)), _pct(float(d.get("spellPower", 1.0)))]],
+		["Spirit", "%d · %s heal" % [int(a.get("spirit", 0)), _pct(float(d.get("healPower", 1.0)))]],
+		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
+		["Vitality", str(int(a.get("vitality", 0)))],
+		["Agility", str(int(a.get("agility", 0)))],
+		["Armor", "%d · %s block" % [int(a.get("armor", 0)), _pct(float(d.get("dr", 0.0)))]],
+	]
+
+
+func _pct(x: float) -> String:
+	return "%d%%" % roundi(x * 100.0)
 
 
 func _send(obj: Dictionary) -> void:
