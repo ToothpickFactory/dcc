@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -26,6 +26,7 @@ export type ClientMsg =
   | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "swapAbility"; a: number; b: number } // reorder/swap two action-bar slots
+  | { t: "evolve"; slot: number; to: string } // evolve a matured ability into a chosen branch
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -71,7 +72,8 @@ export interface SelfDTO {
   cls: PlayerClass;
   profile: PlaystyleProfile;
   derived: DerivedStats; // gear-derived stats (HUD + client movement prediction)
-  abilities: Ability[]; // the action bar (slot 1 auto-casts) — incl. live ammo
+  abilities: Ability[]; // the action bar (slot 1 auto-casts) — incl. live ammo + xp/tier
+  charXp: number; // character XP (skill system) — client derives level via charLevelOf
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
 }

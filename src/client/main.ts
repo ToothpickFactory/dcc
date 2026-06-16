@@ -4,6 +4,7 @@ import { Predictor } from "./predict";
 import { Renderer } from "./render";
 import { Hud } from "./hud";
 import { InventoryUI } from "./inventory";
+import { SkillsUI } from "./skills";
 import { Minimap } from "./minimap";
 import { generateFloor } from "../procgen";
 import { LOOT_REACH } from "../shared/constants";
@@ -14,7 +15,9 @@ const input = new Input();
 const predictor = new Predictor();
 const renderer = new Renderer(canvas);
 const invUI = new InventoryUI(net);
+const skillsUI = new SkillsUI(net);
 const minimap = new Minimap();
+let skillReadyWas = false;
 const lootBtn = document.getElementById("lootBtn") as HTMLButtonElement;
 const hudEl = document.getElementById("hud") as HTMLElement;
 const waitingEl = document.getElementById("waiting") as HTMLElement;
@@ -80,6 +83,7 @@ net.onWelcome = () => {
   loginEl.style.display = "none";
   hud = new Hud((i) => input.queueCast(i));
   invUI.showButton();
+  skillsUI.showButton();
 };
 net.onClose = () => {
   if (!connected) {
@@ -128,8 +132,9 @@ addEventListener("keydown", (e) => {
   if (!connected) return;
   const k = e.key.toLowerCase();
   if (k === "i") invUI.toggle();
-  else if (k === "e") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
-  else if (k === "escape") { invUI.close(); invUI.closeLoot(); }
+  else if (k === "e") skillsUI.toggle();
+  else if (k === "f") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
+  else if (k === "escape") { invUI.close(); invUI.closeLoot(); skillsUI.close(); }
   else if (net.self?.reached || net.self?.status === "spectator") {
     // Spectate controls (waiting room or dead).
     if (k === "tab") { e.preventDefault(); spectateMode = "follow"; followIdx++; }
@@ -223,6 +228,12 @@ function frame(now: number) {
     renderer.follow(camX, camY);
     hud?.update(net);
     if (invUI.isOpen()) invUI.syncBar(); // keep the action-bar swap section live
+    skillsUI.syncIfOpen();
+    // Evolution-ready: glow the Skills button + toast once when it first happens.
+    const skillReady = skillsUI.anyReady();
+    skillsUI.setGlow(skillReady);
+    if (skillReady && !skillReadyWas) showToast("✨ A skill is ready to evolve! Press E", "#ffd34d");
+    skillReadyWas = skillReady;
   }
 
   // Loot prompt: the nearest bag within reach of the (predicted) player.

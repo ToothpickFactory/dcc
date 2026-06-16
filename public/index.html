@@ -70,17 +70,36 @@
       #resetRun:disabled { cursor: wait; opacity: 0.55; }
 
       /* ---- Inventory / loot buttons (work on desktop AND touch) ---- */
-      #invBtn, #lootBtn { position: fixed; z-index: 16; pointer-events: auto; cursor: pointer;
+      #invBtn, #lootBtn, #skillsBtn { position: fixed; z-index: 16; pointer-events: auto; cursor: pointer;
         border-radius: 12px; font: 700 14px ui-sans-serif, system-ui, sans-serif; color: #e6e9ef;
         border: 1px solid #2c3a59; background: #141b2bdd; -webkit-tap-highlight-color: transparent; }
       #invBtn { display: none; left: 14px; bottom: 92px; width: 56px; height: 56px; font-size: 26px; }
+      #skillsBtn { display: none; left: 14px; bottom: 156px; width: 56px; height: 56px; font-size: 26px; }
+      #skillsBtn.glow { border-color: #ffd34d; box-shadow: 0 0 0 2px #ffd34d66, 0 0 18px #ffd34d88; animation: skpulse 1s ease-in-out infinite; }
+      @keyframes skpulse { 0%,100% { box-shadow: 0 0 0 2px #ffd34d66, 0 0 14px #ffd34d77; } 50% { box-shadow: 0 0 0 3px #ffd34daa, 0 0 26px #ffd34d; } }
       #lootBtn { display: none; left: 50%; bottom: 110px; transform: translateX(-50%); padding: 13px 20px;
         background: linear-gradient(180deg, #caa14a, #8a6a22); border-color: #caa14a; color: #1a1406; }
-      #invBtn:active, #lootBtn:active { filter: brightness(1.18); }
+      #invBtn:active, #lootBtn:active, #skillsBtn:active { filter: brightness(1.18); }
 
-      /* ---- Panels (character screen + loot) ---- */
-      #inventory, #lootPanel { position: fixed; inset: 0; z-index: 25; display: none;
+      /* ---- Panels (character screen + loot + skills) ---- */
+      #inventory, #lootPanel, #skills { position: fixed; inset: 0; z-index: 25; display: none;
         align-items: center; justify-content: center; background: #04060cbb; }
+      /* ---- Skills screen ---- */
+      #charLevel { margin: 2px 0 4px; }
+      #charLevel .clvl { font-size: 14px; margin-bottom: 5px; }
+      .xpbar { position: relative; height: 14px; border-radius: 7px; background: #0e1422; border: 1px solid #2c3a59; overflow: hidden; }
+      .xpfill { height: 100%; background: linear-gradient(180deg, #6fd0ff, #3a7bd5); transition: width .2s linear; }
+      .xptxt { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 14px; color: #dbe6f5; }
+      .skcard { border: 1px solid #2c3a59; border-radius: 12px; background: #0e1422; padding: 10px 12px; margin-bottom: 10px; }
+      .skhead { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .skhead .ico { font-size: 22px; } .skhead .nm { font-weight: 700; } .skhead .lv { margin-left: auto; color: #9fb0d0; font-size: 12px; }
+      .skcard .sub { font-size: 11px; color: #86a0c2; margin-top: 5px; }
+      .skcard .ready { font-size: 12px; color: #ffd34d; font-weight: 700; margin: 7px 0 5px; }
+      .evrow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .evbtn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 8px; border-radius: 10px;
+        border: 1px solid #3a4a6a; background: #16203a; color: #e6e9ef; cursor: pointer; text-align: center; -webkit-tap-highlight-color: transparent; }
+      .evbtn:active { filter: brightness(1.2); }
+      .evbtn .ico { font-size: 22px; } .evbtn b { font-size: 12px; } .evbtn .ed { font-size: 9.5px; color: #93a6c4; line-height: 1.2; }
       .panelCard { width: min(94vw, 560px); max-height: 88vh; overflow: auto; padding: 18px; border-radius: 16px;
         background: #121826f7; border: 1px solid #2c3a59; box-shadow: 0 24px 70px #000a; pointer-events: auto; }
       .panelHead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
@@ -129,13 +148,23 @@
     <div id="help">
       <div><b>WASD / arrows</b> move · <b>tap-hold</b> on mobile</div>
       <div><b>mouse</b> aim · <b>1-4 / click / tap slot</b> cast (ballistic)</div>
-      <div><b>I</b> inventory · <b>E</b> loot nearby bag · (or use the 🎒 / Loot buttons)</div>
+      <div><b>I</b> inventory · <b>E</b> skills/evolve · <b>F</b> loot bag · (or use the 🎒 ✨ / Loot buttons)</div>
       <div style="color:#e89a9a">⚠ Spells hit friend or foe — aim carefully!</div>
     </div>
     <div id="hud"><div id="abilities"></div></div>
     <button id="resetRun" type="button" title="Temporary development control">Reset round</button>
     <button id="invBtn" type="button" title="Inventory (I)">🎒</button>
-    <button id="lootBtn" type="button">💰 Loot (E)</button>
+    <button id="skillsBtn" type="button" title="Skills (E)">✨</button>
+    <button id="lootBtn" type="button">💰 Loot (F)</button>
+    <div id="skills">
+      <div class="panelCard">
+        <div class="panelHead"><h2>✨ Skills</h2><button id="skillsClose" type="button">✕</button></div>
+        <div id="charLevel"></div>
+        <div class="invSection">Abilities — use them to earn XP, then evolve</div>
+        <div id="skillList"></div>
+        <div class="invHint">Each ability levels as you use it. When it's ready, pick a branch to evolve. Permadeath wipes all progress.</div>
+      </div>
+    </div>
     <div id="inventory">
       <div class="panelCard">
         <div class="panelHead"><h2>⚔️ Character</h2><span id="invGold">🪙 0</span><button id="invClose" type="button">✕</button></div>

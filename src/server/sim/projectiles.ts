@@ -29,20 +29,25 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
 
   if (ab.projectile) {
     const speed = ab.speed ?? 600;
-    ctx.projectiles.push({
-      id: `pr_${(++seq).toString(36)}`,
-      ownerId: caster.id,
-      x: caster.x + Math.cos(aim) * (PLAYER_RADIUS + 4),
-      y: caster.y + Math.sin(aim) * (PLAYER_RADIUS + 4),
-      vx: Math.cos(aim) * speed,
-      vy: Math.sin(aim) * speed,
-      dmg, // negative = heal projectile
-      slowMs: ab.slowMs ?? 0,
-      ability: idx,
-      ttl: ab.range / speed,
-      hitR: PROJECTILE_RADIUS,
-      boss: false,
-    });
+    const pellets = Math.max(1, ab.pellets ?? 1); // multishot fires several
+    const spread = ab.spread ?? 0;
+    for (let i = 0; i < pellets; i++) {
+      const a = pellets > 1 ? aim - spread / 2 + (spread * i) / (pellets - 1) : aim;
+      ctx.projectiles.push({
+        id: `pr_${(++seq).toString(36)}`,
+        ownerId: caster.id,
+        x: caster.x + Math.cos(a) * (PLAYER_RADIUS + 4),
+        y: caster.y + Math.sin(a) * (PLAYER_RADIUS + 4),
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        dmg, // negative = heal projectile
+        slowMs: ab.slowMs ?? 0,
+        ability: idx,
+        ttl: ab.range / speed,
+        hitR: PROJECTILE_RADIUS,
+        boss: false,
+      });
+    }
     // Casting a heal aggravates nearby foes (ported): support play has a cost.
     if (dmg < 0) {
       const threat = -dmg * AGGRO_PER_HEAL;
@@ -57,8 +62,8 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   }
 
   // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The
-  // hit range passed to the profile is the actual distance to each victim.
-  const cone = Math.PI / 3;
+  // cone widens with evolutions (blast blade / whirlwind).
+  const cone = ab.cone ?? Math.PI / 3;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
     if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));

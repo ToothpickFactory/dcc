@@ -24,6 +24,13 @@ export interface Ability {
   slowMs?: number;
   ammo?: number; // current charges (consumables like thrown rocks); undefined = unlimited
   maxAmmo?: number; // full ammo, for the UI bar
+  // ---- evolution shape (drives how the cast behaves) ----
+  pellets?: number; // projectile abilities: fire N pellets in a spread (multishot)
+  spread?: number; // total spread angle (radians) across pellets, or melee cone width
+  cone?: number; // melee cone width (radians); default ~PI/3
+  // ---- progression (per-instance; persists on the action bar) ----
+  xp?: number; // experience toward this ability's next evolution
+  tier?: number; // how many times it has evolved (0 = base)
   // Display-only. The heuristic fills `name`; the LLM may overwrite name/flavor/
   // twist. NONE of these ever affect the numbers above.
   name: string;

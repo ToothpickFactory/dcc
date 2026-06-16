@@ -34,7 +34,8 @@ import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
-import { DEFAULT_ABILITIES } from "../shared/abilities";
+import { DEFAULT_ABILITIES, starterAbilities } from "../shared/abilities";
+import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor, rng } from "../procgen";
@@ -187,6 +188,26 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, expiresAt: Date.now() + LOOT_BAG_TTL });
   }
 
+  // Award XP to the ability that landed a hit/kill, plus character XP on kills.
+  // Ability XP matures an ability toward its next evolution; character XP raises
+  // the character level (passive HP). Both persist; permadeath wipes them.
+  gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void {
+    const p = this.players.get(playerId);
+    if (!p || p.status !== "alive") return;
+    const ab = p.abilities[idx];
+    if (!ab) return;
+    const amount = killed ? (kind ? MONSTER_XP[kind] : PVP_KILL_XP) : HIT_XP;
+    ab.xp = (ab.xp ?? 0) + amount;
+    if (killed) {
+      const before = charLevelOf(p.charXp);
+      p.charXp += amount;
+      if (charLevelOf(p.charXp) > before) {
+        recomputePlayer(p); // new character level -> more max HP
+        p.hp = p.derived.maxHp; // top off on level-up
+      }
+    }
+  }
+
   private spawnMonsters() {
     // Stream D's procgen stub spawns all grunts; until it emits varied kinds,
     // distribute archetypes so the per-kind behaviors are exercised. The moment
@@ -271,10 +292,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           alive: true,
           cls: this.profiles.classOf(id),
           profile: this.profiles.get(id),
-          abilities: DEFAULT_ABILITIES,
+          abilities: starterAbilities(),
           base: zeroAttrs(), // fresh run = fresh character
           inv: emptyInventory(),
           gold: 0,
+          charXp: 0,
           lastSeen: Date.now(),
         });
       }
@@ -301,7 +323,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.mvy = 0;
       p.slowUntil = 0;
       p.seen.clear();
-      p.abilities = DEFAULT_ABILITIES.map((a) => ({ ...a }));
+      p.abilities = starterAbilities(); // fresh run = base sword + rocks, all skill progress wiped
+      p.charXp = 0;
       p.base = zeroAttrs(); // fresh run = fresh character: gear wiped
       p.inv = emptyInventory();
       recomputePlayer(p);
@@ -590,7 +613,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       gold: rec?.gold ?? 0, // carry persisted gold across reconnect/eviction
       cds: {},
       lastSeq: 0,
-      abilities: (rec?.abilities?.length ? rec.abilities : DEFAULT_ABILITIES).map((a) => ({ ...a })),
+      abilities: (rec?.abilities?.length ? rec.abilities : starterAbilities()).map((a) => ({ ...a })),
+      charXp: rec?.charXp ?? 0,
       slowUntil: 0,
       seen: new Set(),
       base,
@@ -659,6 +683,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.takeLoot(player, String(msg.bag), msg.item ? String(msg.item) : undefined);
     } else if (msg.t === "swapAbility") {
       this.swapAbility(player, msg.a | 0, msg.b | 0);
+    } else if (msg.t === "evolve") {
+      this.evolveAbility(player, msg.slot | 0, String(msg.to));
     }
   }
 
@@ -671,6 +697,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     const ca = p.cds[a] ?? 0;
     p.cds[a] = p.cds[b] ?? 0;
     p.cds[b] = ca;
+    this.persistPlayer(p);
+  }
+
+  // Evolve a matured ability into a chosen branch. Server-authoritative: checks
+  // the ability is ready and `to` is a real branch of its current node, then
+  // swaps in the new node (tier++, xp reset, ammo refilled by the node default).
+  private evolveAbility(p: PlayerState, slot: number, to: string): void {
+    const ab = p.abilities[slot];
+    if (!ab || !canEvolve(ab)) return;
+    if (!(EVOLUTIONS[ab.id] ?? []).includes(to)) return;
+    const node = ABILITY_NODES[to];
+    if (!node) return;
+    p.abilities[slot] = { ...node, tier: (ab.tier ?? 0) + 1, xp: 0 };
     this.persistPlayer(p);
   }
 
@@ -853,6 +892,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       base: p.base,
       inv: p.inv,
       gold: p.gold,
+      charXp: p.charXp,
       lastSeen: Date.now(),
     };
   }
@@ -1023,6 +1063,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         profile: this.profiles.get(p.id),
         derived: p.derived,
         abilities: p.abilities,
+        charXp: p.charXp,
         status: p.status,
         reached: p.reached,
       };

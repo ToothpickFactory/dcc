@@ -19,6 +19,7 @@ export interface PlayerState {
   cds: Record<number, number>;
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
+  charXp: number; // total character XP (from kills); drives character level + passive bonuses
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)
@@ -103,4 +104,6 @@ export interface WorldCtx {
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
   dropLoot(x: number, y: number, items: Item[]): void; // spawn a loot bag (no-op if empty)
+  // Award ability + character XP to a player for a hit/kill with action slot `idx`.
+  gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;
 }

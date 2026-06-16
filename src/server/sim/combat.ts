@@ -62,6 +62,7 @@ export function applyDamage(
       ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
       if (sourceIsPlayer && sourceId !== target.id) {
         ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "player" });
+        ctx.gainXp(sourceId, ability, true);
       }
     }
     return;
@@ -72,6 +73,7 @@ export function applyDamage(
     if (sourceIsPlayer) {
       target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + dmg);
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
+      ctx.gainXp(sourceId, ability, false);
     }
     target.hp -= dmg;
     ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg });
@@ -82,6 +84,7 @@ export function applyDamage(
       if (sourceIsPlayer) {
         ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });
         awardAssists(ctx, target.threat, sourceId);
+        ctx.gainXp(sourceId, ability, true, "boss");
       }
     }
     return;
@@ -94,6 +97,7 @@ export function applyDamage(
     // Threat-based aggro (combat note): damage from a player draws aggro.
     target.threat.set(sourceId, (target.threat.get(sourceId) ?? 0) + taken);
     ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
+    ctx.gainXp(sourceId, ability, false);
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   target.hp -= taken;
@@ -108,6 +112,7 @@ export function applyDamage(
     if (sourceIsPlayer) {
       ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });
       awardAssists(ctx, target.threat, sourceId);
+      ctx.gainXp(sourceId, ability, true, target.kind);
     }
   }
 }

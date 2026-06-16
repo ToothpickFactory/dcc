@@ -19,9 +19,10 @@
     "test:loot": "node --experimental-strip-types src/server/loot/heuristic.test.ts",
     "test:flavor": "node --experimental-strip-types src/server/loot/flavor.test.ts",
     "test:items": "node --experimental-strip-types src/shared/items.test.ts",
-    "test": "npm run test:profile && npm run test:procgen && npm run test:loot && npm run test:flavor && npm run test:items",
+    "test": "npm run test:profile && npm run test:procgen && npm run test:loot && npm run test:flavor && npm run test:items && npm run test:skills",
     "bot": "node --experimental-strip-types test/bot.ts",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "test:skills": "node --experimental-strip-types src/shared/skills.test.ts"
   },
   "dependencies": {
     "three": "^0.169.0"
