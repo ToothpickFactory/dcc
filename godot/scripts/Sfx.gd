@@ -120,6 +120,13 @@ func _bake() -> void:
 	_bank["click"] = _synth(0.05, func(t: float) -> float:
 		return exp(-t * 60.0) * 0.4 * sin(TAU * 900.0 * t))
 
+	# dash: a quick airy whoosh (noise + a downward sweep) for the dodge.
+	_bank["dash"] = _synth(0.16, func(t: float) -> float:
+		var env := exp(-t * 13.0)
+		var noise := randf() * 2.0 - 1.0
+		var f := 620.0 - 320.0 * t / 0.16
+		return clampf(env * (0.5 * noise + 0.4 * sin(TAU * f * t)), -1.0, 1.0))
+
 
 # Build a mono 16-bit AudioStreamWAV by sampling `gen(t)` (returns [-1,1]) for `dur` seconds.
 func _synth(dur: float, gen: Callable) -> AudioStreamWAV:

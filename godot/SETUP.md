@@ -95,7 +95,7 @@ godot --headless --path godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd \
 `geo_test.gd` checks the pure-logic ports (geometry decode, collision, line-of-sight).
 
 ## 7. Controls
-- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast
+- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast · **Space / LB** dodge (i-frames)
 - **I** inventory/character (equip, drop, sell) · **K** skills & evolution · **Q** drink a potion · **E** loot a nearby bag
 - **Tab** cycle spectate target · **V** toggle free-cam (while dead/in the waiting room)
 - **F2** start a new run (admin reset — works while the server's `ADMIN_OPEN=true`)

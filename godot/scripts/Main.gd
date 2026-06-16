@@ -53,6 +53,7 @@ var _hitstop_until := 0.0      # wall-clock ms; Engine.time_scale dips until the
 var _last_hitstop := 0.0       # throttle hit-stop so swarms don't strobe
 var _boss_present_was := false # tracks boss presence for the combat-music layer
 var _trail_frame := 0          # throttles projectile trail dots
+var _dash_ready_at := 0.0      # client-side dodge cooldown gate (ms)
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -409,6 +410,16 @@ func _process(dt: float) -> void:
 			_seq += 1
 			_net.send_cast(_seq, int(idx), aim)
 			_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+		# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
+		if _inp.consume_dash():
+			var now_ms := float(Time.get_ticks_msec())
+			if now_ms >= _dash_ready_at:
+				_dash_ready_at = now_ms + DccConst.DASH_CD
+				var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
+				_seq += 1
+				_net.send_dash(_seq, ddir)
+				_pred.dash(ddir)
+				_sfx.play("dash")
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
 	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.

@@ -41,7 +41,7 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   } else if (ctx.now >= boss.meleeReadyAt) {
     boss.meleeReadyAt = ctx.now + BOSS_MELEE_CD;
     ctx.pushFx({ e: "melee", by: boss.id });
-    applyDamage(ctx, prey, BOSS_MELEE_DMG, boss.id, false);
+    applyDamage(ctx, prey, BOSS_MELEE_DMG * boss.dmgMult, boss.id, false);
   }
 
   if (ctx.now >= boss.castReadyAt) {
@@ -63,7 +63,7 @@ function bossCast(ctx: WorldCtx, boss: BossState, target: PlayerState): void {
       y: boss.y,
       vx: Math.cos(a) * BOSS_PROJ_SPEED,
       vy: Math.sin(a) * BOSS_PROJ_SPEED,
-      dmg: BOSS_PROJ_DMG,
+      dmg: BOSS_PROJ_DMG * boss.dmgMult,
       slowMs: 0,
       ability: BOSS_BOLT_SPRITE,
       ttl: BOSS_PROJ_LIFE,

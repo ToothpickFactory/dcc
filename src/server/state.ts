@@ -30,6 +30,12 @@ export interface PlayerState {
   shieldUntil: number; // shield expires at this tick
   bloodlustUntil: number; // group-haste buff active while now < this
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  // ---- Dodge/dash (evade) ----
+  dashUntil: number; // dash burst active while now < this (movement overridden)
+  dashDirX: number; // unit dash direction
+  dashDirY: number;
+  dashReadyAt: number; // dash off cooldown at this tick
+  dashIframeUntil: number; // invulnerable (i-frames) while now < this
   potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)
@@ -56,6 +62,7 @@ export interface MonsterState {
   inv: Inventory; // monsters carry gear too — dropped on death
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
   threat: Map<string, number>; // playerId -> accumulated threat
+  dmgMult: number; // per-floor damage scaling (1 at floor 1, grows with depth)
 }
 
 // The boss (ported from the monolith). Its own type so combat can tell it apart
@@ -73,6 +80,7 @@ export interface BossState {
   castReadyAt: number;
   meleeReadyAt: number;
   threat: Map<string, number>;
+  dmgMult: number; // per-floor damage scaling
 }
 
 export interface ProjectileState {

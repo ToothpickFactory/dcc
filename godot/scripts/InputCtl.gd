@@ -41,6 +41,7 @@ const _PAD_BTN_CASTS := {
 const _AIM_STICK_DEADZONE := 0.25
 
 var _cast_queue: Array[int] = []
+var _dash_pressed := false  # Space / left-shoulder — drained by consume_dash()
 # Right-stick aim, in radians, when the stick is pushed past the dead zone; NAN
 # when the stick is idle so callers can fall back to the pointer aim.
 var _stick_aim: float = NAN
@@ -69,6 +70,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Keyboard slot keys 1-6 (queue a cast; never normalized through actions so we
 	# get one discrete press per keystroke, matching the TS keydown handler).
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_SPACE:
+			_dash_pressed = true
+			return
 		var idx: int = int(_SLOT_KEYS.get(event.keycode, -1))
 		if idx >= 0:
 			_cast_queue.append(idx)
@@ -77,11 +81,21 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_cast_queue.append(0)
 		return
-	# Gamepad fire buttons (native bonus).
+	# Gamepad: left shoulder = dodge/dash; face/right-shoulder buttons = fire.
 	if event is InputEventJoypadButton and event.pressed:
+		if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
+			_dash_pressed = true
+			return
 		var pidx: int = int(_PAD_BTN_CASTS.get(event.button_index, -1))
 		if pidx >= 0:
 			_cast_queue.append(pidx)
+
+# True once per Space / left-shoulder press (drained by Main). The dodge/evade intent.
+func consume_dash() -> bool:
+	if _dash_pressed:
+		_dash_pressed = false
+		return true
+	return false
 
 # Raw move vector. Keyboard/arrows come from the move_* actions (their key events
 # are bound in project.godot); the gamepad left stick is folded in so a pad walks

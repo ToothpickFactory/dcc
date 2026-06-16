@@ -56,6 +56,7 @@ export function applyDamage(
   if (isPlayer(target)) {
     if (target.status !== "alive") return;
     if (target.reached) return; // safe in the waiting room — out of play
+    if (ctx.now < target.dashIframeUntil) return; // dodged — i-frames negate the hit
     let taken = dmg * (1 - target.derived.dr); // armor mitigates
     // Absorb shield (support talent) soaks damage before HP.
     if (target.shieldUntil > ctx.now && target.shield > 0) {

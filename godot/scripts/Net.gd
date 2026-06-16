@@ -92,6 +92,9 @@ func send_input(seq: int, mv: Vector2, aim: float) -> void:
 func send_cast(seq: int, ability: int, aim: float) -> void:
 	_send({"t": "cast", "seq": seq, "ability": ability, "aim": aim})
 
+func send_dash(seq: int, dir: Vector2) -> void:
+	_send({"t": "dash", "seq": seq, "dir": [dir.x, dir.y]})
+
 ## Generic outbound for inventory/sell/swap/loot messages (see src/protocol.ts ClientMsg).
 func send_msg(obj: Dictionary) -> void:
 	_send(obj)

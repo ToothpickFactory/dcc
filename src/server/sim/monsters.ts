@@ -65,13 +65,13 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       }
       if (d <= r.shootRange && ctx.now >= m.attackReadyAt) {
         m.attackReadyAt = ctx.now + def.attackCd;
-        shoot(ctx, m, prey, r.projSpeed, r.projDmg);
+        shoot(ctx, m, prey, r.projSpeed, r.projDmg * m.dmgMult);
       }
     } else if (d <= def.meleeRange) {
       if (ctx.now >= m.attackReadyAt) {
         m.attackReadyAt = ctx.now + def.attackCd;
         ctx.pushFx({ e: "melee", by: m.id });
-        applyDamage(ctx, prey, def.dmg, m.id, false);
+        applyDamage(ctx, prey, def.dmg * m.dmgMult, m.id, false);
       }
     } else {
       moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);

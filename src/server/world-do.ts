@@ -3,6 +3,11 @@ import {
   BOSS_MAX_HP,
   BOSS_NAME,
   BOSS_RADIUS,
+  DASH_CD,
+  DASH_IFRAME_MS,
+  DASH_MS,
+  FLOOR_DMG_SCALE,
+  FLOOR_HP_SCALE,
   FIRST_BOSS_NAME,
   LOOT_BAG_TTL,
   LOOT_REACH,
@@ -299,6 +304,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // floor.spawns carry real variety (any non-grunt present), honor them as-is.
     const homogeneousGrunt = this.floor.spawns.every((s) => s.kind === "grunt");
     const VARIETY: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "swarm", "grunt"];
+    // Per-floor scaling so descent gets deadlier, not just more crowded.
+    const depthSteps = Math.max(0, this.floor.depth - 1);
+    const hpMult = 1 + depthSteps * FLOOR_HP_SCALE;
+    const dmgMult = 1 + depthSteps * FLOOR_DMG_SCALE;
     this.monsters = this.floor.spawns.map((s, i) => {
       const kind = homogeneousGrunt ? VARIETY[i % VARIETY.length] : s.kind;
       const def = MONSTER_KINDS[kind];
@@ -320,9 +329,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         inv: emptyInventory(),
         derived: deriveStats(def.hp, def.speed, base),
         threat: new Map(),
+        dmgMult,
       };
     });
     for (const m of this.monsters) this.gearUpMonster(m);
+    // Apply depth HP scaling AFTER gear/recompute set the base maxHp.
+    for (const m of this.monsters) {
+      m.derived.maxHp = Math.round(m.derived.maxHp * hpMult);
+      m.maxHp = m.derived.maxHp;
+      m.hp = m.maxHp;
+    }
   }
 
   // Give a monster 1-2 generated items (so kills actually drop loot), then fold
@@ -340,6 +356,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private spawnBoss() {
     // The exit guardian starts near the stairs on every floor.
     const { x, y } = this.bossSpawnNearStairs();
+    const depthSteps = Math.max(0, this.floor.depth - 1);
+    const maxHp = Math.round(BOSS_MAX_HP * (1 + depthSteps * FLOOR_HP_SCALE));
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
@@ -347,12 +365,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       x,
       y,
       aim: 0,
-      hp: BOSS_MAX_HP,
-      maxHp: BOSS_MAX_HP,
+      hp: maxHp,
+      maxHp,
       dead: false,
       castReadyAt: this.now + 1500,
       meleeReadyAt: 0,
       threat: new Map(),
+      dmgMult: 1 + depthSteps * FLOOR_DMG_SCALE,
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
@@ -731,6 +750,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       shieldUntil: 0,
       bloodlustUntil: 0,
       slowUntil: 0,
+      dashUntil: 0,
+      dashDirX: 0,
+      dashDirY: 0,
+      dashReadyAt: 0,
+      dashIframeUntil: 0,
       potionReadyAt: 0,
       seen: new Set(),
       base,
@@ -785,6 +809,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
       castAbility(this, player, msg.ability | 0, player.aim);
+    } else if (msg.t === "dash") {
+      if (player.reached) return; // in the waiting room — no dashing
+      player.lastSeq = msg.seq | 0;
+      this.dash(player, msg.dir);
     } else if (msg.t === "sell") {
       this.sellItem(player, String(msg.item));
     } else if (msg.t === "equip") {
@@ -810,6 +838,31 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     } else if (msg.t === "spendTalent") {
       this.spendTalent(player, String(msg.node));
     }
+  }
+
+  // Dodge/dash: a short invulnerable burst in `dir` (the client's move vec, or aim
+  // if standing still), gated by a cooldown. Server-authoritative; the client predicts.
+  private dash(p: PlayerState, dir: unknown): void {
+    if (p.status !== "alive") return;
+    if (this.now < p.dashReadyAt) return; // on cooldown
+    let dx = 0;
+    let dy = 0;
+    if (Array.isArray(dir)) {
+      dx = Number(dir[0]) || 0;
+      dy = Number(dir[1]) || 0;
+    }
+    let len = Math.hypot(dx, dy);
+    if (len < 0.01) {
+      // No direction given (standing still, no aim) — dash toward facing.
+      dx = Math.cos(p.aim);
+      dy = Math.sin(p.aim);
+      len = 1;
+    }
+    p.dashDirX = dx / len;
+    p.dashDirY = dy / len;
+    p.dashUntil = this.now + DASH_MS;
+    p.dashIframeUntil = this.now + DASH_IFRAME_MS;
+    p.dashReadyAt = this.now + DASH_CD;
   }
 
   // Pick a WoW-style class — only allowed once (the first level-up's pending
@@ -1257,6 +1310,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         talents: p.talents,
         talentPoints: p.talentPoints,
         shield: p.shieldUntil > this.now ? Math.round(p.shield) : 0,
+        dashReadyAt: p.dashReadyAt,
         status: p.status,
         reached: p.reached,
         lifetimeXp: this.lb.get(p.id)?.xp ?? 0,

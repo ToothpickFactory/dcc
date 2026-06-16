@@ -10,13 +10,14 @@
 import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 8; // was 7 — RPG Phase 2: class/talents on SelfDTO, chooseClass/spendTalent msgs, crit flag
+export const PROTOCOL_VERSION = 9; // was 8 — added the `dash` client message (dodge/evade)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
   | { t: "join"; name: string; token?: string } // token = signed playerId for reconnect
   | { t: "input"; seq: number; mv: [number, number]; aim: number } // mv = move vec; aim = radians
   | { t: "cast"; seq: number; ability: number; aim: number } // fire ability N in aim direction
+  | { t: "dash"; seq: number; dir: [number, number] } // dodge/evade burst in dir (move vec or aim)
   // ---- inventory / gear (character screen) ----
   | { t: "equip"; item: string } // equip a carried item (auto-slots)
   | { t: "unequip"; slot: EquipSlot } // move equipped gear back to carry
@@ -84,6 +85,7 @@ export interface SelfDTO {
   shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  dashReadyAt?: number; // tick when the dodge/dash is off cooldown (HUD cue)
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
   bestFloor?: number; // deepest floor ever reached (all-time)
   kills?: number; // all-time kills (all-time)

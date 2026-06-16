@@ -1,11 +1,17 @@
 import { moveWithCollisions } from "../../procgen/collision";
 import type { CollisionGrid } from "../../procgen/types";
-import { PLAYER_RADIUS, SLOW_FACTOR } from "../../shared/constants";
+import { DASH_SPEED, PLAYER_RADIUS, SLOW_FACTOR } from "../../shared/constants";
 import type { PlayerState, WorldCtx } from "../state";
 
 export function stepPlayer(ctx: WorldCtx, p: PlayerState, dt: number): void {
   if (p.status !== "alive") return;
   const grid = ctx.floor.collision;
+  if (p.dashUntil > ctx.now) {
+    // Dash burst overrides input movement (and ignores slow — it's the escape tool).
+    moveWithCollisions(grid, p, p.dashDirX * DASH_SPEED * dt, p.dashDirY * DASH_SPEED * dt, PLAYER_RADIUS);
+    revealAround(ctx, p, grid);
+    return;
+  }
   const len = Math.hypot(p.mvx, p.mvy);
   if (len > 0) {
     // moveSpeed comes from the player's gear/attributes (agility), not a constant.
