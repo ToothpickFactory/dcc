@@ -33,6 +33,12 @@ var _cur := ""
 var _fade: Tween
 var _enabled := true
 
+# Boss-intensity layer: a driving pulse that fades in over the ambient bed when a boss
+# is alive, then resolves on its death.
+var _combat: AudioStreamPlayer
+var _combat_on := false
+var _combat_fade: Tween
+
 
 func _ready() -> void:
 	_ensure_bus()
@@ -40,6 +46,51 @@ func _ready() -> void:
 	_player.bus = BUS
 	_player.volume_db = 0.0
 	add_child(_player)
+	_combat = AudioStreamPlayer.new()
+	_combat.bus = BUS
+	_combat.volume_db = -40.0
+	_combat.stream = _bake_combat()
+	add_child(_combat)
+
+
+# Fade the boss-combat pulse in (boss present) or out (boss dead/gone).
+func set_combat(on: bool) -> void:
+	if not _enabled or on == _combat_on:
+		return
+	_combat_on = on
+	if _combat_fade != null and _combat_fade.is_valid():
+		_combat_fade.kill()
+	if on and not _combat.playing:
+		_combat.play()
+	_combat_fade = create_tween()
+	_combat_fade.tween_property(_combat, "volume_db", -4.0 if on else -40.0, 1.4)
+	if not on:
+		_combat_fade.tween_callback(_combat.stop)
+
+
+# A tense driving loop: a steady low pulse (kick) + an anxious detuned high shimmer.
+func _bake_combat() -> AudioStreamWAV:
+	var loop := 4.0
+	var beat := 0.5  # 120 bpm pulse
+	var n := int(loop * RATE)
+	var bytes := PackedByteArray()
+	bytes.resize(n * 2)
+	for i in n:
+		var t := float(i) / float(RATE)
+		var ph := fposmod(t, beat) / beat
+		var kick := exp(-ph * 16.0) * sin(TAU * (120.0 * exp(-ph * 8.0) + 45.0) * t)  # punchy low
+		var tension := 0.10 * sin(TAU * 220.0 * t) * sin(TAU * 221.7 * t)             # detuned beat
+		var v: float = clampf(0.7 * kick + tension, -1.0, 1.0)
+		bytes.encode_s16(i * 2, int(v * 28000.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.stereo = false
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = n
+	wav.data = bytes
+	return wav
 
 
 func set_enabled(b: bool) -> void:
@@ -51,6 +102,9 @@ func set_enabled(b: bool) -> void:
 func stop() -> void:
 	if _player != null:
 		_player.stop()
+	if _combat != null:
+		_combat.stop()
+	_combat_on = false
 	_cur = ""
 
 

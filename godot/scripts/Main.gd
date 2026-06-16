@@ -39,6 +39,11 @@ var _char_xp := -1             # last seen charXp (for "+N XP" floaters on kills
 var _shake := 0.0              # screenshake intensity (0..1), decays each frame
 var _cam_xy := Vector2.ZERO    # smoothed camera focus (lerped toward target)
 var _cam_init := false
+var _vignette: DangerVignette
+var _hb_accum := 999.0         # heartbeat timer (fires promptly when danger begins)
+var _hitstop_until := 0.0      # wall-clock ms; Engine.time_scale dips until then
+var _last_hitstop := 0.0       # throttle hit-stop so swarms don't strobe
+var _boss_present_was := false # tracks boss presence for the combat-music layer
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -162,6 +167,9 @@ func _ready() -> void:
 	_music = Music.new()
 	add_child(_music)
 
+	_vignette = DangerVignette.new()
+	add_child(_vignette)
+
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
@@ -250,6 +258,12 @@ func _on_events(events: Array) -> void:
 			"death":
 				_sprites.flash_id(str(ev.get("id", "")))
 				_sfx.play("death")
+				# Hit-stop on a nearby kill (throttled so swarms don't strobe).
+				var dp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
+				var now_ms := float(Time.get_ticks_msec())
+				if dp.distance_to(pp) < 460.0 and now_ms - _last_hitstop > 220.0:
+					_last_hitstop = now_ms
+					_hitstop_until = now_ms + 55.0
 			"cast":
 				# Only your own casts (origin ~ your position) — avoids audio spam from every caster.
 				if Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0))).distance_to(pp) < 40.0:
@@ -309,6 +323,10 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", geometry.get("stairs", {}))
 
 func _process(dt: float) -> void:
+	# Hit-stop: a brief global slow-mo on a nearby kill makes blows land (see _on_events).
+	# Keyed off wall-clock (unaffected by time_scale) so it always restores.
+	Engine.time_scale = 0.12 if Time.get_ticks_msec() < _hitstop_until else 1.0
+
 	var mv: Vector2 = _inp.move_vec()
 	if OS.get_environment("DCC_AUTOMOVE") != "":
 		mv = Vector2(1, 0)  # diagnostic: simulate holding right to test the move pipeline
@@ -350,6 +368,34 @@ func _process(dt: float) -> void:
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
+
+	# Danger feedback: red vignette + quickening heartbeat as HP drops (alive only).
+	var danger := 0.0
+	if alive:
+		var hp := float(_net.self_dto.get("hp", 0.0))
+		var mhp := maxf(1.0, float(_net.self_dto.get("maxHp", 1.0)))
+		var ratio := hp / mhp
+		if ratio < 0.4:
+			danger = (0.4 - ratio) / 0.4  # 0 at 40% HP -> 1 at death
+	var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 1000.0 * (4.0 + danger * 5.0) * TAU)
+	_vignette.set_danger(danger * 0.7 * pulse)
+	if danger > 0.05:
+		_hb_accum += dt
+		if _hb_accum >= lerpf(0.95, 0.40, danger):  # faster heartbeat the lower you are
+			_hb_accum = 0.0
+			_sfx.play("heartbeat", -2.0)
+	else:
+		_hb_accum = 999.0
+
+	# Boss-intensity music: layer the combat pulse in while a boss is alive.
+	var boss_present := false
+	for e in _net.ents:
+		if typeof(e) == TYPE_DICTIONARY and str(e.get("kind", "")) == "boss":
+			boss_present = true
+			break
+	if boss_present != _boss_present_was:
+		_boss_present_was = boss_present
+		_music.set_combat(boss_present)
 
 	# Render + UI.
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
