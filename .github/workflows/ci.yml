@@ -28,6 +28,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Typecheck (client)
         run: npx tsc --noEmit -p tsconfig.client.json
+      - name: Unit + integration tests
+        run: npm test
       - name: Build client bundle
         run: npm run build:client
 
