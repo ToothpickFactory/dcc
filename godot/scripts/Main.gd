@@ -10,6 +10,13 @@ extends Node3D
 @export var server_url := DccConst.DEFAULT_WS_URL
 @export var player_name := "GodotHero"
 
+# Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
+# live in the editor. height = how far above; back = how far behind (lower back = more
+# top-down). Distance ≈ hypot(height, back); was 820/460 (~940 away, steep top-down).
+@export var cam_height := 520.0
+@export var cam_back := 340.0
+@export var cam_fov := 58.0
+
 var _net                       # Net (Node)
 var _world: World
 var _fog: Fog
@@ -86,7 +93,7 @@ func _ready() -> void:
 	add_child(env)
 
 	_cam = Camera3D.new()
-	_cam.fov = 55
+	_cam.fov = cam_fov
 	_cam.far = 8000
 	add_child(_cam)
 
@@ -413,7 +420,7 @@ func _process(dt: float) -> void:
 		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
 	var cx: float = _cam_xy.x + shake.x
 	var cy: float = _cam_xy.y + shake.y
-	_cam.position = Vector3(cx, 820, cy + 460)
+	_cam.position = Vector3(cx, cam_height, cy + cam_back)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
