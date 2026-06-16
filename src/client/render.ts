@@ -104,7 +104,7 @@ export class Renderer {
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
     const groundMat = new THREE.MeshBasicMaterial({ color: 0x161d2e, wireframe: true });
-    this.patchFog(groundMat);
+    this.patchFog(groundMat, false);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400, 24, 24), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(1200, 0, 1200);
@@ -534,7 +534,7 @@ export class Renderer {
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
     const wallMat = new THREE.MeshBasicMaterial({ color: 0x39445e });
-    this.patchFog(wallMat);
+    this.patchFog(wallMat, true);
     const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(grid.cell, 96, grid.cell), wallMat, wallCount);
     const matrix = new THREE.Matrix4();
     let instance = 0;
@@ -594,7 +594,7 @@ export class Renderer {
   // Patch a MeshBasicMaterial so each fragment is darkened unless it has line-of-
   // sight to uPlayer — the per-pixel GLSL twin of canSee(). Shared fog uniforms
   // are wired in so one update drives both the ground and wall materials.
-  private patchFog(mat: THREE.Material): void {
+  private patchFog(mat: THREE.Material, isWall: boolean): void {
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uPlayer = this.fog.uPlayer;
       shader.uniforms.uGrid = this.fog.uGrid;
@@ -633,9 +633,13 @@ export class Renderer {
         shader.fragmentShader.replace(
           "#include <dithering_fragment>",
           `#include <dithering_fragment>
-          float dccDist = distance(vWorldXZ, uPlayer);
+          // Walls test visibility at their CELL CENTER so a shown wall reveals as a
+          // whole tile (full width) instead of a jagged per-pixel sliver; the ground
+          // stays smooth per-pixel.
+          vec2 dccT = ${isWall ? "(floor(vWorldXZ / uCell) + 0.5) * uCell" : "vWorldXZ"};
+          float dccDist = distance(dccT, uPlayer);
           float dccFall = 1.0 - smoothstep(uVisionRadius * 0.6, uVisionRadius, dccDist);
-          float dccLit = dccLos(uPlayer, vWorldXZ) * dccFall;
+          float dccLit = dccLos(uPlayer, dccT) * dccFall;
           // Blend unseen pixels to the scene background (0x0b0e14) so out-of-sight
           // walls/paths vanish entirely — not just dim. Seen pixels keep full color.
           gl_FragColor.rgb = mix(vec3(0.043, 0.055, 0.078), gl_FragColor.rgb, dccLit);`,
