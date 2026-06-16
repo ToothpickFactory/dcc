@@ -28,6 +28,7 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
+var _runover_hint: Label
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -39,6 +40,8 @@ func _ready() -> void:
 		get_tree().create_timer(7.0).timeout.connect(func(): get_tree().quit())
 	if OS.get_environment("DCC_SHOT") != "":
 		get_tree().create_timer(4.5).timeout.connect(_grab_shot)
+	if OS.get_environment("DCC_RESET") != "":
+		get_tree().create_timer(2.5).timeout.connect(_reset_run)
 
 	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
 	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
@@ -101,6 +104,16 @@ func _ready() -> void:
 	_loot_prompt.visible = false
 	loot_layer.add_child(_loot_prompt)
 
+	# Run-over prompt: how to start a fresh run (admin reset over HTTP).
+	_runover_hint = Label.new()
+	_runover_hint.text = "🏁 Run over — press F2 to start a new run"
+	_runover_hint.add_theme_font_size_override("font_size", 22)
+	_runover_hint.add_theme_color_override("font_color", Color(1.0, 0.83, 0.30))
+	_runover_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_runover_hint.position.y += 120
+	_runover_hint.visible = false
+	loot_layer.add_child(_runover_hint)
+
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
 
@@ -135,6 +148,35 @@ func _skip_login() -> bool:
 		if OS.get_environment(v) != "":
 			return true
 	return false
+
+# Admin reset: start a fresh run for everyone (the server's /admin/new-run, open
+# while ADMIN_OPEN=true). Derives the HTTP base from the WS server_url. Bound to F2.
+func _admin_base() -> String:
+	var u := server_url
+	if u.begins_with("wss://"):
+		u = "https://" + u.substr(6)
+	elif u.begins_with("ws://"):
+		u = "http://" + u.substr(5)
+	if u.ends_with("/ws"):
+		u = u.substr(0, u.length() - 3)
+	return u
+
+func _reset_run() -> void:
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(func(_result, code, _headers, _body):
+		print("[DCC] reset HTTP code=", code)
+		if code == 200:
+			_hud.toast("New run started", Color(0.36, 1.0, 0.43))
+		else:
+			_hud.toast("Reset failed (%d)" % code, Color(1.0, 0.5, 0.5))
+		http.queue_free())
+	await get_tree().process_frame  # HTTPRequest must be settled in the tree first
+	var err := http.request(_admin_base() + "/admin/new-run", PackedStringArray(), HTTPClient.METHOD_POST)
+	if err != OK:
+		print("[DCC] reset request err=", err)
+		_hud.toast("Reset request failed", Color(1.0, 0.5, 0.5))
+		http.queue_free()
 
 func _bag_present(id: String) -> bool:
 	for e in _net.ents:
@@ -228,6 +270,8 @@ func _process(dt: float) -> void:
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()
 
+	_runover_hint.visible = str(_net.run_state.get("phase", "")) == "ended"
+
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
 		if _dbg_accum >= 1.0:
@@ -252,6 +296,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_E:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
+			KEY_F2:
+				_reset_run()
 			KEY_TAB:
 				_spectate.cycle()
 			KEY_V:
