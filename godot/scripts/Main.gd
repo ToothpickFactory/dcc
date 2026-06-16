@@ -13,9 +13,9 @@ extends Node3D
 # Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
 # live in the editor. height = how far above; back = how far behind (lower back = more
 # top-down). Distance ≈ hypot(height, back); was 820/460 (~940 away, steep top-down).
-@export var cam_height := 520.0
-@export var cam_back := 340.0
-@export var cam_fov := 58.0
+@export var cam_height := 470.0
+@export var cam_back := 470.0
+@export var cam_fov := 60.0
 
 var _net                       # Net (Node)
 var _world: World
@@ -71,6 +71,12 @@ func _ready() -> void:
 		get_tree().create_timer(3.8).timeout.connect(func():
 			if open_ui == "skills": _skills.open()
 			else: _inv.open())
+	var cam_env := OS.get_environment("DCC_CAM")  # "height,back,fov" — quick camera tuning
+	if cam_env != "":
+		var p := cam_env.split(",")
+		if p.size() >= 1 and p[0] != "": cam_height = float(p[0])
+		if p.size() >= 2 and p[1] != "": cam_back = float(p[1])
+		if p.size() >= 3 and p[2] != "": cam_fov = float(p[2])
 
 	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
 	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
