@@ -21,12 +21,13 @@ const waitingEl = document.getElementById("waiting") as HTMLElement;
 let nearestBagId: string | null = null;
 let hud: Hud | null = null;
 
-// Waiting-room spectate camera: once you reach the stairs your character leaves
-// the floor, so the camera follows a spectate target instead of the (gone) player.
+// Spectate camera: when your character leaves the floor — reached the stairs
+// (waiting room) OR died — the camera follows a spectate target instead of the
+// (gone) player: cycle living players (Tab) or free-pan (V / WASD).
 const spectateTarget = { x: 0, y: 0 };
 let spectateMode: "follow" | "free" = "follow";
 let followIdx = 0;
-let wasReached = false;
+let wasSpectating = false;
 
 input.attach(canvas);
 
@@ -53,14 +54,18 @@ function showToast(text: string, color: string) {
   toastHideAt = performance.now() + 3500;
 }
 
-// Waiting-room banner: how many players are still fighting + spectate controls.
-function updateWaitingBanner() {
-  const remaining = net.floor ? Math.max(0, net.floor.state.living - net.floor.state.livingAtStairs) : 0;
+// Spectate banner: waiting room (reached the stairs) vs dead (spectating).
+function updateSpectateBanner(reached: boolean) {
   const ctrl = spectateMode === "follow" ? "Tab: next player · V: free-cam" : "WASD: pan · V: follow";
   waitingEl.style.display = "block";
-  waitingEl.innerHTML =
-    `🚪 <b>Waiting room</b> — ${remaining} ${remaining === 1 ? "player" : "players"} still on the floor` +
-    `<div class="wsub">${ctrl} · I: inventory & sell</div>`;
+  if (reached) {
+    const remaining = net.floor ? Math.max(0, net.floor.state.living - net.floor.state.livingAtStairs) : 0;
+    waitingEl.innerHTML =
+      `🚪 <b>Waiting room</b> — ${remaining} ${remaining === 1 ? "player" : "players"} still on the floor` +
+      `<div class="wsub">${ctrl} · I: inventory & sell</div>`;
+  } else {
+    waitingEl.innerHTML = `💀 <b>Spectating</b><div class="wsub">${ctrl}</div>`;
+  }
 }
 
 net.onWelcome = () => {
@@ -125,8 +130,8 @@ addEventListener("keydown", (e) => {
   if (k === "i") invUI.toggle();
   else if (k === "e") { if (nearestBagId) invUI.requestLoot(nearestBagId); }
   else if (k === "escape") { invUI.close(); invUI.closeLoot(); }
-  else if (net.self?.reached) {
-    // Waiting-room spectate controls.
+  else if (net.self?.reached || net.self?.status === "spectator") {
+    // Spectate controls (waiting room or dead).
     if (k === "tab") { e.preventDefault(); spectateMode = "follow"; followIdx++; }
     else if (k === "v") spectateMode = spectateMode === "follow" ? "free" : "follow";
   }
@@ -162,35 +167,37 @@ function frame(now: number) {
   last = now;
 
   const reached = net.self?.reached === true;
+  const dead = net.self?.status === "spectator";
+  const spectating = reached || dead; // character has left the floor -> spectate camera
   const mv = input.moveVec();
   predictor.update(net, mv, dt);
 
   // Aim from the pointer (mouse or active touch) projected to the ground.
   input.aim = renderer.aimFromPointer(input.pointer.x, input.pointer.y, predictor.x, predictor.y);
-  // Movement/casts only while alive AND still in play (not in the waiting room).
+  // Movement/casts only while alive AND still in play (not waiting/dead).
   if (net.self?.status === "alive" && !reached) input.pump(net, now);
 
-  // Enter/leave the waiting room (reached the stairs -> safe spectate).
-  if (reached && !wasReached) {
+  // Enter/leave spectating (reached the stairs, or died).
+  if (spectating && !wasSpectating) {
     spectateTarget.x = predictor.x;
     spectateTarget.y = predictor.y;
     spectateMode = "follow";
     followIdx = 0;
-    hudEl.style.display = "none"; // no ability bar while waiting
-    showToast("✓ Reached the stairs — waiting for the party", "#5dff9b");
-    invUI.refresh(); // surface the sell buttons if the screen is open
-  } else if (!reached && wasReached) {
+    hudEl.style.display = "none"; // no ability bar while spectating
+    showToast(reached ? "✓ Reached the stairs — waiting for the party" : "💀 You died — spectating", reached ? "#5dff9b" : "#ff8a8a");
+    invUI.refresh();
+  } else if (!spectating && wasSpectating) {
     hudEl.style.display = "";
     waitingEl.style.display = "none";
     invUI.refresh();
   }
-  wasReached = reached;
+  wasSpectating = spectating;
 
-  // Camera + fog center: the local player while in play; a spectate target while
-  // waiting (the local character has left the floor).
+  // Camera + fog center: the local player while in play; a spectate target once the
+  // character has left the floor (waiting room or dead).
   let camX = predictor.x;
   let camY = predictor.y;
-  if (reached) {
+  if (spectating) {
     const players = net.cur ? net.cur.ents.filter((e) => e.kind === "player") : [];
     if (spectateMode === "follow" && players.length) {
       const t = players[followIdx % players.length]!;
@@ -204,7 +211,7 @@ function frame(now: number) {
     }
     camX = spectateTarget.x;
     camY = spectateTarget.y;
-    updateWaitingBanner();
+    updateSpectateBanner(reached);
   }
 
   renderer.setVision(camX, camY); // wall-fog shader centers on the camera target
