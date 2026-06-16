@@ -88,9 +88,17 @@ export class Renderer {
   // line-of-sight to the vision center. The collision grid rides along as a texture;
   // both materials share these uniform objects (one update drives both).
   private fogGridTex = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat);
+  // Per-cell "is this wall currently visible" mask, recomputed only when the player
+  // crosses into a new cell (so walls don't flicker as you run within a tile). A
+  // wall is visible if any open floor cell beside it has line-of-sight to you.
+  private wallVisTex = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat);
+  private wallVisData = new Uint8Array(1);
+  private visScratch = new Uint8Array(1); // visible-open-cell scratch for the recompute
+  private lastVisCell = -1;
   private fog = {
     uPlayer: { value: new THREE.Vector2(0, 0) },
     uGrid: { value: this.fogGridTex },
+    uWallVis: { value: this.wallVisTex },
     uGridSize: { value: new THREE.Vector2(1, 1) },
     uCell: { value: 80 },
     uVisionRadius: { value: VISION_RADIUS },
@@ -531,6 +539,16 @@ export class Renderer {
     this.fog.uGrid.value = this.fogGridTex;
     this.fog.uGridSize.value.set(grid.w, grid.h);
     this.fog.uCell.value = grid.cell;
+    // (Re)allocate the per-cell wall-visibility mask for this floor.
+    this.wallVisData = new Uint8Array(grid.w * grid.h);
+    this.visScratch = new Uint8Array(grid.w * grid.h);
+    this.wallVisTex.dispose();
+    this.wallVisTex = new THREE.DataTexture(this.wallVisData, grid.w, grid.h, THREE.RedFormat);
+    this.wallVisTex.magFilter = THREE.NearestFilter;
+    this.wallVisTex.minFilter = THREE.NearestFilter;
+    this.wallVisTex.needsUpdate = true;
+    this.fog.uWallVis.value = this.wallVisTex;
+    this.lastVisCell = -1;
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
     const wallMat = new THREE.MeshBasicMaterial({ color: 0x39445e });
@@ -578,6 +596,55 @@ export class Renderer {
   // waiting). Called each frame from the main loop.
   setVision(x: number, y: number): void {
     this.fog.uPlayer.value.set(x, y);
+    const grid = this.collision;
+    if (!grid) return;
+    // Recompute the wall mask only on cell change — stable (no flicker) within a tile.
+    const cell = grid.cell;
+    const here = Math.floor(y / cell) * grid.w + Math.floor(x / cell);
+    if (here === this.lastVisCell) return;
+    this.lastVisCell = here;
+    this.computeWallVis(x, y);
+  }
+
+  // A wall is visible if any open floor cell adjacent to it (8-neighbour) has clear
+  // line-of-sight to the player within vision range. Reveals whole walls bounding
+  // the area you can see; computed per cell-move, not per frame.
+  private computeWallVis(px: number, py: number): void {
+    const grid = this.collision!;
+    const cell = grid.cell;
+    const r = Math.ceil(VISION_RADIUS / cell) + 1;
+    const cx = Math.floor(px / cell);
+    const cy = Math.floor(py / cell);
+    this.wallVisData.fill(0);
+    this.visScratch.fill(0);
+    // Pass 1: which open cells in range are visible.
+    for (let y = Math.max(0, cy - r); y <= Math.min(grid.h - 1, cy + r); y++) {
+      for (let x = Math.max(0, cx - r); x <= Math.min(grid.w - 1, cx + r); x++) {
+        const idx = y * grid.w + x;
+        if (grid.solid[idx] === 1) continue;
+        const wx = (x + 0.5) * cell;
+        const wy = (y + 0.5) * cell;
+        const dx = wx - px;
+        const dy = wy - py;
+        if (dx * dx + dy * dy > VISION_RADIUS * VISION_RADIUS) continue;
+        if (this.canSee(px, py, wx, wy)) this.visScratch[idx] = 1;
+      }
+    }
+    // Pass 2: a wall lights up if any 8-neighbour open cell is visible.
+    for (let y = Math.max(0, cy - r); y <= Math.min(grid.h - 1, cy + r); y++) {
+      for (let x = Math.max(0, cx - r); x <= Math.min(grid.w - 1, cx + r); x++) {
+        const idx = y * grid.w + x;
+        if (grid.solid[idx] !== 1) continue;
+        let lit = false;
+        for (let ny = Math.max(0, y - 1); ny <= Math.min(grid.h - 1, y + 1) && !lit; ny++) {
+          for (let nx = Math.max(0, x - 1); nx <= Math.min(grid.w - 1, x + 1); nx++) {
+            if (this.visScratch[ny * grid.w + nx] === 1) { lit = true; break; }
+          }
+        }
+        if (lit) this.wallVisData[idx] = 255;
+      }
+    }
+    this.wallVisTex.needsUpdate = true;
   }
 
   // The collision grid as an R8 texture (255 = wall) for the fog shader to march.
@@ -598,6 +665,7 @@ export class Renderer {
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uPlayer = this.fog.uPlayer;
       shader.uniforms.uGrid = this.fog.uGrid;
+      shader.uniforms.uWallVis = this.fog.uWallVis;
       shader.uniforms.uGridSize = this.fog.uGridSize;
       shader.uniforms.uCell = this.fog.uCell;
       shader.uniforms.uVisionRadius = this.fog.uVisionRadius;
@@ -615,7 +683,7 @@ export class Renderer {
         );
       shader.fragmentShader =
         `varying vec2 vWorldXZ;
-        uniform vec2 uPlayer; uniform sampler2D uGrid; uniform vec2 uGridSize; uniform float uCell; uniform float uVisionRadius;
+        uniform vec2 uPlayer; uniform sampler2D uGrid; uniform sampler2D uWallVis; uniform vec2 uGridSize; uniform float uCell; uniform float uVisionRadius;
         float dccLos(vec2 from, vec2 to) {
           vec2 d = to - from;
           float dist = length(d);
@@ -633,13 +701,19 @@ export class Renderer {
         shader.fragmentShader.replace(
           "#include <dithering_fragment>",
           `#include <dithering_fragment>
-          // Walls test visibility at their CELL CENTER so a shown wall reveals as a
-          // whole tile (full width) instead of a jagged per-pixel sliver; the ground
-          // stays smooth per-pixel.
-          vec2 dccT = ${isWall ? "(floor(vWorldXZ / uCell) + 0.5) * uCell" : "vWorldXZ"};
-          float dccDist = distance(dccT, uPlayer);
+          ${
+            isWall
+              ? // Walls: whole-tile visibility from the per-cell mask (computed on the
+                // CPU per cell-move) so a shown wall reveals fully and never flickers.
+                `vec2 dccCell = floor(vWorldXZ / uCell);
+          float dccVisFlag = texture2D(uWallVis, (dccCell + 0.5) / uGridSize).r;
+          float dccDist = distance((dccCell + 0.5) * uCell, uPlayer);`
+              : // Ground: smooth per-pixel line-of-sight.
+                `float dccVisFlag = dccLos(uPlayer, vWorldXZ);
+          float dccDist = distance(vWorldXZ, uPlayer);`
+          }
           float dccFall = 1.0 - smoothstep(uVisionRadius * 0.6, uVisionRadius, dccDist);
-          float dccLit = dccLos(uPlayer, dccT) * dccFall;
+          float dccLit = dccVisFlag * dccFall;
           // Blend unseen pixels to the scene background (0x0b0e14) so out-of-sight
           // walls/paths vanish entirely — not just dim. Seen pixels keep full color.
           gl_FragColor.rgb = mix(vec3(0.043, 0.055, 0.078), gl_FragColor.rgb, dccLit);`,
