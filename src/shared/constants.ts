@@ -34,17 +34,21 @@ export const MONSTER_BOLT_SPRITE = 98; // EntityDTO.sprite for a ranged monster'
 export interface MonsterKindDef {
   hp: number;
   speed: number; // px/s
-  dmg: number; // melee damage (0 for ranged kiters)
+  dmg: number; // melee damage (0 for ranged kiters / healers)
   attackCd: number; // ms between attacks/shots
   meleeRange: number; // px
   radius: number; // collision radius, px
   ranged?: { shootRange: number; kite: number; projSpeed: number; projDmg: number };
+  // Support healer: keeps `kite` distance from players and heals the lowest-HP
+  // ally within `range` for `amount` every `cd` ms (group survival).
+  heal?: { amount: number; cd: number; range: number; kite: number };
 }
 export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
   grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 20 },
   brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 28 }, // slow tank, big hits
   swarm: { hp: 24, speed: 158, dmg: 4, attackCd: 700, meleeRange: 42, radius: 13 }, // fast, fragile, weak
   ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
+  healer: { hp: 50, speed: 92, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, heal: { amount: 14, cd: 1400, range: 320, kite: 240 } }, // mends its camp
 };
 
 export const PROJECTILE_RADIUS = 7;

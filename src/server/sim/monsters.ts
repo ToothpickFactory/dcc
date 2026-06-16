@@ -1,7 +1,7 @@
 import { moveWithCollisions, randomWalkablePosition } from "../../procgen/collision";
 import { MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
-import type { MonsterState, PlayerState, WorldCtx } from "../state";
-import { applyDamage } from "./combat";
+import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
+import { applyDamage, applyHeal } from "./combat";
 
 let seq = 0;
 
@@ -12,6 +12,7 @@ let seq = 0;
 //   brute — slow, tanky, heavy melee
 //   swarm — fast, fragile, light melee
 //   ranged — kites to a standoff and fires dodgeable bolts (no melee)
+//   healer — hangs at the back of its camp, mends the most-wounded ally (group play)
 export function updateMonsters(ctx: WorldCtx, dt: number): void {
   for (const m of ctx.monsters) {
     const def = MONSTER_KINDS[m.kind];
@@ -38,6 +39,11 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
 
     const speed = m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
+
+    if (def.heal) {
+      updateHealer(ctx, m, def.heal, prey, speed, dt);
+      continue;
+    }
 
     if (!prey) {
       wander(ctx, m, speed, dt);
@@ -105,6 +111,83 @@ function wander(ctx: WorldCtx, m: MonsterState, speed: number, dt: number): void
     Math.sin(m.aim) * speed * 0.5 * dt,
     MONSTER_KINDS[m.kind].radius,
   );
+}
+
+// Healer/support AI: stays at the back of its camp and mends the most-wounded
+// ally (monster or boss). Kites away from any threatening player to survive, and
+// drifts toward a wounded ally when it's out of heal range — so a camp with a
+// medic is much stickier than a lone pack (group play, by design).
+function updateHealer(
+  ctx: WorldCtx,
+  m: MonsterState,
+  heal: NonNullable<(typeof MONSTER_KINDS)[keyof typeof MONSTER_KINDS]["heal"]>,
+  prey: PlayerState | null,
+  speed: number,
+  dt: number,
+): void {
+  const radius = MONSTER_KINDS[m.kind].radius;
+
+  // Kite: if a player is closing in, back away to keep healing from the rear.
+  if (prey) {
+    const px = prey.x - m.x;
+    const py = prey.y - m.y;
+    const pd = Math.hypot(px, py) || 1;
+    m.aim = Math.atan2(py, px);
+    if (pd < heal.kite) {
+      moveWithCollisions(ctx.floor.collision, m, -(px / pd) * speed * dt, -(py / pd) * speed * dt, radius);
+    }
+  }
+
+  // Find the most-wounded ally (by HP fraction) within range that isn't full.
+  const ally = mostWoundedAlly(ctx, m, heal.range);
+  if (ally) {
+    if (ctx.now >= m.attackReadyAt) {
+      m.attackReadyAt = ctx.now + heal.cd;
+      m.aim = Math.atan2(ally.y - m.y, ally.x - m.x);
+      applyHeal(ctx, ally, heal.amount, m.id);
+      ctx.pushFx({ e: "cast", x: m.x, y: m.y, ability: MONSTER_BOLT_SPRITE });
+    }
+    return;
+  }
+
+  // Nobody to heal in range: drift toward the most-wounded ally anywhere, else
+  // wander, so it regroups with its camp instead of stranding itself.
+  if (!prey) {
+    const far = mostWoundedAlly(ctx, m, Infinity);
+    if (far) {
+      const dx = far.x - m.x;
+      const dy = far.y - m.y;
+      const d = Math.hypot(dx, dy) || 1;
+      m.aim = Math.atan2(dy, dx);
+      moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, radius);
+    } else {
+      wander(ctx, m, speed, dt);
+    }
+  }
+}
+
+// The ally (other living monster, or the boss) with the lowest HP fraction that
+// is missing health and within `range`. Healers never target themselves.
+function mostWoundedAlly(ctx: WorldCtx, m: MonsterState, range: number): MonsterState | BossState | null {
+  let best: MonsterState | BossState | null = null;
+  let bestFrac = 1;
+  const consider = (a: MonsterState | BossState, max: number) => {
+    if (a.hp >= max) return;
+    const dx = a.x - m.x;
+    const dy = a.y - m.y;
+    if (Math.hypot(dx, dy) > range) return;
+    const frac = a.hp / max;
+    if (frac < bestFrac) {
+      bestFrac = frac;
+      best = a;
+    }
+  };
+  for (const other of ctx.monsters) {
+    if (other === m || other.dead) continue;
+    consider(other, other.maxHp);
+  }
+  if (ctx.boss && !ctx.boss.dead) consider(ctx.boss, ctx.boss.maxHp);
+  return best;
 }
 
 // Threat-based aggro: chase whoever has hit it most, falling back to the nearest

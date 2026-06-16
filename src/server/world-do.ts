@@ -11,7 +11,6 @@ import {
   PLAYER_MAX_HP,
   PLAYER_SPEED,
   TICK_MS,
-  WORLD,
 } from "../shared/constants";
 import type { Ability, MonsterKind, Rarity } from "../shared/types";
 import {
@@ -256,7 +255,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (this.boss && !this.boss.dead) return;
     if (this.killsSinceBoss < BOSS_KILL_THRESHOLD) return;
     this.killsSinceBoss = 0;
-    const { x, y } = randomWalkablePosition(this.floor.collision, BOSS_RADIUS);
+    // The boss holds court in its lair — the farthest room on the floor, a place
+    // parties can seek out (PG-4). Fall back to any walkable tile if needed.
+    const { x, y } = this.floor.bossRoom ?? randomWalkablePosition(this.floor.collision, BOSS_RADIUS);
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
@@ -644,7 +645,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private welcomeFlow(p: PlayerState, token: string) {
-    this.send(p.ws, { t: "welcome", you: p.id, token, world: WORLD, protocol: PROTOCOL_VERSION });
+    // Floors now vary in size (procgen scales with depth), so report the CURRENT
+    // floor's dims rather than the legacy fixed WORLD constant.
+    this.send(p.ws, { t: "welcome", you: p.id, token, world: { w: this.floor.w, h: this.floor.h }, protocol: PROTOCOL_VERSION });
     this.send(p.ws, this.floorMsg());
     this.send(p.ws, this.runMsg());
     this.sendInv(p); // initial character-screen state
@@ -824,6 +827,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const id = this.topThreat(this.boss.threat);
         const winner = id ? this.players.get(id) : null;
         if (winner) this.grantLoot(winner, "kill", this.floor.depth >= 10 ? "legendary" : "epic");
+        // ...and a hoard for the whole party — a great-gear bag at its lair, so a
+        // group is rewarded together, not just the top-damage hero (PG-4).
+        const bossRarity: Rarity = this.floor.depth >= 10 ? "legendary" : "epic";
+        const hoard = Array.from({ length: 3 + Math.floor(this.gearRng() * 3) }, () =>
+          generateItem(this.floor.depth, this.gearRng() < 0.5 ? bossRarity : "rare", this.gearRng),
+        );
+        this.dropLoot(this.boss.x, this.boss.y, hoard);
       }
     }
 
