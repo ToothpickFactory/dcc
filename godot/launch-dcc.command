@@ -71,8 +71,15 @@ if command -v git >/dev/null 2>&1 && [ -d .git ]; then
   fi
 fi
 
-# 2) (Re)build when there's a new version or no app yet.
+# 2) (Re)build when there's a new version, no app yet, OR the source is newer than the
+#    last build (covers a dev box that already has the commits but a stale .app).
 [ -d "$APP" ] || NEED_BUILD=1
+if [ -d "$APP" ] && [ "$NEED_BUILD" != "1" ]; then
+  if [ -n "$(find godot/scripts godot/scenes godot/shaders godot/project.godot godot/export_presets.cfg godot/icon.svg -newer "$APP/Contents/Info.plist" 2>/dev/null | head -1)" ]; then
+    echo "    Source changed since last build — rebuilding."
+    NEED_BUILD=1
+  fi
+fi
 if [ "$NEED_BUILD" = "1" ]; then
   if [ -z "$GODOT" ]; then
     echo "!! Godot not found. Install Godot 4.6 or set GODOT=/path/to/Godot, then re-run."

@@ -70,8 +70,18 @@ if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path ".git")) {
   } else { Write-Host "    Already up to date." }
 }
 
-# (Re)build when there's a new version or no exe yet.
+# (Re)build when there's a new version, no exe yet, OR the source is newer than the build
+# (covers a dev box that already has the commits but a stale .exe).
 if (-not (Test-Path $App)) { $NeedBuild = $true }
+if ((Test-Path $App) -and -not $NeedBuild) {
+  $buildTime = (Get-Item $App).LastWriteTime
+  $srcNewer = Get-ChildItem -Recurse godot/scripts, godot/scenes, godot/shaders -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -gt $buildTime } | Select-Object -First 1
+  if ($srcNewer -or (Get-Item godot/project.godot).LastWriteTime -gt $buildTime) {
+    Write-Host "    Source changed since last build — rebuilding."
+    $NeedBuild = $true
+  }
+}
 if ($NeedBuild) {
   Write-Host "==> Building the latest client (~20s)..."
   & $Godot --headless --path godot --import 2>$null
