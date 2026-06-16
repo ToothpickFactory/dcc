@@ -95,8 +95,10 @@ godot --headless --path godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd \
 `geo_test.gd` checks the pure-logic ports (geometry decode, collision, line-of-sight).
 
 ## 7. Controls
-- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast · **I** inventory
+- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast
+- **I** inventory/character (equip, drop, sell) · **K** skills & evolution · **E** loot a nearby bag
 - **Tab** cycle spectate target · **V** toggle free-cam (while dead/in the waiting room)
+- **F2** start a new run (admin reset — works while the server's `ADMIN_OPEN=true`)
 
 ## 8. Dev env flags (optional)
 | Var | Effect |
@@ -106,11 +108,45 @@ godot --headless --path godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd \
 | `DCC_DEBUG=1` | Per-second state prints (cam/pred/floor/ents) |
 | `DCC_SMOKE=1` | Run ~7s then quit (headless CI smoke; skips login) |
 | `DCC_SHOT=1` | Save a viewport screenshot to `/tmp/dcc_shot.png` after ~4.5s |
+| `DCC_OPENUI=inv\|skills` | Auto-open the inventory/skills panel after ~3.8s (for screenshots) |
+| `DCC_RESET=1` | Fire the F2 admin reset ~2.5s after launch (smoke test) |
 
-## 9. Troubleshooting
+## 9. Building a native release (Phase 3 packaging)
+Produces a standalone app — no Godot install needed to play.
+
+**One-time: install the export templates** (matched to the editor version, ~1.2 GB):
+- **Editor:** *Editor → Manage Export Templates… → Download and Install*.
+- **CLI:** download `Godot_v4.6.x-stable_export_templates.tpz` from the
+  [release page](https://github.com/godotengine/godot-builds/releases), then unzip its
+  `templates/` into `~/Library/Application Support/Godot/export_templates/<version>.stable/`
+  (macOS) · `~/.local/share/godot/export_templates/<version>.stable/` (Linux) ·
+  `%APPDATA%\Godot\export_templates\<version>.stable\` (Windows).
+
+**Export** (presets live in `godot/export_presets.cfg` — macOS / Windows / Linux):
+```bash
+cd godot
+godot --headless --path . --export-release "macOS"          build/macos/DCC.app
+godot --headless --path . --export-release "Windows Desktop" build/windows/DCC.exe
+godot --headless --path . --export-release "Linux/X11"       build/linux/DCC.x86_64
+```
+The macOS preset builds a **universal** (Intel + Apple Silicon) `.app`. `build/` is gitignored.
+The bundle is **unsigned** — to run it locally without Gatekeeper griping:
+`xattr -dr com.apple.quarantine build/macos/DCC.app`. For distribution, set a signing identity
++ notarization in the preset (`codesign/…`, `notarization/…`).
+
+> The universal/arm64 macOS export needs `rendering/textures/vram_compression/import_etc2_astc`
+> (already set in `project.godot`). The server URL is baked from the `Main` node's `server_url`
+> export (defaults to the deployed worker); players can still override it with `DCC_WS`.
+
+## 10. Troubleshooting
 - **Black screen / "No floor geometry" toast** → the server isn't on protocol v6. Run a
   local server (step 5) and use `DCC_WS=ws://127.0.0.1:8787/ws`, or have someone `npm run deploy`.
-- **Missing textures / blank sprites** → you skipped step 3b/3c. Copy `public/assets` → `godot/assets`, then re-import.
+- **Missing textures / blank sprites, or an entity shows a flat colored square** (e.g. the
+  boss renders as a purple box) → your `godot/assets` copy is **stale or incomplete**. The art
+  is gitignored and copied locally, so when new art lands in `public/assets` (a new boss/enemy)
+  your local copy won't have it. Re-run `./godot/setup.sh` (it wipes + re-copies + re-imports),
+  or manually `cp -R public/assets/<Dir> godot/assets/` and re-import. Then **relaunch** — a
+  running client caches missing clips and won't re-probe them.
 - **`GdUnitCmdTool.gd` not found / tests won't run** → you skipped step 3a (GdUnit4 vendor).
 - **UI too big/small** → it scales with window size; resize the window (it re-scales live).
 - **`godot: command not found`** → use the full app path, or symlink the CLI (step 2).

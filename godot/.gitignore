@@ -8,3 +8,6 @@ addons/gdUnit4/
 
 # Game art — copied from ../public/assets (source of truth); not committed twice.
 assets/
+
+# native export output
+build/

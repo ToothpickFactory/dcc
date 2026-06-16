@@ -13,11 +13,11 @@ extends CanvasLayer
 ##   - center toast Label with a fade Tween.
 ##   - waiting-room / spectating banner.
 ##
-## EMOJI NOTE: status/abilities/toast use emoji (⚔ 💀 🏁 🚪 ⚠ ⬇ etc.). Godot's
-## default font has NO color-emoji glyphs, so they render as tofu. To match the web
-## client, drop a "Noto Color Emoji" .ttf into godot/fonts/ and the HUD will load it
-## as a FALLBACK font automatically (see _load_emoji_fallback). Without it the text
-## still works — only the emoji glyphs are missing.
+## EMOJI NOTE: status/abilities/toast use emoji (⚔ 💀 🏁 🚪 ⚠ ⬇ etc.). Emoji glyphs
+## render because Main._install_emoji_font() appends a color-emoji fallback (the OS
+## emoji font, or a bundled godot/fonts/NotoColorEmoji.ttf if present) to the engine's
+## default font globally. The per-label _apply_font below is a legacy no-op kept only
+## for the optional bundled-font path; the global fallback is what actually does it.
 ##
 ## Public API (Main calls these):
 ##   update(net)                                  -> call every frame

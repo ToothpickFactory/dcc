@@ -17,14 +17,14 @@ const SLOT_LABEL := {
 	"mainHand": "Main", "offHand": "Off", "ring1": "Ring", "ring2": "Ring", "amulet": "Neck",
 }
 const SLOT_EMOJI := {
-	"helmet": "⛑️", "chest": "\U0001f6e1️", "legs": "\U0001f456",
-	"gloves": "\U0001f9e4", "mainHand": "⚔️", "offHand": "\U0001f5e1️",
-	"ring1": "\U0001f48d", "ring2": "\U0001f48d", "amulet": "\U0001f4ff",
+	"helmet": "⛑️", "chest": "\U01f6e1️", "legs": "\U01f456",
+	"gloves": "\U01f9e4", "mainHand": "⚔️", "offHand": "\U01f5e1️",
+	"ring1": "\U01f48d", "ring2": "\U01f48d", "amulet": "\U01f4ff",
 }
 const ITEM_EMOJI := {
-	"helmet": "⛑️", "chest": "\U0001f6e1️", "legs": "\U0001f456",
-	"gloves": "\U0001f9e4", "weapon": "⚔️", "ring": "\U0001f48d",
-	"amulet": "\U0001f4ff", "bag": "\U0001f392",
+	"helmet": "⛑️", "chest": "\U01f6e1️", "legs": "\U01f456",
+	"gloves": "\U01f9e4", "weapon": "⚔️", "ring": "\U01f48d",
+	"amulet": "\U01f4ff", "bag": "\U01f392",
 }
 const ATTR_ABBR := {
 	"power": "PWR", "spirit": "SPR", "haste": "HST",
@@ -206,14 +206,14 @@ func _render(msg: Dictionary) -> void:
 			var idx := i
 			tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send({"t": "unequipBag", "index": idx}))
 		else:
-			tile = _empty_tile("\U0001f392", "Bag")
+			tile = _empty_tile("\U01f392", "Bag")
 		_bag_grid.add_child(tile)
 
 	# Stats panel.
 	_render_stats(msg)
 
 	# Gold + carry header.
-	_gold_label.text = "\U0001fa99 %d" % gold
+	_gold_label.text = "\U01fa99 %d" % gold
 	_carry_count.text = "%d/%d" % [carried.size(), capacity]
 
 	# Carried items grid.
@@ -228,7 +228,7 @@ func _render(msg: Dictionary) -> void:
 		var body := _tile_body(tile)
 		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send({"t": "equip", "item": item_id}))
 		# Drop affordance (top-right).
-		var drop := _corner_label("\U0001f5d1", DROP_COLOR, false)
+		var drop := _corner_label("\U01f5d1", DROP_COLOR, false)
 		drop.tooltip_text = "Drop on the floor"
 		drop.gui_input.connect(func(ev: InputEvent):
 			if _is_tap(ev):
@@ -237,7 +237,7 @@ func _render(msg: Dictionary) -> void:
 		body.add_child(drop)
 		# Sell affordance (bottom-right) — waiting room only.
 		if can_sell:
-			var sell := _corner_label("\U0001fa99%d" % _sell_value(it), GOLD, true)
+			var sell := _corner_label("\U01fa99%d" % _sell_value(it), GOLD, true)
 			sell.tooltip_text = "Sell for gold"
 			sell.gui_input.connect(func(ev: InputEvent):
 				if _is_tap(ev):
@@ -492,7 +492,7 @@ func _build_inventory_panel() -> void:
 	title.add_theme_color_override("font_color", TEXT_NAME)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_gold_label = Label.new()
-	_gold_label.text = "\U0001fa99 0"
+	_gold_label.text = "\U01fa99 0"
 	_gold_label.add_theme_font_size_override("font_size", 14)
 	_gold_label.add_theme_color_override("font_color", GOLD)
 	var close_btn := _close_button()
@@ -537,7 +537,7 @@ func _build_inventory_panel() -> void:
 
 	_carry_hint = _hint("Empty — loot bags or unequip gear here.")
 	col.add_child(_carry_hint)
-	col.add_child(_hint("Tap a carried item to equip · tap an equipped item to remove · \U0001f5d1 to drop on the floor."))
+	col.add_child(_hint("Tap a carried item to equip · tap an equipped item to remove · \U01f5d1 to drop on the floor."))
 
 func _build_loot_panel() -> void:
 	_loot_root = _backdrop()
@@ -552,7 +552,7 @@ func _build_loot_panel() -> void:
 
 	var head := HBoxContainer.new()
 	var title := Label.new()
-	title.text = "\U0001f4b0 Loot bag"
+	title.text = "\U01f4b0 Loot bag"
 	title.add_theme_font_size_override("font_size", 18)
 	title.add_theme_color_override("font_color", TEXT_NAME)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL

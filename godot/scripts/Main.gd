@@ -20,6 +20,7 @@ var _cam: Camera3D
 var _inp                       # InputCtl (Node)
 var _hud: Hud
 var _inv: InventoryUI
+var _skills: SkillsUI
 var _minimap: Minimap
 var _spectate := Spectate.new()
 var _pred := Predictor.new()
@@ -29,6 +30,8 @@ var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
 var _runover_hint: Label
+var _skill_hint: Label
+var _skill_ready_was := false
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -42,12 +45,22 @@ func _ready() -> void:
 		get_tree().create_timer(4.5).timeout.connect(_grab_shot)
 	if OS.get_environment("DCC_RESET") != "":
 		get_tree().create_timer(2.5).timeout.connect(_reset_run)
+	var open_ui := OS.get_environment("DCC_OPENUI")  # "inv" | "skills" — dev screenshot hook
+	if open_ui != "":
+		get_tree().create_timer(3.8).timeout.connect(func():
+			if open_ui == "skills": _skills.open()
+			else: _inv.open())
 
 	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
 	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
 	# Deferred so the window has its final size first.
 	_apply_ui_scale.call_deferred()
 	get_window().size_changed.connect(_apply_ui_scale)
+
+	# Emoji glyphs (item/ability/status icons) need a color-emoji font; the engine
+	# default has none, so they'd render as tofu. Install one global fallback so ALL
+	# UI (HUD, inventory, skills) renders emoji — see _install_emoji_font.
+	_install_emoji_font()
 
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -88,6 +101,10 @@ func _ready() -> void:
 	add_child(_inv)
 	_inv.setup(_net)
 
+	_skills = SkillsUI.new()
+	add_child(_skills)
+	_skills.setup(_net)
+
 	_minimap = Minimap.new()
 	add_child(_minimap)
 
@@ -113,6 +130,16 @@ func _ready() -> void:
 	_runover_hint.position.y += 120
 	_runover_hint.visible = false
 	loot_layer.add_child(_runover_hint)
+
+	# Skill-ready glow: nudge the player to open the Skills screen when an ability matures.
+	_skill_hint = Label.new()
+	_skill_hint.text = "✨ A skill is ready to evolve — press K"
+	_skill_hint.add_theme_font_size_override("font_size", 18)
+	_skill_hint.add_theme_color_override("font_color", Color(1.0, 0.83, 0.30))
+	_skill_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_skill_hint.position.y -= 210
+	_skill_hint.visible = false
+	loot_layer.add_child(_skill_hint)
 
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
@@ -187,6 +214,37 @@ func _bag_present(id: String) -> bool:
 func _on_events(events: Array) -> void:
 	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_fx.handle_events(events, _net.you)
+	# Boss spawn / death callouts (mirrors main.ts). The boss HP bar is handled by the HUD.
+	for ev in events:
+		if ev is Dictionary and str(ev.get("e", "")) == "boss":
+			if str(ev.get("state", "")) == "spawn":
+				_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
+			else:
+				_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
+
+# Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
+# of tofu. Prefer a bundled font if someone dropped one in res://fonts/; otherwise use the
+# OS emoji font (Apple Color Emoji / Segoe UI Emoji / Noto Color Emoji). Appending it to the
+# engine's default font makes every Label/RichTextLabel that uses the default font inherit it.
+func _install_emoji_font() -> void:
+	var base: Font = ThemeDB.fallback_font
+	if base == null:
+		return
+	var emoji: Font = null
+	for p in ["res://fonts/NotoColorEmoji.ttf", "res://fonts/NotoColorEmoji-Regular.ttf"]:
+		if ResourceLoader.exists(p):
+			var f := load(p)
+			if f is Font:
+				emoji = f
+				break
+	if emoji == null:
+		var sf := SystemFont.new()
+		sf.font_names = PackedStringArray(["Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Noto Emoji", "Twemoji Mozilla", "EmojiOne Color"])
+		sf.allow_system_fallback = true
+		emoji = sf
+	var fbs: Array = base.fallbacks
+	fbs.append(emoji)
+	base.fallbacks = fbs
 
 func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if geometry.is_empty():
@@ -273,6 +331,15 @@ func _process(dt: float) -> void:
 
 	_runover_hint.visible = str(_net.run_state.get("phase", "")) == "ended"
 
+	# Skills: keep XP bars live while open; nudge + glow when an ability matures.
+	if _skills.is_open():
+		_skills.sync_if_open()
+	var skill_ready: bool = alive and _skills.any_ready()
+	_skill_hint.visible = skill_ready and not _skills.is_open() and not _inv.is_open()
+	if skill_ready and not _skill_ready_was:
+		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
+	_skill_ready_was = skill_ready
+
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
 		if _dbg_accum >= 1.0:
@@ -313,7 +380,13 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
 		match e.keycode:
 			KEY_I:
+				if _skills.is_open():
+					_skills.close()
 				_inv.toggle()
+			KEY_K:
+				if _inv.is_open():
+					_inv.close()
+				_skills.toggle()
 			KEY_E:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
