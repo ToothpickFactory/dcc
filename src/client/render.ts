@@ -636,7 +636,9 @@ export class Renderer {
           float dccDist = distance(vWorldXZ, uPlayer);
           float dccFall = 1.0 - smoothstep(uVisionRadius * 0.6, uVisionRadius, dccDist);
           float dccLit = dccLos(uPlayer, vWorldXZ) * dccFall;
-          gl_FragColor.rgb *= mix(0.06, 1.0, dccLit);`,
+          // Blend unseen pixels to the scene background (0x0b0e14) so out-of-sight
+          // walls/paths vanish entirely — not just dim. Seen pixels keep full color.
+          gl_FragColor.rgb = mix(vec3(0.043, 0.055, 0.078), gl_FragColor.rgb, dccLit);`,
         );
     };
     mat.needsUpdate = true;
