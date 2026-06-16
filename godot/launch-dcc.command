@@ -22,7 +22,9 @@ if [ -z "$GODOT" ]; then
   fi
 fi
 
-APP="godot/build/macos/DCC.app"
+# Absolute path: Godot resolves the export path relative to the project dir (--path),
+# so a project-relative or absolute path is required — NOT a repo-root-relative one.
+APP="$ROOT/godot/build/macos/DCC.app"
 NEED_BUILD=0
 
 # 1) Update check — fast-forward main only if the working tree is clean & behind.
@@ -55,7 +57,7 @@ if [ "$NEED_BUILD" = "1" ]; then
   fi
   echo "==> Building the latest client (~20s)..."
   "$GODOT" --headless --path godot --import >/dev/null 2>&1
-  mkdir -p godot/build/macos
+  mkdir -p "$(dirname "$APP")"
   "$GODOT" --headless --path godot --export-release "macOS" "$APP"
   if [ ! -d "$APP" ]; then
     echo "!! Build failed. See godot/SETUP.md (export templates?)."
