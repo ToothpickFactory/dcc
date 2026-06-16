@@ -38,6 +38,12 @@ func _ready() -> void:
 	if OS.get_environment("DCC_SHOT") != "":
 		get_tree().create_timer(4.5).timeout.connect(_grab_shot)
 
+	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
+	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
+	# Deferred so the window has its final size first.
+	_apply_ui_scale.call_deferred()
+	get_window().size_changed.connect(_apply_ui_scale)
+
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
@@ -102,6 +108,11 @@ func _ready() -> void:
 			player_name = n
 			_net.start(server_url, n))
 
+func _apply_ui_scale() -> void:
+	# ~1280px logical reference; clamp so it never shrinks below 1x or balloons.
+	var w := float(get_window().size.x)
+	get_window().content_scale_factor = clampf(w / 1280.0, 1.0, 2.5)
+
 func _skip_login() -> bool:
 	if DisplayServer.get_name() == "headless":
 		return true
@@ -153,11 +164,6 @@ func _process(dt: float) -> void:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
-			# Slot-1 auto-cast (web parity: slot 1 auto-fires when off cooldown).
-			var cds: Dictionary = _net.self_dto.get("cds", {})
-			if int(cds.get("0", 0)) <= int(_net.cur.get("tick", 0)):
-				_seq += 1
-				_net.send_cast(_seq, 0, aim)
 		for idx in _inp.take_casts():
 			_seq += 1
 			_net.send_cast(_seq, int(idx), aim)

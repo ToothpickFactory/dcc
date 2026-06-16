@@ -38,9 +38,9 @@ func ground_color() -> Color:
 func wall_color() -> Color:
 	return Color8(0x39, 0x44, 0x5e)
 
-## Floor tile repeat count (2400px / 80px = 30), mirroring floor.repeat.set(30,30).
+## Floor tile repeat count = one tile per cell across the actual floor (grid w).
 func ground_uv_repeat() -> float:
-	return DccConst.WORLD.x / 80.0
+	return float(grid["w"]) if not grid.is_empty() else 30.0
 
 ## Register the fog node; subsequent set_*_texture calls also update its shader.
 func set_fog(fog: Node) -> void:
@@ -63,9 +63,10 @@ func set_ground_texture(tex: Texture2D) -> void:
 	tex.set_meta("dcc_tile", true)
 	_ground_mat.albedo_texture = tex
 	_ground_mat.albedo_color = Color.WHITE
-	# 2400px plane / 80px cell = 30 repeats — matches floor.repeat.set(30,30).
-	var reps := DccConst.WORLD.x / 80.0
-	_ground_mat.uv1_scale = Vector3(reps, reps, 1.0)
+	# One tile per cell across the actual floor (grid w x h).
+	var reps_x := float(grid["w"])
+	var reps_y := float(grid["h"])
+	_ground_mat.uv1_scale = Vector3(reps_x, reps_y, 1.0)
 
 ## Themed walls: set the wall albedo to the theme's wall tile (render.ts tile 8).
 ## null reverts to the flat fallback colour. Called by WorldDecor.apply().
@@ -85,8 +86,13 @@ func set_wall_texture(tex: Texture2D) -> void:
 func _build_ground() -> void:
 	if _ground:
 		_ground.queue_free()
+	# Size the ground to the ACTUAL floor (grid w*h*cell), not the stale 2400 WORLD
+	# constant — floors vary in size, and a too-small plane leaves the maze edges over
+	# the void (the "grey turns black when you move out" bug).
+	var ww: float = float(grid["w"]) * float(grid["cell"])
+	var wh: float = float(grid["h"]) * float(grid["cell"])
 	var plane := PlaneMesh.new()
-	plane.size = DccConst.WORLD
+	plane.size = Vector2(ww, wh)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x16, 0x1d, 0x2e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -95,7 +101,7 @@ func _build_ground() -> void:
 	_ground_mat = mat
 	_ground = MeshInstance3D.new()
 	_ground.mesh = plane
-	_ground.position = Vector3(DccConst.WORLD.x * 0.5, 0, DccConst.WORLD.y * 0.5)
+	_ground.position = Vector3(ww * 0.5, 0, wh * 0.5)
 	add_child(_ground)
 
 func _build_walls() -> void:

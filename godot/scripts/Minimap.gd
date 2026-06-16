@@ -9,7 +9,7 @@ extends Control
 ##   set_floor(grid: Dictionary, stairs: Dictionary)  -- fresh floor = fresh discovery
 ##   update_map(px, py, ents, you_id, in_play)         -- call each frame (px/py = predictor pos)
 
-const SIZE := 168.0      # panel px (square)
+const SIZE := 210.0      # panel px (square); also multiplied by Main's UI content scale
 const REDRAW_MS := 80    # ~12 fps is plenty for a minimap
 
 var _grid: Dictionary = {}
