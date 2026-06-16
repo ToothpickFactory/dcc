@@ -11,7 +11,7 @@ export type PlayerClass =
   | "shadow"
   | "negotiator"
   | "berserker";
-export type MonsterKind = "grunt" | "ranged" | "brute" | "swarm";
+export type MonsterKind = "grunt" | "ranged" | "brute" | "swarm" | "healer";
 
 export interface Ability {
   id: string;

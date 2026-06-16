@@ -18,6 +18,7 @@ export interface FloorDescriptor {
   collision: CollisionGrid; // server-authoritative
   entrance: { x: number; y: number };
   stairs: { x: number; y: number; r: number };
+  bossRoom: { x: number; y: number }; // where the boss spawns when triggered (a far room)
   spawns: { x: number; y: number; kind: MonsterKind }[];
   chests: { x: number; y: number }[];
   decorations: { x: number; y: number; variant: number; scale: number }[];

@@ -65,6 +65,7 @@ export const MONSTER_XP: Record<MonsterKind | "boss", number> = {
   swarm: 3,
   brute: 12,
   ranged: 8,
+  healer: 7, // support unit — worth killing first to stop the camp's heals
   boss: 60,
 };
 export const HIT_XP = 1; // landing a hit (on a monster/boss) trickles a little XP
