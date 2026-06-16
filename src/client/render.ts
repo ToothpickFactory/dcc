@@ -84,6 +84,17 @@ export class Renderer {
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
   private collision: CollisionGrid | null = null; // current floor grid, for fog line-of-sight
+  // Wall-based fog of war: a shader on the ground + walls darkens any pixel without
+  // line-of-sight to the vision center. The collision grid rides along as a texture;
+  // both materials share these uniform objects (one update drives both).
+  private fogGridTex = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat);
+  private fog = {
+    uPlayer: { value: new THREE.Vector2(0, 0) },
+    uGrid: { value: this.fogGridTex },
+    uGridSize: { value: new THREE.Vector2(1, 1) },
+    uCell: { value: 80 },
+    uVisionRadius: { value: VISION_RADIUS },
+  };
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -92,10 +103,9 @@ export class Renderer {
     this.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 8000);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(2400, 2400, 24, 24),
-      new THREE.MeshBasicMaterial({ color: 0x161d2e, wireframe: true }),
-    );
+    const groundMat = new THREE.MeshBasicMaterial({ color: 0x161d2e, wireframe: true });
+    this.patchFog(groundMat);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400, 24, 24), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(1200, 0, 1200);
     this.scene.add(ground);
@@ -515,13 +525,17 @@ export class Renderer {
 
     const grid = floor.collision;
     this.collision = grid; // fog line-of-sight reads this each frame
+    // Hand the grid to the fog shader (as a texture) so walls occlude vision.
+    this.fogGridTex.dispose();
+    this.fogGridTex = this.buildGridTexture(grid);
+    this.fog.uGrid.value = this.fogGridTex;
+    this.fog.uGridSize.value.set(grid.w, grid.h);
+    this.fog.uCell.value = grid.cell;
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
-    const walls = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(grid.cell, 96, grid.cell),
-      new THREE.MeshBasicMaterial({ color: 0x39445e }),
-      wallCount,
-    );
+    const wallMat = new THREE.MeshBasicMaterial({ color: 0x39445e });
+    this.patchFog(wallMat);
+    const walls = new THREE.InstancedMesh(new THREE.BoxGeometry(grid.cell, 96, grid.cell), wallMat, wallCount);
     const matrix = new THREE.Matrix4();
     let instance = 0;
     for (let y = 0; y < grid.h; y++) {
@@ -558,6 +572,74 @@ export class Renderer {
     const hit = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.plane, hit)) return Math.atan2(hit.z - py, hit.x - px);
     return 0;
+  }
+
+  // Vision center for the wall-fog shader (player in play, spectate target while
+  // waiting). Called each frame from the main loop.
+  setVision(x: number, y: number): void {
+    this.fog.uPlayer.value.set(x, y);
+  }
+
+  // The collision grid as an R8 texture (255 = wall) for the fog shader to march.
+  private buildGridTexture(grid: CollisionGrid): THREE.DataTexture {
+    const data = new Uint8Array(grid.w * grid.h);
+    for (let i = 0; i < data.length; i++) data[i] = grid.solid[i] ? 255 : 0;
+    const tex = new THREE.DataTexture(data, grid.w, grid.h, THREE.RedFormat);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  // Patch a MeshBasicMaterial so each fragment is darkened unless it has line-of-
+  // sight to uPlayer — the per-pixel GLSL twin of canSee(). Shared fog uniforms
+  // are wired in so one update drives both the ground and wall materials.
+  private patchFog(mat: THREE.Material): void {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uPlayer = this.fog.uPlayer;
+      shader.uniforms.uGrid = this.fog.uGrid;
+      shader.uniforms.uGridSize = this.fog.uGridSize;
+      shader.uniforms.uCell = this.fog.uCell;
+      shader.uniforms.uVisionRadius = this.fog.uVisionRadius;
+      shader.vertexShader =
+        "varying vec2 vWorldXZ;\n" +
+        shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            vec4 dccW = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+          #else
+            vec4 dccW = modelMatrix * vec4(transformed, 1.0);
+          #endif
+          vWorldXZ = dccW.xz;`,
+        );
+      shader.fragmentShader =
+        `varying vec2 vWorldXZ;
+        uniform vec2 uPlayer; uniform sampler2D uGrid; uniform vec2 uGridSize; uniform float uCell; uniform float uVisionRadius;
+        float dccLos(vec2 from, vec2 to) {
+          vec2 d = to - from;
+          float dist = length(d);
+          vec2 tgt = floor(to / uCell);
+          int steps = int(min(48.0, dist / (uCell * 0.5)));
+          for (int i = 1; i <= 48; i++) {
+            if (i > steps) break;
+            vec2 cell = floor((from + d * (float(i) / float(steps))) / uCell);
+            if (all(equal(cell, tgt))) return 1.0; // reached target cell unobstructed
+            if (texture2D(uGrid, (cell + 0.5) / uGridSize).r > 0.5) return 0.0; // wall between
+          }
+          return 1.0;
+        }
+        ` +
+        shader.fragmentShader.replace(
+          "#include <dithering_fragment>",
+          `#include <dithering_fragment>
+          float dccDist = distance(vWorldXZ, uPlayer);
+          float dccFall = 1.0 - smoothstep(uVisionRadius * 0.6, uVisionRadius, dccDist);
+          float dccLit = dccLos(uPlayer, vWorldXZ) * dccFall;
+          gl_FragColor.rgb *= mix(0.06, 1.0, dccLit);`,
+        );
+    };
+    mat.needsUpdate = true;
   }
 
   // Fog line-of-sight: true if no solid cell lies between the player and the

@@ -205,6 +205,7 @@ function frame(now: number) {
     updateWaitingBanner();
   }
 
+  renderer.setVision(camX, camY); // wall-fog shader centers on the camera target
   if (net.cur) {
     renderer.sync(net.cur.ents, net.you, { x: camX, y: camY });
     renderer.follow(camX, camY);
