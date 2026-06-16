@@ -10,6 +10,7 @@ mkdirSync(outRoot, { recursive: true });
 const copyPairs = [
   [join(root, "assets", "Heroes"), join(outRoot, "Heroes")],
   [join(root, "assets", "Enemies"), join(outRoot, "Enemies")],
+  [join(root, "assets", "Bosses"), join(outRoot, "Bosses")],
   [join(root, "assets", "Tiles"), join(outRoot, "Tiles")],
   [join(root, "assets", "Props"), join(outRoot, "Props")],
 ];

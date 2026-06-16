@@ -40,6 +40,7 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
     moveWithCollisions(ctx.floor.collision, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
   } else if (ctx.now >= boss.meleeReadyAt) {
     boss.meleeReadyAt = ctx.now + BOSS_MELEE_CD;
+    ctx.pushFx({ e: "melee", by: boss.id });
     applyDamage(ctx, prey, BOSS_MELEE_DMG, boss.id, false);
   }
 

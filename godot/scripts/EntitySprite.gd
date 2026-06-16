@@ -20,6 +20,7 @@ const ACTION_FRAME_SPEED := 1.25
 const MOVEMENT_HOLD_MS := 150
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
+const BOSS_ROOT := "res://assets/Bosses/Slime"
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
@@ -125,7 +126,11 @@ func _facing_with_hysteresis(dx: float, dy: float, moving: bool, aim: float) -> 
 # right-facing atlas and mirrors the sprite, so we only ever request *_right / *Right art.
 # ---------------------------------------------------------------------------
 func _root_for_kind() -> String:
-	return HERO_ROOT if kind == "player" else _enemy_root()
+	if kind == "player":
+		return HERO_ROOT
+	if kind == "boss":
+		return BOSS_ROOT
+	return _enemy_root()
 
 func _move_clip_path(root: String, moving: bool, dir: String) -> String:
 	return "%s/%s_%s_right" % [root, ("iso_run" if moving else "iso_idle"), dir]
@@ -210,8 +215,8 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 	var h := _height_for_kind()
 	position = Vector3(wx, h, wy)
 
-	# Non-animated kinds: flat-colored billboard (proj / lootbag / boss / spectator etc.).
-	if kind != "player" and kind != "monster":
+	# Non-animated kinds: flat-colored billboard (proj / lootbag / spectator etc.).
+	if kind != "player" and kind != "monster" and kind != "boss":
 		_set_fallback()
 		_apply_size(sprite_px)
 		return
@@ -237,7 +242,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		target_clip = _move_clip_path(root, moving, display_dir)
 		loaded = Atlas.load_clip(target_clip)
 
-	var is_enemy := kind == "monster"
+	var is_enemy := kind == "monster" or kind == "boss"
 
 	# Played frame window for an action (frame_start..count, clamped to clip length).
 	var action_frame_count := -1

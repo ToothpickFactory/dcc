@@ -4,8 +4,22 @@ import assert from "node:assert/strict";
 // src/shared/constants.ts
 var INPUT_HZ = 10;
 var INPUT_MS = 1e3 / INPUT_HZ;
-var WORLD = { w: 2400, h: 2400 };
 var PLAYER_RADIUS = 17;
+var MONSTER_KINDS = {
+  grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 20 },
+  brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 28 },
+  // slow tank, big hits
+  swarm: { hp: 24, speed: 158, dmg: 4, attackCd: 700, meleeRange: 42, radius: 13 },
+  // fast, fragile, weak
+  ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
+  healer: { hp: 50, speed: 92, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, heal: { amount: 14, cd: 1400, range: 320, kite: 240 } }
+  // mends its camp
+};
+var BOSS_POWER_MULT = 1.5;
+var BOSS_MAX_HP = Math.round(MONSTER_KINDS.grunt.hp * BOSS_POWER_MULT);
+var BOSS_SPEED = MONSTER_KINDS.grunt.speed;
+var BOSS_MELEE_DMG = Math.round(MONSTER_KINDS.grunt.dmg * BOSS_POWER_MULT);
+var BOSS_PROJ_DMG = Math.round((MONSTER_KINDS.ranged.ranged?.projDmg ?? MONSTER_KINDS.grunt.dmg) * BOSS_POWER_MULT);
 
 // src/procgen/collision.ts
 function canOccupy(grid, x, y, radius) {
@@ -34,6 +48,11 @@ function clamp(value, min, max) {
 
 // src/procgen/index.ts
 var THEMES = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
+var CELL = 80;
+var BASE_GRID = 38;
+var GROW_PER_DEPTH = 6;
+var MAX_GRID = 96;
+var PLAYER_TRAVEL = 230;
 function rng(seed) {
   let a = seed >>> 0;
   return () => {
@@ -46,58 +65,61 @@ function rng(seed) {
 }
 function generateFloor(seed, depth) {
   const random = rng(seed + depth * 1013);
-  const cell = 80;
-  const gw = Math.floor(WORLD.w / cell);
-  const gh = Math.floor(WORLD.h / cell);
+  const cell = CELL;
+  const size = nearestOdd(Math.min(MAX_GRID, BASE_GRID + depth * GROW_PER_DEPTH), MAX_GRID);
+  const gw = size;
+  const gh = size;
   const solid = new Uint8Array(gw * gh).fill(1);
-  const start = {
-    x: nearestOdd(Math.floor(gw / 2), gw),
-    y: nearestOdd(Math.floor(gh / 2), gh)
-  };
+  const start = { x: nearestOdd(Math.floor(gw / 2), gw), y: nearestOdd(Math.floor(gh / 2), gh) };
+  const openness = 0.2 + random() * 0.75;
   carveConnectedMaze(solid, gw, gh, start.x, start.y, random);
-  addLoops(solid, gw, gh, random, Math.floor(gw * gh * 0.08));
-  carveRoom(solid, gw, gh, start.x, start.y, 2);
+  widen(solid, gw, gh, random, openness);
+  addLoops(solid, gw, gh, random, Math.floor(gw * gh * 0.03 * openness));
+  const roomCenters = carveRooms(solid, gw, gh, random, openness, depth);
+  carveRect(solid, gw, gh, start.x, start.y, 2, 2);
   const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
-  carveRoom(solid, gw, gh, farthest.x, farthest.y, 1);
+  carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2);
   const collision = { w: gw, h: gh, cell, solid };
   const entrance = cellCenter(start.x, start.y, cell);
-  const stairs = { ...cellCenter(farthest.x, farthest.y, cell), r: 48 };
-  const candidates = openCells(solid, gw, gh).filter(
-    (p) => manhattan(p.x, p.y, start.x, start.y) > 5 && manhattan(p.x, p.y, farthest.x, farthest.y) > 3
-  );
-  shuffle(candidates, random);
-  const kinds = ["grunt", "brute", "swarm", "ranged"];
-  const spawns = [];
-  const spawnCount = Math.min(candidates.length, 8 + Math.min(8, depth));
-  for (let i = 0; i < spawnCount; i++) {
-    const p = candidates[i];
-    spawns.push({ ...cellCenter(p.x, p.y, cell), kind: kinds[Math.floor(random() * kinds.length)] });
+  const stairs = { ...cellCenter(farthest.x, farthest.y, cell), r: 60 };
+  let bossCell = farthest;
+  let bossDist = -1;
+  for (const c of roomCenters) {
+    const d = manhattan(c.x, c.y, start.x, start.y);
+    if (d > bossDist && manhattan(c.x, c.y, farthest.x, farthest.y) > 4) {
+      bossDist = d;
+      bossCell = c;
+    }
   }
-  const chests = candidates.slice(spawnCount, spawnCount + 2).map((p) => cellCenter(p.x, p.y, cell));
-  const pathCells = farthest.distance + 1;
-  const theme = THEMES[Math.floor(random() * THEMES.length)];
-  const decorationCells = candidates.slice(spawnCount + 2, spawnCount + 26);
-  const decorations = decorationCells.map((p) => ({
+  const bossRoom = cellCenter(bossCell.x, bossCell.y, cell);
+  const spawns = generateSpawns(solid, gw, gh, cell, random, roomCenters, start, farthest, depth, openness);
+  const open = openCells(solid, gw, gh).filter((p) => manhattan(p.x, p.y, start.x, start.y) > 4);
+  shuffle(open, random);
+  const chests = open.slice(0, 2 + Math.floor(random() * 2)).map((p) => cellCenter(p.x, p.y, cell));
+  const decorations = open.slice(4, 4 + 18 + Math.floor(openness * 22)).map((p) => ({
     ...cellCenter(p.x, p.y, cell),
-    // Variant 0 is reserved for the themed stairs sprite in the prop sheet.
     variant: 1 + Math.floor(random() * 15),
+    // variant 0 reserved for the stairs sprite
     scale: 0.75 + random() * 0.45
   }));
+  const theme = THEMES[Math.floor(random() * THEMES.length)];
+  const pathCells = farthest.distance + 1;
   return {
     index: depth,
     seed,
     depth,
     theme,
-    w: WORLD.w,
-    h: WORLD.h,
-    // Per-floor lethal timer — reach the stairs before it expires (decision #2).
-    // Stream D (M4 gen) will set real, per-floor, theme-driven durations; until
-    // then floor 1 gets a generous 5 min to learn the ropes. Later floors have
-    // at least 60s and scale up when the generated stairs path requires it.
-    durationMs: depth <= 1 ? 3e5 : Math.max(6e4, Math.ceil(pathCells * cell * 1.8 * 1e3 / 230)),
+    w: gw * cell,
+    h: gh * cell,
+    // Floor 1 gets a generous 5 min to learn. Later floors scale the timer with
+    // BOTH the journey to the stairs and the sheer size of the floor (a huge open
+    // arena still needs time to cross + clear camps), so the floor minimum grows
+    // with the grid rather than sitting at a flat 90s.
+    durationMs: depth <= 1 ? 3e5 : Math.max(Math.round(gw * cell / PLAYER_TRAVEL * 1e3 * 5), Math.ceil(pathCells * cell * 1.7 * 1e3 / PLAYER_TRAVEL)),
     collision,
     entrance,
     stairs,
+    bossRoom,
     spawns,
     chests,
     decorations
@@ -131,6 +153,44 @@ function carveConnectedMaze(solid, w, h, startX, startY, random) {
     stack.push({ x: nx, y: ny });
   }
 }
+function widen(solid, w, h, random, openness) {
+  if (openness < 0.4) return;
+  const passes = openness > 0.7 ? 2 : 1;
+  const p = (openness - 0.3) * 0.7;
+  for (let pass = 0; pass < passes; pass++) {
+    const toOpen = [];
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (solid[i] === 0) continue;
+        const adj = (solid[i - 1] === 0 ? 1 : 0) + (solid[i + 1] === 0 ? 1 : 0) + (solid[i - w] === 0 ? 1 : 0) + (solid[i + w] === 0 ? 1 : 0);
+        if (adj > 0 && random() < p) toOpen.push(i);
+      }
+    }
+    for (const i of toOpen) solid[i] = 0;
+  }
+}
+function carveRooms(solid, w, h, random, openness, depth) {
+  const centers = [];
+  const open = openCells(solid, w, h);
+  if (open.length === 0) return centers;
+  const roomCount = Math.floor(3 + openness * 9 + depth * 0.4);
+  for (let r = 0; r < roomCount; r++) {
+    const c = open[Math.floor(random() * open.length)];
+    const rw = 2 + Math.floor(random() * (2 + openness * 4));
+    const rh = 2 + Math.floor(random() * (2 + openness * 4));
+    carveRect(solid, w, h, c.x, c.y, rw, rh);
+    centers.push({ x: c.x, y: c.y });
+  }
+  return centers;
+}
+function carveRect(solid, w, h, cx, cy, rw, rh) {
+  for (let y = Math.max(1, cy - rh); y <= Math.min(h - 2, cy + rh); y++) {
+    for (let x = Math.max(1, cx - rw); x <= Math.min(w - 2, cx + rw); x++) {
+      solid[y * w + x] = 0;
+    }
+  }
+}
 function addLoops(solid, w, h, random, count) {
   for (let i = 0; i < count; i++) {
     const x = 1 + Math.floor(random() * (w - 2));
@@ -141,12 +201,44 @@ function addLoops(solid, w, h, random, count) {
     if (horizontal || vertical) solid[y * w + x] = 0;
   }
 }
-function carveRoom(solid, w, h, cx, cy, radius) {
-  for (let y = Math.max(1, cy - radius); y <= Math.min(h - 2, cy + radius); y++) {
-    for (let x = Math.max(1, cx - radius); x <= Math.min(w - 2, cx + radius); x++) {
-      solid[y * w + x] = 0;
-    }
+var MELEE_KINDS = ["grunt", "brute", "swarm"];
+var ALL_KINDS = ["grunt", "brute", "swarm", "ranged"];
+function generateSpawns(solid, w, h, cell, random, roomCenters, start, farthest, depth, openness) {
+  const spawns = [];
+  const farFromStart = (p) => manhattan(p.x, p.y, start.x, start.y) > 7;
+  const rooms = roomCenters.filter(farFromStart).filter((r) => manhattan(r.x, r.y, farthest.x, farthest.y) > 3);
+  shuffle(rooms, random);
+  const campCount = Math.min(rooms.length, 2 + Math.floor(depth * 0.5));
+  for (let i = 0; i < campCount; i++) {
+    placeCamp(spawns, solid, w, h, cell, random, rooms[i], depth);
   }
+  const loose = openCells(solid, w, h).filter(farFromStart);
+  shuffle(loose, random);
+  const singleCount = Math.min(loose.length, 3 + depth);
+  for (let i = 0; i < singleCount; i++) {
+    const p = loose[i];
+    spawns.push({ ...cellCenter(p.x, p.y, cell), kind: ALL_KINDS[Math.floor(random() * ALL_KINDS.length)] });
+  }
+  return spawns;
+}
+function placeCamp(spawns, solid, w, h, cell, random, center, depth) {
+  const n = 3 + Math.floor(random() * 3);
+  const roster = [];
+  if (random() < 0.7) roster.push("healer");
+  roster.push("ranged");
+  while (roster.length < n) roster.push(MELEE_KINDS[Math.floor(random() * MELEE_KINDS.length)]);
+  for (const kind of roster) {
+    const c = openCellNear(solid, w, h, center, 3, random);
+    if (c) spawns.push({ ...cellCenter(c.x, c.y, cell), kind });
+  }
+}
+function openCellNear(solid, w, h, center, radius, random) {
+  for (let tries = 0; tries < 24; tries++) {
+    const x = center.x + Math.floor((random() * 2 - 1) * radius);
+    const y = center.y + Math.floor((random() * 2 - 1) * radius);
+    if (x > 0 && y > 0 && x < w - 1 && y < h - 1 && solid[y * w + x] === 0) return { x, y };
+  }
+  return solid[center.y * w + center.x] === 0 ? center : null;
 }
 function farthestOpenCell(solid, w, h, startX, startY) {
   const distances = new Int32Array(w * h).fill(-1);

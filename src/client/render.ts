@@ -18,6 +18,7 @@ const C = {
 };
 
 const HERO_ROOT = "/assets/Heroes/Kevin";
+const BOSS_ROOT = "/assets/Bosses/Slime";
 const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
   cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
@@ -159,6 +160,10 @@ export class Renderer {
   private async primeClipCache(): Promise<void> {
     const paths: string[] = [];
     for (const a of MOVE_ANIM_NAMES) paths.push(`${HERO_ROOT}/${a}`);
+    for (const a of MOVE_ANIM_NAMES) paths.push(`${BOSS_ROOT}/${a}`);
+    for (const action of ENEMY_ACTION_NAMES) {
+      for (const dir of ACTION_DIRECTIONS) paths.push(`${BOSS_ROOT}/${action} ${dir}`);
+    }
     for (const root of ENEMY_ROOTS) {
       for (const a of MOVE_ANIM_NAMES) paths.push(`${root}/${a}`);
       for (const action of ENEMY_ACTION_NAMES) {
@@ -503,9 +508,9 @@ export class Renderer {
     const now = performance.now();
     for (const event of events) {
       if (event.e === "cast") {
-        const caster = this.nearestEntity(ents, event.x, event.y, ["player", "monster"], 90);
+        const caster = this.nearestEntity(ents, event.x, event.y, ["player", "monster", "boss"], 90);
         if (!caster) continue;
-        const root = caster.kind === "player" ? HERO_ROOT : this.enemyRoot(caster.id);
+        const root = caster.kind === "player" ? HERO_ROOT : caster.kind === "boss" ? BOSS_ROOT : this.enemyRoot(caster.id);
         if (caster.id === selfId) {
           const ability = DEFAULT_ABILITIES[event.ability];
           if (ability?.id === "mend") this.queueAction(caster.id, root, "cast", now);
@@ -523,9 +528,9 @@ export class Renderer {
       }
 
       if (event.e === "melee") {
-        const attacker = ents.find((entity) => entity.id === event.by && entity.kind === "monster");
+        const attacker = ents.find((entity) => entity.id === event.by && (entity.kind === "monster" || entity.kind === "boss"));
         if (!attacker) continue;
-        this.queueAction(attacker.id, this.enemyRoot(attacker.id), "strike", now);
+        this.queueAction(attacker.id, attacker.kind === "boss" ? BOSS_ROOT : this.enemyRoot(attacker.id), "strike", now);
       }
     }
   }
@@ -580,8 +585,8 @@ export class Renderer {
       s.flipX = face.flipX;
       if (s.action && now >= s.actionUntil) s.action = null;
 
-      if (e.kind === "player" || e.kind === "monster") {
-        const root = e.kind === "player" ? HERO_ROOT : this.enemyRoot(e.id);
+      if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
+        const root = e.kind === "player" ? HERO_ROOT : e.kind === "boss" ? BOSS_ROOT : this.enemyRoot(e.id);
         const displayFlipX = s.action ? s.actionFlipX : s.flipX;
         let actionClip = s.action ? this.actionClipPath(root, s.action, s.actionFacingDir) : null;
         let loadedAction = actionClip ? this.clipCache.get(actionClip) : undefined;
@@ -606,10 +611,10 @@ export class Renderer {
           s.frame = readyAction ? 0 : -1;
           if (readyAction) {
             const frameStepMs =
-              (readyAction.clip.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1)) / s.actionFrameSpeed;
+              (readyAction.clip.frameMs * (e.kind !== "player" ? ENEMY_FRAME_SLOWDOWN : 1)) / s.actionFrameSpeed;
             s.nextFrameAt = now + frameStepMs;
             s.actionUntil =
-              now + this.clipDurationMs(readyAction.clip, e.kind === "monster", actionFrameCount) / s.actionFrameSpeed;
+              now + this.clipDurationMs(readyAction.clip, e.kind !== "player", actionFrameCount) / s.actionFrameSpeed;
           } else {
             s.nextFrameAt = 0;
           }
@@ -617,7 +622,7 @@ export class Renderer {
 
         if (loaded) {
           const frameStepMs =
-            (loaded.frameMs * (e.kind === "monster" ? ENEMY_FRAME_SLOWDOWN : 1)) /
+            (loaded.frameMs * (e.kind !== "player" ? ENEMY_FRAME_SLOWDOWN : 1)) /
             (readyAction ? s.actionFrameSpeed : 1);
           if (now >= s.nextFrameAt) {
             s.frame = (s.frame + 1) % (actionFrameCount ?? loaded.frames.length);

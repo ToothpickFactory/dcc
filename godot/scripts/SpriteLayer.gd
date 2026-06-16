@@ -119,7 +119,7 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 		var event: Dictionary = ev
 		var kind := str(event.get("e", ""))
 		if kind == "cast":
-			var caster := _nearest_entity(ents, float(event.get("x", 0.0)), float(event.get("y", 0.0)), ["player", "monster"], 90.0)
+			var caster := _nearest_entity(ents, float(event.get("x", 0.0)), float(event.get("y", 0.0)), ["player", "monster", "boss"], 90.0)
 			if caster.is_empty():
 				continue
 			var cid := str(caster.get("id", ""))
@@ -147,8 +147,7 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 			var spr2: EntitySprite = _sprites.get(by)
 			if spr2 == null:
 				continue
-			# Only monsters melee (render.ts checks kind === "monster").
-			if spr2.kind != "monster":
+			if spr2.kind != "monster" and spr2.kind != "boss":
 				continue
 			spr2.queue_action("strike", now_ms)
 

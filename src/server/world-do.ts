@@ -1,6 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
 import {
-  BOSS_KILL_THRESHOLD,
   BOSS_MAX_HP,
   BOSS_NAME,
   BOSS_RADIUS,
@@ -38,7 +37,7 @@ import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, 
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor, rng } from "../procgen";
-import { randomWalkablePosition } from "../procgen/collision";
+import { canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
 import type { BossState, LootBagState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
@@ -69,7 +68,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
   private events: GameEvent[] = [];
   private loop: ReturnType<typeof setInterval> | null = null;
-  private killsSinceBoss = 0;
   private bossSeq = 0;
   private lootBagSeq = 0;
   private itemSeq = 0;
@@ -151,6 +149,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = generateFloor(FIRST_SEED, 1);
     this.seedLoot();
     this.spawnMonsters();
+    this.spawnBoss();
     this.store.checkpointSync({ runId: this.runId, currentFloor: 1, seed: FIRST_SEED, phase: this.phase, savedAt: Date.now() });
   }
 
@@ -160,6 +159,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = generateFloor(run.seed, run.currentFloor);
     this.seedLoot();
     this.spawnMonsters();
+    this.spawnBoss();
   }
 
   // ---- WorldCtx hooks the sim modules call ----
@@ -169,8 +169,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   pushPlay(e: PlaystyleEvent) {
     this.profiles.record(e);
     if (e.e === "kill" && e.targetKind === "monster") {
-      this.killsSinceBoss += 1;
-      this.maybeSpawnBoss();
       // Loot drops on SOME kills, not every one (decision #10).
       const killer = this.players.get(e.by);
       if (killer && this.lootStream() < LOOT_KILL_CHANCE) {
@@ -251,13 +249,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     m.hp = m.maxHp; // spawn at full HP including any vitality gear
   }
 
-  private maybeSpawnBoss() {
-    if (this.boss && !this.boss.dead) return;
-    if (this.killsSinceBoss < BOSS_KILL_THRESHOLD) return;
-    this.killsSinceBoss = 0;
-    // The boss holds court in its lair — the farthest room on the floor, a place
-    // parties can seek out (PG-4). Fall back to any walkable tile if needed.
-    const { x, y } = this.floor.bossRoom ?? randomWalkablePosition(this.floor.collision, BOSS_RADIUS);
+  private spawnBoss() {
+    // The exit guardian starts near the stairs on every floor.
+    const { x, y } = this.bossSpawnNearStairs();
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
@@ -273,6 +267,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       threat: new Map(),
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
+  }
+
+  private bossSpawnNearStairs(): { x: number; y: number } {
+    const grid = this.floor.collision;
+    const stairs = this.floor.stairs;
+    const preferred = stairs.r + BOSS_RADIUS + 36;
+    for (const radius of [preferred, preferred + 40, preferred + 80, preferred + 120]) {
+      for (let i = 0; i < 16; i++) {
+        const angle = (i / 16) * Math.PI * 2;
+        const x = stairs.x + Math.cos(angle) * radius;
+        const y = stairs.y + Math.sin(angle) * radius;
+        if (canOccupy(grid, x, y, BOSS_RADIUS)) return { x, y };
+      }
+    }
+    return randomWalkablePosition(grid, BOSS_RADIUS, this.gearRng);
   }
 
   // RPC: wipe to a fresh vanilla run (admin /admin/new-run; auth in the Worker).
@@ -308,9 +317,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = generateFloor(seed, 1);
     this.seedLoot();
     this.spawnMonsters();
+    this.spawnBoss();
     this.projectiles = [];
-    this.boss = null;
-    this.killsSinceBoss = 0;
     this.floorEndsAt = Date.now() + this.floor.durationMs;
     void this.ctx.storage.setAlarm(this.floorEndsAt);
     for (const p of this.players.values()) {
@@ -407,9 +415,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
     this.seedLoot();
     this.spawnMonsters();
+    this.spawnBoss();
     this.projectiles = [];
-    this.boss = null;
-    this.killsSinceBoss = 0;
     for (const p of survivors) {
       p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
       p.y = this.floor.entrance.y + (Math.random() - 0.5) * 200;

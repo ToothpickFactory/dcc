@@ -238,6 +238,7 @@ func _process(dt: float) -> void:
 	_cam.position = Vector3(cx, 820, cy + 460)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
 	_fog.set_vision(cx, cy)
+	_update_decor_visibility(cx, cy)
 
 	# Render + UI.
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
@@ -287,6 +288,26 @@ func _grab_shot() -> void:
 	img.save_png("/tmp/dcc_shot.png")
 	print("[DBG] saved /tmp/dcc_shot.png ", img.get_width(), "x", img.get_height())
 	get_tree().quit()
+
+func _update_decor_visibility(x: float, y: float) -> void:
+	if _world == null or _world.grid.is_empty() or _decor == null:
+		return
+	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
+	_set_static_sprite_visibility(_decor.stairs_sprite, x, y, vision_sq)
+	for sprite in _decor.decoration_sprites:
+		_set_static_sprite_visibility(sprite, x, y, vision_sq)
+
+func _set_static_sprite_visibility(sprite: Sprite3D, x: float, y: float, vision_sq: float) -> void:
+	if sprite == null or not is_instance_valid(sprite):
+		return
+	var world_pos := Vector2(sprite.global_position.x, sprite.global_position.z)
+	if sprite.has_meta("dcc_world"):
+		var meta_pos = sprite.get_meta("dcc_world")
+		if meta_pos is Vector2:
+			world_pos = meta_pos
+	var dx := world_pos.x - x
+	var dy := world_pos.y - y
+	sprite.visible = dx * dx + dy * dy <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:

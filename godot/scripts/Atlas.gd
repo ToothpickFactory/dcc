@@ -93,6 +93,10 @@ static func _load_uncached(base_path: String) -> Variant:
 	# the PCK, only the imported texture. load() returns that imported texture, export-safe.
 	# NEAREST pixel-art filtering is applied on the sprite material in EntitySprite.)
 	var sheet := load(png_path) as Texture2D
+	if sheet == null and FileAccess.file_exists(png_path):
+		var img := Image.new()
+		if img.load(png_path) == OK:
+			sheet = ImageTexture.create_from_image(img)
 	if sheet == null:
 		# render.ts caches null on texture failure too.
 		return null
