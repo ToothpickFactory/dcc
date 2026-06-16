@@ -18,6 +18,14 @@ const C = {
 };
 
 const HERO_ROOT = "/assets/Heroes/Kevin";
+const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
+  fantasy: "/assets/Tiles/fantasy-tiles.png",
+  cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
+  forest: "/assets/Tiles/forest-tiles.png",
+  pirate: "/assets/Tiles/pirate-tiles.png",
+  clockwork: "/assets/Tiles/clockwork-tiles.png",
+  nightmare: "/assets/Tiles/nightmare-tiles.png",
+};
 const ENEMY_ROOTS = ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"].map((n) => `/assets/Enemies/${n}`);
 const MOVE_ANIM_NAMES = [
   "iso_idle_up_right",
@@ -83,6 +91,11 @@ export class Renderer {
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
+  private ground: THREE.Mesh;
+  private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
+  private wallMaterial = new THREE.MeshBasicMaterial({ color: 0x39445e });
+  private tileMaterialCache = new Map<FloorDescriptor["theme"], { floor: THREE.Texture; wall: THREE.Texture }>();
+  private tileThemeRequest = 0;
   private collision: CollisionGrid | null = null; // current floor grid, for fog line-of-sight
 
   constructor(canvas: HTMLCanvasElement) {
@@ -92,13 +105,13 @@ export class Renderer {
     this.camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 1, 8000);
     this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
-    const ground = new THREE.Mesh(
+    this.ground = new THREE.Mesh(
       new THREE.PlaneGeometry(2400, 2400, 24, 24),
-      new THREE.MeshBasicMaterial({ color: 0x161d2e, wireframe: true }),
+      this.floorMaterial,
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(1200, 0, 1200);
-    this.scene.add(ground);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.position.set(1200, 0, 1200);
+    this.scene.add(this.ground);
 
     this.resize();
     addEventListener("resize", () => this.resize());
@@ -160,6 +173,69 @@ export class Renderer {
 
     this.clipPromises.set(path, p);
     return p;
+  }
+
+  private async applyTileTheme(theme: FloorDescriptor["theme"]): Promise<void> {
+    const request = ++this.tileThemeRequest;
+    try {
+      const { floor, wall } = await this.loadTileMaterials(theme);
+      if (request !== this.tileThemeRequest) return;
+      this.floorMaterial.map = floor;
+      this.floorMaterial.color.setHex(0xffffff);
+      this.floorMaterial.needsUpdate = true;
+      this.wallMaterial.map = wall;
+      this.wallMaterial.color.setHex(0xffffff);
+      this.wallMaterial.needsUpdate = true;
+    } catch {
+      if (request !== this.tileThemeRequest) return;
+      console.warn(`Tileset failed to load: ${TILE_SHEETS[theme]}`);
+      this.floorMaterial.map = null;
+      this.floorMaterial.color.setHex(0x161d2e);
+      this.floorMaterial.needsUpdate = true;
+      this.wallMaterial.map = null;
+      this.wallMaterial.color.setHex(0x39445e);
+      this.wallMaterial.needsUpdate = true;
+    }
+  }
+
+  private async loadTileMaterials(
+    theme: FloorDescriptor["theme"],
+  ): Promise<{ floor: THREE.Texture; wall: THREE.Texture }> {
+    const cached = this.tileMaterialCache.get(theme);
+    if (cached) return cached;
+
+    const sheet = await this.textureLoader.loadAsync(TILE_SHEETS[theme]);
+    sheet.colorSpace = THREE.SRGBColorSpace;
+    const floor = this.tileFromSheet(sheet, 0);
+    const wall = this.tileFromSheet(sheet, 8);
+    floor.wrapS = floor.wrapT = THREE.RepeatWrapping;
+    floor.repeat.set(30, 30);
+    const materials = { floor, wall };
+    this.tileMaterialCache.set(theme, materials);
+    return materials;
+  }
+
+  private tileFromSheet(sheet: THREE.Texture, tileIndex: number): THREE.CanvasTexture {
+    const image = sheet.image as CanvasImageSource & { width: number; height: number };
+    const cols = 4;
+    const rows = 4;
+    const tileW = image.width / cols;
+    const tileH = image.height / rows;
+    const col = tileIndex % cols;
+    const row = Math.floor(tileIndex / cols);
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(image, col * tileW, row * tileH, tileW, tileH, 0, 0, canvas.width, canvas.height);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.magFilter = THREE.NearestFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.generateMipmaps = true;
+    return texture;
   }
 
   private spriteFor(id: string, color: number, size: number): SpriteState {
@@ -507,10 +583,11 @@ export class Renderer {
   }
 
   setFloor(floor: FloorDescriptor): void {
+    void this.applyTileTheme(floor.theme);
+
     if (this.walls) {
       this.scene.remove(this.walls);
       this.walls.geometry.dispose();
-      (this.walls.material as THREE.Material).dispose();
     }
 
     const grid = floor.collision;
@@ -519,7 +596,7 @@ export class Renderer {
     for (const value of grid.solid) wallCount += value;
     const walls = new THREE.InstancedMesh(
       new THREE.BoxGeometry(grid.cell, 96, grid.cell),
-      new THREE.MeshBasicMaterial({ color: 0x39445e }),
+      this.wallMaterial,
       wallCount,
     );
     const matrix = new THREE.Matrix4();
