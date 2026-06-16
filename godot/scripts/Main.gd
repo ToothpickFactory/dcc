@@ -24,6 +24,7 @@ var _spectate := Spectate.new()
 var _pred := Predictor.new()
 var _seq := 0
 var _input_accum := 0.0
+var _dbg_accum := 0.0
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -33,6 +34,8 @@ func _ready() -> void:
 		server_url = ws_override
 	if OS.get_environment("DCC_SMOKE") != "":
 		get_tree().create_timer(7.0).timeout.connect(func(): get_tree().quit())
+	if OS.get_environment("DCC_SHOT") != "":
+		get_tree().create_timer(4.5).timeout.connect(_grab_shot)
 
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -87,6 +90,11 @@ func _ready() -> void:
 
 func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if geometry.is_empty():
+		# The server didn't send floor.geometry — it's pre-protocol-v6. Make the
+		# failure visible instead of a silent black screen.
+		push_warning("Floor message has no `geometry`: the server hasn't shipped protocol v6. " +
+			"Deploy it (npm run deploy) or run vs local: DCC_WS=ws://127.0.0.1:8787/ws against npm run dev.")
+		_hud.toast("No floor geometry — deploy the server (protocol v6)", _color_of("#ff8a8a"))
 		return
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
@@ -96,6 +104,10 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
+	if OS.get_environment("DCC_DEBUG") != "":
+		var wi := _world.wall_instance()
+		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
+		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", geometry.get("stairs", {}))
 
 func _process(dt: float) -> void:
 	var mv: Vector2 = _inp.move_vec()
@@ -136,6 +148,22 @@ func _process(dt: float) -> void:
 	var remaining := int(_net.floor_state.get("living", 0)) - int(_net.floor_state.get("livingAtStairs", 0))
 	_hud.set_waiting(spectating, bool(sp.get("reached", false)), remaining, str(sp.get("mode", "follow")))
 	_inv.set_reached(bool(_net.self_dto.get("reached", false)))
+
+	if OS.get_environment("DCC_DEBUG") != "":
+		_dbg_accum += dt
+		if _dbg_accum >= 1.0:
+			_dbg_accum = 0.0
+			print("[DBG] cam.current=", _cam.current, " cam=", _cam.position.round(),
+				" pred=(", roundi(_pred.x), ",", roundi(_pred.y), ") floor=", not _world.grid.is_empty(),
+				" ents=", _net.ents.size(), " status=", _net.self_dto.get("status", "?"),
+				" self=(", _net.self_dto.get("x", "?"), ",", _net.self_dto.get("y", "?"), ")")
+
+func _grab_shot() -> void:
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	img.save_png("/tmp/dcc_shot.png")
+	print("[DBG] saved /tmp/dcc_shot.png ", img.get_width(), "x", img.get_height())
+	get_tree().quit()
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
