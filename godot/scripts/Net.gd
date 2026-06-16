@@ -5,6 +5,7 @@ extends Node
 ## so GdUnit4 test runs don't open sockets.
 
 signal welcomed(you)
+signal protocol_mismatch(server_v, client_v)
 signal floor_received(geometry, info)
 signal inv_received(msg)
 signal bag_received(msg)
@@ -61,6 +62,7 @@ func _handle(m: Dictionary) -> void:
 			var sv := int(m.get("protocol", -1))
 			if sv != DccConst.PROTOCOL_VERSION:
 				push_warning("Protocol mismatch: server=%d client=%d" % [sv, DccConst.PROTOCOL_VERSION])
+				protocol_mismatch.emit(sv, DccConst.PROTOCOL_VERSION)
 			welcomed.emit(you)
 		"floor":
 			floor_info = m.get("info", {})

@@ -198,6 +198,7 @@ func _ready() -> void:
 	_vignette = DangerVignette.new()
 	add_child(_vignette)
 
+	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
@@ -255,6 +256,23 @@ func _reset_run() -> void:
 		print("[DCC] reset request err=", err)
 		_hud.toast("Reset request failed", Color(1.0, 0.5, 0.5))
 		http.queue_free()
+
+# Server is on a newer protocol than this build — surface it LOUDLY (a stale build that
+# silently joins a newer server renders a confusing blank/half-broken world). Persistent
+# banner so it can't be missed; the fix is to rebuild (run launch-dcc).
+func _on_protocol_mismatch(server_v, client_v) -> void:
+	var banner := Label.new()
+	banner.text = "⚠ Outdated build — server v%d, you v%d. Rebuild to update (run launch-dcc)." % [server_v, client_v]
+	banner.add_theme_font_size_override("font_size", 18)
+	banner.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45))
+	banner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	banner.add_theme_constant_override("shadow_offset_y", 2)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	banner.position.y += 60
+	var layer := CanvasLayer.new()
+	layer.layer = 40  # above everything
+	add_child(layer)
+	layer.add_child(banner)
 
 func _bag_present(id: String) -> bool:
 	for e in _net.ents:
