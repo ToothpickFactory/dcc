@@ -573,6 +573,7 @@ func _process(dt: float) -> void:
 	var remaining := int(_net.floor_state.get("living", 0)) - int(_net.floor_state.get("livingAtStairs", 0))
 	_hud.set_waiting(spectating, bool(sp.get("reached", false)), remaining, str(sp.get("mode", "follow")))
 	_inv.set_reached(bool(_net.self_dto.get("reached", false)))
+	_skills.set_reached(bool(_net.self_dto.get("reached", false)))
 
 	# Loot: nearest bag within reach -> "Loot (E)" prompt; auto-close the loot panel
 	# when its bag is gone (looted / despawned / walked away). Press E to open it.

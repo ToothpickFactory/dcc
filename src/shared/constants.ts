@@ -11,6 +11,11 @@ export const WORLD = { w: 2400, h: 2400 };
 
 export const MAX_FLOORS = 100; // reaching past this ends the run as a victory (lore: Floor 100)
 
+// Per-level attribute points: each character level grants this many points to pour into
+// STR/AGI/INT/STA/CRIT/HASTE/ARMOR (the tactile growth CoN has and we lacked — base attrs
+// were zero forever). Spent points live in PlayerState.base (already derived + persisted).
+export const ATTR_POINTS_PER_LEVEL = 3;
+
 export const PLAYER_SPEED = 230; // px/s
 export const PLAYER_MAX_HP = 100;
 export const PLAYER_RADIUS = 17;

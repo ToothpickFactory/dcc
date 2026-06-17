@@ -1,9 +1,12 @@
 class_name World
 extends Node3D
-## Builds the floor from server geometry: a wall MultiMesh (96-tall boxes, one per
+## Builds the floor from server geometry: a wall MultiMesh (WALL_H-tall boxes, one per
 ## solid cell) + a ground plane. World (x,y) maps to 3D (x, 0, y) and wall centres
-## to ((cx+0.5)*cell, 48, (cy+0.5)*cell) — matching src/client/render.ts exactly.
+## to ((cx+0.5)*cell, WALL_H/2, (cy+0.5)*cell). Tall walls (Champions-of-Norrath feel:
+## the dungeon reads as deep canyons/halls, not low kerbs).
 ## Phase 0 uses flat materials; the line-of-sight fog shader is Phase 2 (GODOT_PORT.md §4).
+
+const WALL_H := 220.0  # wall box height (px). Tall, cliff-like — paired with the lower 3/4 camera.
 
 var grid: Dictionary = {}
 var _walls: MultiMeshInstance3D
@@ -115,7 +118,7 @@ func _build_walls() -> void:
 	for v in solid:
 		count += v
 	var box := BoxMesh.new()
-	box.size = Vector3(cell, 96, cell)
+	box.size = Vector3(cell, WALL_H, cell)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x39, 0x44, 0x5e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -131,7 +134,7 @@ func _build_walls() -> void:
 		for cx in w:
 			if solid[cy * w + cx] != 1:
 				continue
-			mm.set_instance_transform(i, Transform3D(Basis(), Vector3((cx + 0.5) * cell, 48, (cy + 0.5) * cell)))
+			mm.set_instance_transform(i, Transform3D(Basis(), Vector3((cx + 0.5) * cell, WALL_H * 0.5, (cy + 0.5) * cell)))
 			i += 1
 	_walls = MultiMeshInstance3D.new()
 	_walls.multimesh = mm

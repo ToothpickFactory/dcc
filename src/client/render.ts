@@ -824,8 +824,9 @@ export class Renderer {
     this.lastVisCell = -1;
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
+    const wallH = 220; // tall, cliff-like walls (matches the Godot client's World.WALL_H)
     const walls = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(grid.cell, 96, grid.cell),
+      new THREE.BoxGeometry(grid.cell, wallH, grid.cell),
       this.wallMaterial,
       wallCount,
     );
@@ -834,7 +835,7 @@ export class Renderer {
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
         if (grid.solid[y * grid.w + x] !== 1) continue;
-        matrix.makeTranslation((x + 0.5) * grid.cell, 48, (y + 0.5) * grid.cell);
+        matrix.makeTranslation((x + 0.5) * grid.cell, wallH / 2, (y + 0.5) * grid.cell);
         walls.setMatrixAt(instance++, matrix);
       }
     }

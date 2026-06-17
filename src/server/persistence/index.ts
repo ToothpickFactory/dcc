@@ -15,6 +15,7 @@ export interface PlayerRecord {
   chosenClass: Klass | null; // WoW class picked at first level-up
   talents: Record<string, number>; // talent node id -> rank
   talentPoints: number; // unspent talent points
+  attrPoints: number; // unspent attribute points (spent points live in `base`)
   lastSeen: number;
 }
 export interface RunCheckpoint {
@@ -71,6 +72,7 @@ interface PlayerRow {
   chosen_class: string | null;
   talents: string;
   talent_points: number;
+  attr_points: number;
   last_seen: number;
   [k: string]: SqlStorageValue;
 }
@@ -106,10 +108,10 @@ export class SqlRunStore implements RunStore {
 
   playerSync(rec: PlayerRecord): void {
     this.sql.exec(
-      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO player_record (player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, attr_points, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(player_id) DO UPDATE SET name=excluded.name, alive=excluded.alive, cls=excluded.cls,
          profile=excluded.profile, abilities=excluded.abilities, base=excluded.base, inv=excluded.inv, gold=excluded.gold, char_xp=excluded.char_xp,
-         chosen_class=excluded.chosen_class, talents=excluded.talents, talent_points=excluded.talent_points, last_seen=excluded.last_seen`,
+         chosen_class=excluded.chosen_class, talents=excluded.talents, talent_points=excluded.talent_points, attr_points=excluded.attr_points, last_seen=excluded.last_seen`,
       rec.playerId,
       rec.name,
       rec.alive ? 1 : 0,
@@ -123,6 +125,7 @@ export class SqlRunStore implements RunStore {
       rec.chosenClass ?? null,
       JSON.stringify(rec.talents ?? {}),
       rec.talentPoints | 0,
+      rec.attrPoints | 0,
       rec.lastSeen,
     );
   }
@@ -150,7 +153,7 @@ export class SqlRunStore implements RunStore {
 
   async loadPlayer(playerId: string): Promise<PlayerRecord | null> {
     const rows = this.sql
-      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, last_seen FROM player_record WHERE player_id = ?", playerId)
+      .exec<PlayerRow>("SELECT player_id, name, alive, cls, profile, abilities, base, inv, gold, char_xp, chosen_class, talents, talent_points, attr_points, last_seen FROM player_record WHERE player_id = ?", playerId)
       .toArray();
     if (rows.length !== 1) return null;
     try {
@@ -246,6 +249,7 @@ function rowToPlayer(r: PlayerRow): PlayerRecord {
     chosenClass: r.chosen_class ? (r.chosen_class as Klass) : null,
     talents: safeJson(r.talents) as Record<string, number>,
     talentPoints: r.talent_points ?? 0,
+    attrPoints: r.attr_points ?? 0,
     lastSeen: r.last_seen,
   };
 }

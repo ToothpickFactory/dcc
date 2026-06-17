@@ -55,6 +55,25 @@ check("level 5 → 5 points", pointsForLevel(5) === 5);
   check("unknown node rejected", !canSpendTalent("warrior", {}, 1, "m_bolts"));
 }
 
+// ---- ranked nodes (maxRank > 1) + deeper rows ------------------------------
+{
+  // w_tough is now maxRank 2: spendable at rank 0 and 1, locked at 2.
+  check("ranked spec spendable at rank 0", canSpendTalent("warrior", {}, 1, "w_tough"));
+  check("ranked spec spendable at rank 1 (→2)", canSpendTalent("warrior", { w_tough: 1 }, 1, "w_tough"));
+  check("ranked spec locked at maxRank", !canSpendTalent("warrior", { w_tough: 2 }, 1, "w_tough"));
+  // passive bonus scales linearly with rank
+  const r1 = talentPassives({ w_tough: 1 });
+  const r2 = talentPassives({ w_tough: 2 });
+  check("ranked passive scales ×rank", (r2.attrs.armor ?? 0) === (r1.attrs.armor ?? 0) * 2);
+  // row-3 "mastery" gated by 6 points spent, rankable to 3
+  const six = { w_cleave: 1, w_tough: 2, w_taunt: 1, w_shield: 1, w_bash: 1 }; // = 6 spent
+  check("six points spent", talentSpent(six) === 6);
+  check("row-3 master locked before 6 spent", !canSpendTalent("warrior", { w_cleave: 1 }, 1, "w_master"));
+  check("row-3 master unlocks after 6 spent", canSpendTalent("warrior", six, 1, "w_master"));
+  check("row-3 master rankable to 3", canSpendTalent("warrior", { ...six, w_master: 2 }, 1, "w_master"));
+  check("row-3 master locked at rank 3", !canSpendTalent("warrior", { ...six, w_master: 3 }, 1, "w_master"));
+}
+
 // ---- talentSpent + passives ------------------------------------------------
 check("talentSpent sums ranks", talentSpent({ a: 1, b: 1, c: 1 }) === 3);
 {

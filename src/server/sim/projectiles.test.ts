@@ -5,8 +5,12 @@
 //   node --experimental-strip-types src/server/sim/projectiles.test.ts
 import { castAbility, stepProjectiles } from "./projectiles.ts";
 import { updateMonsters } from "./monsters.ts";
+import { recomputePlayer } from "./stats.ts";
 import { ABILITY_NODES } from "../../shared/skills.ts";
-import { deriveStats, zeroAttrs } from "../../shared/items.ts";
+import { starterAbilities } from "../../shared/abilities.ts";
+import { CLASS_KIT } from "../../shared/classes.ts";
+import { talentSpent } from "../../shared/talents.ts";
+import { ATTR_KEYS, deriveStats, zeroAttrs } from "../../shared/items.ts";
 import type { MonsterState, PlayerState, WorldCtx } from "../state.ts";
 
 let failures = 0;
@@ -19,7 +23,7 @@ function player(id: string, x: number, y: number, over: Partial<PlayerState> = {
   const derived = deriveStats(100, 230, zeroAttrs());
   return {
     id, name: id, x, y, aim: 0, mvx: 0, mvy: 0, hp: 100, status: "alive", reached: false, gold: 0,
-    cds: {}, lastSeq: 0, abilities: [], charXp: 0, chosenClass: null, talents: {}, talentPoints: 0,
+    cds: {}, lastSeq: 0, abilities: [], charXp: 0, chosenClass: null, talents: {}, talentPoints: 0, attrPoints: 0,
     threatMult: 1, shield: 0, shieldUntil: 0, bloodlustUntil: 0, slowUntil: 0, potionReadyAt: 0,
     seen: new Set(), base: zeroAttrs(), inv: { equipped: {}, bagEquip: [null, null, null, null], carried: [] },
     derived, ws: {} as WebSocket, linkdead: false, ...over,
@@ -37,7 +41,7 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
   const grid = { w: 40, h: 40, cell: 80, solid: new Uint8Array(40 * 40) }; // all open
   return {
     now: 1000, players: new Map(players.map((p) => [p.id, p])), monsters, projectiles: [], boss: null,
-    lootBags: [], groupHasteReadyAt: 0, floor: { collision: grid } as WorldCtx["floor"],
+    lootBags: [], props: [], groupHasteReadyAt: 0, floor: { collision: grid } as WorldCtx["floor"],
     pushFx() {}, pushPlay() {}, dropLoot() {}, rollDrops() {}, gainXp() {},
   };
 }
@@ -126,6 +130,52 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
   check("concussive fired", castAbility(ctx, hunter, 0, 0) === true);
   for (let i = 0; i < 30 && ctx.projectiles.length; i++) stepProjectiles(ctx, 0.05);
   check("concussive bolt stunned on impact", mob.ccKind === "stun" && mob.ccUntil > ctx.now, `ccKind=${mob.ccKind}`);
+}
+
+// ---- build depth: attribute points feed derived stats (spendAttr core) -----
+// Spent points live in `base`; recomputePlayer folds base -> derived. This is the
+// exact path WorldDO.spendAttr drives (p.base[attr] += 1; recomputePlayer).
+{
+  const p = player("AP", 0, 0);
+  recomputePlayer(p);
+  const hp0 = p.derived.maxHp;
+  const sp0 = p.derived.spellPower;
+  p.base.stamina += 1; recomputePlayer(p);
+  check("attr point: +1 stamina = +8 maxHp", p.derived.maxHp === hp0 + 8, `${hp0}->${p.derived.maxHp}`);
+  p.base.strength += 1; recomputePlayer(p); // no class -> mainStat defaults to strength
+  check("attr point: +1 strength raises spellPower", p.derived.spellPower > sp0, `${sp0}->${p.derived.spellPower}`);
+}
+
+// ---- build depth: class-flavored starting kit (applyClassKit core) ----------
+{
+  const defaults = starterAbilities();
+  const p = player("KIT", 0, 0, { abilities: starterAbilities() });
+  const untouched = defaults.every((d, i) => p.abilities[i]?.id === d.id);
+  check("starter bar is the untouched defaults", untouched);
+  if (untouched) CLASS_KIT.mage.forEach((id, i) => { p.abilities[i] = { ...ABILITY_NODES[id], tier: 0, xp: 0 }; });
+  check("mage kit swaps the opener to sharprocks+rocks", p.abilities[0].id === "sharprocks" && p.abilities[1].id === "rocks");
+  // Guard: a customized bar (already evolved) must NOT be treated as untouched (no clobber).
+  const q = player("KIT2", 0, 0, { abilities: [{ ...ABILITY_NODES.cleaver }, { ...ABILITY_NODES.rocks }] });
+  check("a customized bar is not clobbered by the kit", !defaults.every((d, i) => q.abilities[i]?.id === d.id));
+}
+
+// ---- build depth: respec refunds both pools + strips talent grants ----------
+{
+  const p = player("RS", 0, 0);
+  p.base.strength = 4; p.base.stamina = 2; // 6 attribute points spent (base only grows via spendAttr)
+  p.attrPoints = 1;
+  p.talentPoints = 0;
+  p.talents = { w_tough: 2, w_cleave: 1 }; // 3 talent points spent
+  p.abilities = [{ ...ABILITY_NODES.sword }, { ...ABILITY_NODES.rocks }, { ...ABILITY_NODES.taunt, fromTalent: true }];
+  // respec core (mirrors WorldDO.respec):
+  let attrSpent = 0; for (const k of ATTR_KEYS) attrSpent += p.base[k];
+  p.attrPoints += attrSpent; p.base = zeroAttrs();
+  p.talentPoints += talentSpent(p.talents); p.talents = {};
+  p.abilities = p.abilities.filter((a) => a.fromTalent !== true);
+  check("respec refunds attribute points (1+6=7)", p.attrPoints === 7, `${p.attrPoints}`);
+  check("respec zeroes base", ATTR_KEYS.every((k) => p.base[k] === 0));
+  check("respec refunds talent points (0+3=3)", p.talentPoints === 3, `${p.talentPoints}`);
+  check("respec strips the talent-granted ability", p.abilities.length === 2 && !p.abilities.some((a) => a.fromTalent));
 }
 
 if (failures > 0) { console.error(`\n${failures} check(s) failed`); process.exit(1); }
