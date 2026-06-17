@@ -1,5 +1,6 @@
 import type { BagState, InvState, Net } from "./net";
 import { EQUIP_SLOTS, sellValue, type Attributes, type DerivedStats, type EquipSlot, type Item, type ItemSlot } from "../shared/items";
+import { HOTBAR_SIZE } from "../shared/constants";
 import type { Ability } from "../shared/types";
 
 // The character / inventory screen + the loot-bag panel. Pure DOM over the
@@ -83,8 +84,22 @@ export class InventoryUI {
     this.barKey = abilities.map((a) => a.id).join(",") + ":" + this.selectedSlot;
     this.abilityBar.innerHTML = "";
     abilities.forEach((a, i) => {
+      // A divider splits the active hotbar (first HOTBAR_SIZE, castable) from the
+      // benched collection. Tap two abilities to swap — that's how you choose which
+      // of your unlocked abilities sit in the hotbar.
+      if (i === HOTBAR_SIZE) {
+        const div = document.createElement("div");
+        div.className = "barDivider";
+        div.textContent = "— Collection (tap a slot, then a hotbar slot, to swap in) —";
+        this.abilityBar.appendChild(div);
+      }
       const tile = abilityTile(a, i === 0);
+      if (i >= HOTBAR_SIZE) tile.classList.add("benched");
       if (i === this.selectedSlot) tile.classList.add("sel");
+      const keyTag = document.createElement("span");
+      keyTag.className = "kslot";
+      keyTag.textContent = i < HOTBAR_SIZE ? String(i + 1) : "·";
+      tile.appendChild(keyTag);
       tile.addEventListener("click", () => this.onBarTap(i));
       this.abilityBar.appendChild(tile);
     });

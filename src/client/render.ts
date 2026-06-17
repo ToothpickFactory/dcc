@@ -56,8 +56,10 @@ const MOVEMENT_HOLD_MS = 150;
 // Fog of war (client-cosmetic): monsters/boss/projectiles are only drawn within
 // this radius AND with clear line-of-sight to the player (walls block). Allies and
 // the local player are always drawn. Pairs with the #fog vignette in index.html.
-export const VISION_RADIUS = 520;
+export const VISION_RADIUS = 1000;
 const VISION_RADIUS_SQ = VISION_RADIUS * VISION_RADIUS;
+// Close foes are always drawn (a wall-hugging attacker can't be invisible); distant ones LoS-gated.
+const NEAR_REVEAL_SQ = 340 * 340;
 
 interface LoadedClip {
   texture: THREE.Texture;
@@ -763,7 +765,9 @@ export class Renderer {
       if (fogged && predicted) {
         const ddx = wx - predicted.x;
         const ddy = wy - predicted.y;
-        s.sprite.visible = ddx * ddx + ddy * ddy <= VISION_RADIUS_SQ && this.canSee(predicted.x, predicted.y, wx, wy);
+        const dsq = ddx * ddx + ddy * ddy;
+        // Always show close foes (a wall-hugging attacker can't be invisible); LoS-gate the rest.
+        s.sprite.visible = dsq <= NEAR_REVEAL_SQ || (dsq <= VISION_RADIUS_SQ && this.canSee(predicted.x, predicted.y, wx, wy));
       } else {
         s.sprite.visible = true;
       }

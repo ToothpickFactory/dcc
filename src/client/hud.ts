@@ -1,4 +1,5 @@
 import type { Ability } from "../shared/types";
+import { HOTBAR_SIZE } from "../shared/constants";
 import type { Net } from "./net";
 
 // Action bar + status line + boss banner. The bar is now DRIVEN BY THE SERVER
@@ -54,7 +55,9 @@ export class Hud {
   update(net: Net): void {
     const self = net.self;
     if (!self || !net.cur) return;
-    const abilities = self.abilities ?? [];
+    // The HUD bar shows ONLY the hotbar — the first HOTBAR_SIZE slots (the rest are
+    // your benched collection, managed from the character screen).
+    const abilities = (self.abilities ?? []).slice(0, HOTBAR_SIZE);
     const key = abilities.map((a) => a.id).join(",") + ":" + abilities.length;
     if (key !== this.barKey) {
       this.barKey = key;

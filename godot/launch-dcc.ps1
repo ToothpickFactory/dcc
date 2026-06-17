@@ -83,6 +83,9 @@ if ((Test-Path $App) -and -not $NeedBuild) {
   }
 }
 if ($NeedBuild) {
+  # Overlay any new/updated art assets (gitignored godot/assets is sourced from public/assets) so
+  # newly added models — e.g. the per-class hero skins — sync into existing installs, not just fresh ones.
+  if (Test-Path godot/assets) { Copy-Item -Recurse -Force public/assets/* godot/assets/ -ErrorAction SilentlyContinue }
   Write-Host "==> Building the latest client (~20s)..."
   & $Godot --headless --path godot --import 2>$null
   New-Item -ItemType Directory -Force (Split-Path $App) | Out-Null

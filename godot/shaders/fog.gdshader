@@ -16,19 +16,23 @@ uniform sampler2D u_grid : filter_nearest, repeat_disable;       // R8: 1.0 = wa
 uniform sampler2D u_wall_vis : filter_nearest, repeat_disable;   // R8: 1.0 = wall lit
 uniform vec2 u_grid_size = vec2(1.0, 1.0);                        // cells (w, h)
 uniform float u_cell = 80.0;                                     // px per cell
-uniform float u_vision = 520.0;                                 // VISION_RADIUS
+uniform float u_vision = 1000.0;                                // VISION_RADIUS (Fog.gd overrides from DccConst)
 uniform bool u_is_wall = false;                                  // material switch
 uniform vec4 u_albedo : source_color = vec4(0.086, 0.114, 0.180, 1.0); // flat fallback color
 uniform sampler2D u_tex : source_color, filter_nearest, repeat_enable; // optional theme tile
 uniform bool u_has_tex = false;                                  // sample u_tex when true
 uniform vec2 u_uv_scale = vec2(1.0, 1.0);                        // tile repeats across floor
 uniform float u_fog_soft = 0.7;                                  // shadow-edge penumbra width, in cells (0 = hard edge)
-
-// Scene background rgb(0x0b,0x0e,0x14) — unseen pixels blend fully to this so
-// out-of-sight terrain vanishes rather than merely dimming.
-const vec3 BG = vec3(0.043, 0.055, 0.078);
+uniform vec3 u_tint = vec3(1.0, 1.0, 1.0);                       // per-theme albedo multiply (mood)
+uniform vec3 u_bg = vec3(0.043, 0.055, 0.078);                   // per-theme fog/background color
 
 varying vec3 v_world;
+
+// Cheap per-cell hash (0..1) — drives per-tile rotation/mirror/brightness so the floor
+// reads as varied stone instead of one tile stamped on a grid. No art needed.
+float dcc_hash(vec2 c) {
+	return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453);
+}
 
 // Per-pixel line-of-sight: 1.0 if no wall lies between `from` and `to`. Mirrors the
 // CPU Amanatides–Woo canSee() with a cheap fixed-step half-cell marcher (<=48 steps).
@@ -66,12 +70,9 @@ float dcc_los_soft(vec2 from, vec2 to) {
 	}
 	vec2 perp = vec2(-dir.y, dir.x) / dlen;   // unit, perpendicular to the view ray
 	float r = u_cell * u_fog_soft;            // penumbra half-width in px
-	float s = dcc_los(from, to);
-	s += dcc_los(from, to + perp * r);
-	s += dcc_los(from, to - perp * r);
-	s += dcc_los(from, to + perp * (r * 0.5));
-	s += dcc_los(from, to - perp * (r * 0.5));
-	return s * 0.2; // 5 samples -> smooth gradient across the shadow boundary
+	// 3 samples (center + both edges) — enough for a soft penumbra at ~half the cost of 5.
+	float s = dcc_los(from, to) + dcc_los(from, to + perp * r) + dcc_los(from, to - perp * r);
+	return s * (1.0 / 3.0);
 }
 
 void vertex() {
@@ -79,28 +80,56 @@ void vertex() {
 }
 
 void fragment() {
-	// Base color: the theme tile (repeated like render.ts) or the flat fallback.
-	if (u_has_tex) {
-		ALBEDO = texture(u_tex, UV * u_uv_scale).rgb;
-	} else {
-		ALBEDO = u_albedo.rgb;
-	}
 	vec2 world_xz = v_world.xz;
-	float vis_flag;
+	float vis_flag = 0.0;
 	float dist;
+	vec3 base;
 	if (u_is_wall) {
 		// Walls: whole-tile visibility from the per-cell mask so a shown wall reveals
 		// fully and never flickers as you move within an adjacent tile.
 		vec2 dcc_cell = floor(world_xz / u_cell);
-		vis_flag = texture(u_wall_vis, (dcc_cell + 0.5) / u_grid_size).r;
 		dist = distance((dcc_cell + 0.5) * u_cell, u_player);
+		if (dist <= u_vision) {
+			vis_flag = texture(u_wall_vis, (dcc_cell + 0.5) / u_grid_size).r;
+		}
+		base = u_has_tex ? texture(u_tex, UV * u_uv_scale).rgb : u_albedo.rgb;
+		base *= mix(0.80, 1.12, dcc_hash(dcc_cell)); // per-wall brightness so a run of wall isn't uniform
 	} else {
-		// Ground: soft per-pixel line-of-sight (gradual penumbra at shadow edges).
-		vis_flag = dcc_los_soft(u_player, world_xz);
+		// Ground: gate the costly per-pixel LoS march to within-vision pixels (far pixels are
+		// fully fogged anyway). GDScript shaders forbid `return` in fragment(), hence the guard.
 		dist = distance(world_xz, u_player);
+		if (dist <= u_vision) {
+			vis_flag = dcc_los_soft(u_player, world_xz);
+		}
+		// De-grid the floor: rotate/mirror/brighten each tile by its cell hash so the same
+		// tile texture stops reading as an obvious repeating lattice. Keeps the exact cell+frac
+		// sampling basis the working code used (cellc offset wraps away under repeat).
+		vec2 coord = world_xz / u_cell;
+		vec2 cellc = floor(coord);
+		vec2 f = fract(coord) - 0.5;
+		int rot = int(dcc_hash(cellc) * 4.0);
+		if (rot == 1) { f = vec2(-f.y, f.x); }
+		else if (rot == 2) { f = -f; }
+		else if (rot == 3) { f = vec2(f.y, -f.x); }
+		if (dcc_hash(cellc + vec2(7.3, 1.7)) > 0.5) { f.x = -f.x; } // random mirror
+		f += 0.5;
+		base = u_has_tex ? texture(u_tex, cellc + f).rgb : u_albedo.rgb;
+		base *= mix(0.82, 1.10, dcc_hash(cellc + vec2(3.1, 9.2))); // per-tile brightness
+		// Contact shadow (cheap AO): darken the floor where it meets a wall, so walls read as
+		// grounded instead of pasted on. Sample the 4 neighbour cells; shadow ramps in from each
+		// wall edge over `edge` of the tile.
+		vec2 fc = fract(coord);
+		float edge = 0.34;
+		float ao = 1.0;
+		if (texture(u_grid, (cellc + vec2(-0.5, 0.5)) / u_grid_size).r > 0.5) { ao = min(ao, smoothstep(0.0, edge, fc.x)); }
+		if (texture(u_grid, (cellc + vec2(1.5, 0.5)) / u_grid_size).r > 0.5) { ao = min(ao, smoothstep(0.0, edge, 1.0 - fc.x)); }
+		if (texture(u_grid, (cellc + vec2(0.5, -0.5)) / u_grid_size).r > 0.5) { ao = min(ao, smoothstep(0.0, edge, fc.y)); }
+		if (texture(u_grid, (cellc + vec2(0.5, 1.5)) / u_grid_size).r > 0.5) { ao = min(ao, smoothstep(0.0, edge, 1.0 - fc.y)); }
+		base *= mix(0.5, 1.0, ao); // up to 50% darker hard against a wall
 	}
+	base *= u_tint; // per-theme color cast
 	float fall = 1.0 - smoothstep(u_vision * 0.6, u_vision, dist);
 	float lit = vis_flag * fall;
-	// Blend unseen pixels to the background; seen pixels keep full albedo.
-	ALBEDO = mix(BG, ALBEDO, lit);
+	// Blend unseen pixels to the (themed) background; seen pixels keep full albedo.
+	ALBEDO = mix(u_bg, base, lit);
 }

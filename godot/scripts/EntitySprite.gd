@@ -553,6 +553,13 @@ func _ensure_model_for_entity() -> void:
 	var model_path := str(profile.get("path", ""))
 	var label := str(profile.get("label", "3D model"))
 	var scene := _load_model_scene(model_path, label)
+	# A missing per-class model (asset not synced yet) must NOT drop the hero to the flat 2D
+	# atlas — degrade to the default 3D hero model so the avatar still reads as a 3D character.
+	if scene == null and is_self and kind == "player" and model_path != HERO_MODEL_PATH:
+		push_warning("%s model missing (%s) — falling back to default hero model" % [label, model_path])
+		model_path = HERO_MODEL_PATH
+		label = "Hero"
+		scene = _load_model_scene(model_path, label)
 	if scene == null:
 		push_warning("%s model failed to load: %s" % [label, model_path])
 		return
@@ -580,12 +587,17 @@ func _ensure_model_for_entity() -> void:
 	print("[DCC] %s model active" % label)
 	_play_model_anim("idle")
 
+static var _failed_models := {}  # paths that failed once — don't retry (avoids per-frame load spam)
+
 func _load_model_scene(model_path: String, label: String) -> PackedScene:
+	if _failed_models.has(model_path):
+		return null
 	var imported := load(model_path)
 	if imported is PackedScene:
 		return imported
 
 	if not FileAccess.file_exists(model_path):
+		_failed_models[model_path] = true
 		return null
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()

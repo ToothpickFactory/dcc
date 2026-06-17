@@ -1,5 +1,6 @@
 import type { MonsterKind, Theme } from "../shared/types";
 import type { CollisionGrid, FloorDescriptor } from "./types";
+import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
 
 const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
 
@@ -41,7 +42,12 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   addLoops(solid, gw, gh, random, Math.floor(gw * gh * 0.03 * openness));
   const roomCenters = carveRooms(solid, gw, gh, random, openness, depth);
 
+  // Stamp hand-authored set-piece rooms into the maze (the "designed, not generated" feel), then
+  // repair connectivity so any room their walls sealed off (or a sealed vault) gets a doorway.
+  const prefabAnchors = placePrefabs(solid, gw, gh, random, depth, start);
+
   carveRect(solid, gw, gh, start.x, start.y, 2, 2); // entrance room
+  reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
   const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
   carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2); // stairs room
 
@@ -74,11 +80,19 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   const open = openCells(solid, gw, gh).filter((p) => manhattan(p.x, p.y, start.x, start.y) > 4);
   shuffle(open, random);
   const chests = open.slice(0, 2 + Math.floor(random() * 2)).map((p) => sc(cellCenter(p.x, p.y, cell)));
-  const decorations = open.slice(4, 4 + 18 + Math.floor(openness * 22)).map((p) => sc({
+  const scatterDecor = open.slice(4, 4 + 18 + Math.floor(openness * 22)).map((p) => sc({
     ...cellCenter(p.x, p.y, cell),
     variant: 1 + Math.floor(random() * 15), // variant 0 reserved for the stairs sprite
     scale: 0.75 + random() * 0.45,
   }));
+  // Prefab anchors become set-dressing: landmarks (altars/statues) are big focal props; the rest
+  // are normal scatter. Gives each set-piece room a "thing" at its heart.
+  const prefabDecor = prefabAnchors.map((a) => sc({
+    ...cellCenter(a.x, a.y, cell),
+    variant: 1 + Math.floor(random() * 15),
+    scale: a.landmark ? 1.8 + random() * 0.6 : 0.8 + random() * 0.4,
+  }));
+  const decorations = [...prefabDecor, ...scatterDecor];
 
   const theme = THEMES[Math.floor(random() * THEMES.length)]!;
 
@@ -206,6 +220,111 @@ function addLoops(solid: Uint8Array, w: number, h: number, random: () => number,
     const horizontal = solid[y * w + x - 1] === 0 && solid[y * w + x + 1] === 0;
     const vertical = solid[(y - 1) * w + x] === 0 && solid[(y + 1) * w + x] === 0;
     if (horizontal || vertical) solid[y * w + x] = 0;
+  }
+}
+
+// ---- prefab set-pieces + connectivity repair -------------------------------
+
+// Stamp a handful of hand-authored rooms into the maze, avoiding the entrance + each other.
+function placePrefabs(
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  random: () => number,
+  depth: number,
+  start: { x: number; y: number },
+): PrefabAnchor[] {
+  const anchors: PrefabAnchor[] = [];
+  const want = Math.min(6, 2 + Math.floor(depth / 2) + Math.floor(random() * 2));
+  const placed: { x: number; y: number; w: number; h: number }[] = [];
+  let tries = 0;
+  let n = 0;
+  while (n < want && tries < 80) {
+    tries++;
+    const p = PREFABS[Math.floor(random() * PREFABS.length)]!;
+    if (p.w + 2 >= w || p.h + 2 >= h) continue;
+    const ox = 1 + Math.floor(random() * (w - p.w - 2));
+    const oy = 1 + Math.floor(random() * (h - p.h - 2));
+    // Keep the spawn area clear, and don't overlap another prefab (1-cell margin).
+    if (Math.abs(ox + p.w / 2 - start.x) < 6 && Math.abs(oy + p.h / 2 - start.y) < 6) continue;
+    if (placed.some((r) => ox < r.x + r.w + 1 && ox + p.w + 1 > r.x && oy < r.y + r.h + 1 && oy + p.h + 1 > r.y)) continue;
+    const res = stampPrefab(solid, w, h, p, ox, oy);
+    anchors.push(...res.anchors);
+    placed.push({ x: ox, y: oy, w: p.w, h: p.h });
+    n++;
+  }
+  return anchors;
+}
+
+// Guarantee every open cell reaches `start`: flood-fill from start; for any disconnected open
+// region, carve the shortest tunnel back to the reached set. Only ADDS open cells. This is what
+// lets prefabs stamp real walls (sealed vaults, severed corridors) without ever orphaning the map.
+function reconnect(solid: Uint8Array, w: number, h: number, start: { x: number; y: number }): void {
+  for (let guard = 0; guard < 64; guard++) {
+    const reached = floodOpen(solid, w, h, start);
+    let u = -1;
+    for (let i = 0; i < w * h; i++) {
+      if (solid[i] === 0 && !reached[i]) {
+        u = i;
+        break;
+      }
+    }
+    if (u < 0) return; // fully connected
+    carveTunnel(solid, w, h, u, reached);
+  }
+}
+
+function floodOpen(solid: Uint8Array, w: number, h: number, start: { x: number; y: number }): Uint8Array {
+  const reached = new Uint8Array(w * h);
+  const s = start.y * w + start.x;
+  if (solid[s] !== 0) return reached;
+  reached[s] = 1;
+  const q = [s];
+  let head = 0;
+  while (head < q.length) {
+    const i = q[head++]!;
+    const x = i % w;
+    const y = (i / w) | 0;
+    const nb = [x + 1 < w ? i + 1 : -1, x - 1 >= 0 ? i - 1 : -1, y + 1 < h ? i + w : -1, y - 1 >= 0 ? i - w : -1];
+    for (const j of nb) {
+      if (j >= 0 && solid[j] === 0 && !reached[j]) {
+        reached[j] = 1;
+        q.push(j);
+      }
+    }
+  }
+  return reached;
+}
+
+// BFS from `from` over ALL cells (walls passable) to the nearest reached open cell, then open the
+// path — a 1-wide doorway/tunnel connecting `from`'s region to the connected set.
+function carveTunnel(solid: Uint8Array, w: number, h: number, from: number, reached: Uint8Array): void {
+  const prev = new Int32Array(w * h).fill(-1);
+  const seen = new Uint8Array(w * h);
+  seen[from] = 1;
+  const q = [from];
+  let head = 0;
+  while (head < q.length) {
+    const i = q[head++]!;
+    if (reached[i]) {
+      let c = i;
+      while (c !== from) {
+        solid[c] = 0;
+        c = prev[c]!;
+      }
+      solid[from] = 0;
+      return;
+    }
+    const x = i % w;
+    const y = (i / w) | 0;
+    const nb = [x + 1 < w - 1 ? i + 1 : -1, x - 1 >= 1 ? i - 1 : -1, y + 1 < h - 1 ? i + w : -1, y - 1 >= 1 ? i - w : -1];
+    for (const j of nb) {
+      if (j >= 0 && !seen[j]) {
+        seen[j] = 1;
+        prev[j] = i;
+        q.push(j);
+      }
+    }
   }
 }
 

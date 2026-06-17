@@ -71,6 +71,11 @@ func set_ground_texture(tex: Texture2D) -> void:
 	var reps_y := float(grid["h"])
 	_ground_mat.uv1_scale = Vector3(reps_x, reps_y, 1.0)
 
+## Per-theme palette (albedo tint + fog/background color) -> fog shader. Called by WorldDecor.apply.
+func set_theme_palette(tint: Color, bg: Color) -> void:
+	if _fog != null and _fog.has_method("set_palette"):
+		_fog.set_palette(tint, bg)
+
 ## Themed walls: set the wall albedo to the theme's wall tile (render.ts tile 8).
 ## null reverts to the flat fallback colour. Called by WorldDecor.apply().
 func set_wall_texture(tex: Texture2D) -> void:
@@ -118,7 +123,10 @@ func _build_walls() -> void:
 	for v in solid:
 		count += v
 	var box := BoxMesh.new()
-	box.size = Vector3(cell, WALL_H, cell)
+	# Slightly fatter than a cell so adjacent wall boxes OVERLAP instead of sharing a coplanar
+	# face — coplanar faces z-fight and cause the "tearing" seams between wall pieces. The 1px
+	# overlap is invisible (interior faces are occluded) but breaks the depth tie.
+	box.size = Vector3(cell + 1.0, WALL_H, cell + 1.0)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x39, 0x44, 0x5e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

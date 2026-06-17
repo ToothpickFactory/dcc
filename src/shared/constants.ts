@@ -4,7 +4,7 @@
 import type { MonsterKind } from "./types";
 
 export const TICK_MS = 50; // server simulation step (20 Hz)
-export const INPUT_HZ = 10; // client -> server input rate (scale gate; see ROADMAP.md)
+export const INPUT_HZ = 30; // client -> server input rate (higher = server tracks input closely = smoother movement)
 export const INPUT_MS = 1000 / INPUT_HZ;
 
 export const WORLD = { w: 2400, h: 2400 };
@@ -15,6 +15,13 @@ export const MAX_FLOORS = 100; // reaching past this ends the run as a victory (
 // STR/AGI/INT/STA/CRIT/HASTE/ARMOR (the tactile growth CoN has and we lacked — base attrs
 // were zero forever). Spent points live in PlayerState.base (already derived + persisted).
 export const ATTR_POINTS_PER_LEVEL = 3;
+
+// Action bar: the first HOTBAR_SIZE abilities are the live hotbar (castable via
+// keys 1-6 / the HUD bar). The rest are your benched COLLECTION — swap any into
+// the hotbar from the character screen. Total unlocked abilities cap at
+// MAX_ABILITY_SLOTS so the kit (and broadcast) stays bounded.
+export const HOTBAR_SIZE = 6;
+export const MAX_ABILITY_SLOTS = 12; // hotbar (6) + bench (6)
 
 export const PLAYER_SPEED = 230; // px/s
 export const PLAYER_MAX_HP = 100;

@@ -394,8 +394,20 @@ func _render_bar() -> void:
 		if not (a is Dictionary):
 			continue
 		var tile := _ability_tile(a, i == 0)
+		var benched := i >= DccConst.HOTBAR_SIZE
+		if benched:
+			tile.modulate = Color(1, 1, 1, 0.62)  # collection: not in the live hotbar
 		if i == _selected_slot:
 			_apply_border(tile, SEL_BORDER, true)
+		# Slot number for the hotbar (1-6), a dot for the benched collection.
+		var ks := Label.new()
+		ks.text = str(i + 1) if not benched else "·"
+		ks.add_theme_font_size_override("font_size", 10)
+		ks.add_theme_color_override("font_color", Color(0.49, 0.58, 0.70))
+		ks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ks.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		ks.position = Vector2(3, 1)
+		tile.add_child(ks)
 		var idx := i
 		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _on_bar_tap(idx))
 		_ability_bar.add_child(tile)
@@ -619,7 +631,7 @@ func _build_inventory_panel() -> void:
 	_bag_grid = _grid()
 	col.add_child(_bag_grid)
 
-	col.add_child(_section("Action bar — tap two to swap (slot 1 auto-casts)"))
+	col.add_child(_section("Hotbar & abilities — tap two to swap (slots 1-6 = hotbar; dimmed = benched collection)"))
 	_ability_bar = _grid()
 	col.add_child(_ability_bar)
 
@@ -731,13 +743,13 @@ func _card(parent: Control) -> Control:
 	center.add_child(panel)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(564, 640)
+	scroll.custom_minimum_size = Vector2(780, 760)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
 
 	# ScrollContainer needs a child that expands to its width to host the column.
 	var holder := VBoxContainer.new()
-	holder.custom_minimum_size = Vector2(540, 0)
+	holder.custom_minimum_size = Vector2(752, 0)
 	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(holder)
 	return holder
@@ -761,7 +773,7 @@ func _hint(text: String) -> Label:
 
 func _grid() -> GridContainer:
 	var g := GridContainer.new()
-	g.columns = 6
+	g.columns = 8  # wider modal -> more columns -> fewer rows -> less scrolling
 	g.add_theme_constant_override("h_separation", 8)
 	g.add_theme_constant_override("v_separation", 8)
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
