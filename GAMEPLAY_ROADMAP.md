@@ -18,8 +18,11 @@ aim, slot abilities, slot-1 auto-cast).
   melee + bolt-fan telegraph too. Rendered as an orange charge tint + ❗ marker.
 - ✅ **Knockback / stagger** — player hits shove enemies (per-kind resistance) and cancel their wind-up.
 - ✅ **Hit feel** — flash, screenshake, hit-stop on kills, gamepad rumble, projectile trails (earlier juice pass).
-- 🔜 **Hard crowd control** (M, server) — stuns / roots / freezes so a mage/rogue/warrior play
-  differently. Today the only CC is a 50% slow + taunt.
+- ✅ **Hard crowd control** — class-defining stun / root / freeze (talent-granted): warrior **Shield
+  Bash** (wide cone stun), hunter **Concussive Shot** (ranged stun), rogue **Hamstring** (melee root),
+  mage **Frost Nova** (AoE freeze + slow tail). A stun/freeze fully locks a foe out AND interrupts its
+  wind-up (the floor's interrupt window vs. the boss); a root pins movement but it can still swing.
+  Enemy-only (never CCs allies); rendered as a status tint (icy / dazed-pulse / dim-green) + a pop icon.
 - ✅ **Melee combo loop** — light swings chain at half-cooldown into a heavy finisher (1.7× dmg, wider
   cone, 2.2× knockback) with a full-cooldown recovery; the chain resets after the finisher or if you
   pause >850ms. Felt via the faster→pause rhythm + scaled damage numbers + bigger knockback.
@@ -101,6 +104,6 @@ lead-target, rarity beams). The remaining M/L work, by theme:
 2. **Encounter depth** (M→L, server): boss multi-phase → elite affixes → new archetypes (charger/bomber/summoner).
 3. **Itemization depth** (M→L, server): rolled affixes → buy vendor (gold sink) → uniques/sets.
 4. **Build depth** (M, server): per-level attribute points → respec → deeper talent trees → class-flavored starting kits.
-5. **Combat depth** (M, server): hard CC (stun/root/freeze) → melee combo loop.
+5. ~~**Combat depth**: hard CC (stun/root/freeze) → melee combo loop~~ — ✅ both done.
 
 _See the audit (gameplay-vs-CoN) for the detailed current-state findings behind each item._

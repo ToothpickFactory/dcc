@@ -7,10 +7,10 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, CcKind, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 13; // was 12 (lootbag rarity) — added projectile render kind on EntityDTO
+export const PROTOCOL_VERSION = 13; // was 12 (lootbag rarity) - added projectile render kind + hard CC
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -68,6 +68,7 @@ export interface EntityDTO {
   rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
   variant?: number; // props: themed decoration sheet index
   scale?: number; // props: decoration scale
+  cc?: CcKind; // monster/boss: active hard CC (stun/root/freeze) — drives the status tint
 }
 
 export interface SelfDTO {
@@ -104,6 +105,7 @@ export type GameEvent =
   | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
   | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
+  | { e: "cc"; x: number; y: number; id: string; kind: CcKind; ms: number } // hard CC landed on a foe (pop fx)
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
 
 // Static floor geometry shipped to clients that don't run the TS procgen (e.g. the

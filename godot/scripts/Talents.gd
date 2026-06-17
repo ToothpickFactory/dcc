@@ -29,6 +29,7 @@ const TREES := {
 		{"id": "w_blood", "row": 0, "choiceGroup": "w_spec", "name": "Bloodthirst", "icon": "\U01fa78", "desc": "DPS: +strength and +crit."},
 		{"id": "w_taunt", "row": 1, "requires": 2, "name": "Taunt", "icon": "\U01f5ef️", "desc": "Unlock Taunt (hold aggro)."},
 		{"id": "w_shield", "row": 1, "requires": 2, "name": "Shield Ward", "icon": "\U01f6e1️", "desc": "Unlock an ally absorb shield."},
+		{"id": "w_bash", "row": 1, "requires": 2, "name": "Shield Bash", "icon": "\U01f6e1️", "desc": "Unlock a stunning frontal bash."},
 		{"id": "w_whirl", "row": 2, "requires": 4, "name": "Whirlwind", "icon": "\U01f300", "desc": "Capstone: spin to hit all around."},
 	],
 	"mage": [
@@ -37,6 +38,7 @@ const TREES := {
 		{"id": "m_weave", "row": 0, "choiceGroup": "m_spec", "name": "Spellweave", "icon": "\U01f30c", "desc": "+intellect (steady power)."},
 		{"id": "m_multi", "row": 1, "requires": 2, "name": "Arcane Missiles", "icon": "\U01f3af", "desc": "Unlock a 3-bolt volley."},
 		{"id": "m_warp", "row": 1, "requires": 2, "name": "Time Warp", "icon": "\U01fa78", "desc": "Unlock a group haste burst."},
+		{"id": "m_frost", "row": 1, "requires": 2, "name": "Frost Nova", "icon": "❄️", "desc": "Unlock an AoE freeze burst."},
 		{"id": "m_scatter", "row": 2, "requires": 4, "name": "Arcane Barrage", "icon": "✴️", "desc": "Capstone: a cone of bolts."},
 	],
 	"priest": [
@@ -53,6 +55,7 @@ const TREES := {
 		{"id": "r_swift", "row": 0, "choiceGroup": "r_spec", "name": "Swiftness", "icon": "\U01f4a8", "desc": "+agility (speed + power)."},
 		{"id": "r_blast", "row": 1, "requires": 2, "name": "Blade Flurry", "icon": "\U01f4a5", "desc": "Unlock a wide melee arc."},
 		{"id": "r_knives", "row": 1, "requires": 2, "name": "Throwing Knives", "icon": "\U01f5ff", "desc": "Unlock thrown blades."},
+		{"id": "r_ham", "row": 1, "requires": 2, "name": "Hamstring", "icon": "\U01faa2", "desc": "Unlock a crippling root."},
 		{"id": "r_fan", "row": 2, "requires": 4, "name": "Fan of Knives", "icon": "\U01f300", "desc": "Capstone: strike all around."},
 	],
 	"hunter": [
@@ -61,6 +64,7 @@ const TREES := {
 		{"id": "h_swift", "row": 0, "choiceGroup": "h_spec", "name": "Fleet", "icon": "\U01f4a8", "desc": "+agility (speed + power)."},
 		{"id": "h_multi", "row": 1, "requires": 2, "name": "Multi-Shot", "icon": "\U01f3af", "desc": "Unlock a 3-shot volley."},
 		{"id": "h_rapid", "row": 1, "requires": 2, "name": "Rapid Fire", "icon": "\U01fa78", "desc": "Unlock a group haste burst."},
+		{"id": "h_conc", "row": 1, "requires": 2, "name": "Concussive Shot", "icon": "\U01f4a5", "desc": "Unlock a stunning ranged shot."},
 		{"id": "h_scatter", "row": 2, "requires": 4, "name": "Volley", "icon": "✴️", "desc": "Capstone: a cone of shots."},
 	],
 }

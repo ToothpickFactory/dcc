@@ -83,6 +83,11 @@ export const KNOCK_SPEED = 560; // px/s knockback burst on a player hit
 export const KNOCK_MS = 170; // knockback impulse duration (decays out)
 export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, ranged: 1.1, healer: 1.0, brute: 0.4 };
 
+// Hard crowd control (stun / root / freeze): player abilities lock enemies out so a
+// mage/rogue/warrior/hunter play differently. Durations live on the abilities (stunMs/
+// rootMs); a freeze additionally leaves this slow tail once the foe thaws.
+export const FREEZE_SLOW_TAIL_MS = 1200; // ms of SLOW_FACTOR movement after a freeze ends
+
 // Melee combo: chained swings build to a heavy finisher. Light swings chain fast; the
 // finisher hits harder + wider + shoves more, then a recovery resets the chain — rhythm + weight.
 export const COMBO_WINDOW_MS = 850; // keep the chain alive if you swing again within this

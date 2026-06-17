@@ -32,6 +32,10 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
     return;
   }
 
+  // Hard CC: a stun/freeze fully locks the boss out (its wind-ups were cancelled when the
+  // CC landed) — the floor's interrupt window. A root only pins its movement (below).
+  if (boss.ccUntil > ctx.now && (boss.ccKind === "stun" || boss.ccKind === "freeze")) return;
+
   // Resolve a pending melee wind-up: the swing lands if a prey is still in range
   // (step out during the tell to dodge it).
   if (boss.meleeWindupUntil > 0 && ctx.now >= boss.meleeWindupUntil) {
@@ -60,8 +64,9 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   // While winding up a melee swing, the boss is committed — plant (no chase/new attack).
   if (boss.meleeWindupUntil > ctx.now) return;
 
+  const rooted = boss.ccUntil > ctx.now; // ccKind === "root" here — pin movement, keep melee/cast
   if (d > BOSS_MELEE_RANGE) {
-    moveWithWorldCollisions(ctx, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
+    if (!rooted) moveWithWorldCollisions(ctx, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
   } else if (ctx.now >= boss.meleeReadyAt) {
     // Telegraph the heavy swing — resolved above after the wind-up.
     boss.meleeReadyAt = ctx.now + BOSS_MELEE_CD + BOSS_MELEE_WINDUP_MS;

@@ -116,6 +116,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		spr.set_projectile_render(str(d.get("proj", "")))
 		if k == "lootbag":
 			spr.set_loot_rarity(str(d.get("rarity", "common")))
+		spr.set_cc(str(d.get("cc", ""))) # hard CC status tint (stun/root/freeze)
 		spr.set_dead_body(bool(d.get("dead", false)), now_ms)
 
 		# Facing delta = movement since the last displayed frame (render.ts dx/dy).

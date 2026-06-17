@@ -47,6 +47,7 @@ export const TALENT_TREES: Record<Klass, TalentNode[]> = {
     { id: "w_blood", row: 0, choiceGroup: "w_spec", grants: { passive: "bloodthirst" }, name: "Bloodthirst", icon: "🩸", desc: "DPS: +strength and +crit." },
     { id: "w_taunt", row: 1, requires: 2, grants: { ability: "taunt" }, name: "Taunt", icon: "🗯️", desc: "Unlock Taunt (hold aggro)." },
     { id: "w_shield", row: 1, requires: 2, grants: { ability: "shieldward" }, name: "Shield Ward", icon: "🛡️", desc: "Unlock an ally absorb shield." },
+    { id: "w_bash", row: 1, requires: 2, grants: { ability: "shieldbash" }, name: "Shield Bash", icon: "🛡️", desc: "Unlock a stunning frontal bash." },
     { id: "w_whirl", row: 2, requires: 4, grants: { ability: "whirlwind" }, name: "Whirlwind", icon: "🌀", desc: "Capstone: spin to hit all around." },
   ],
   mage: [
@@ -55,6 +56,7 @@ export const TALENT_TREES: Record<Klass, TalentNode[]> = {
     { id: "m_weave", row: 0, choiceGroup: "m_spec", grants: { passive: "spellweave" }, name: "Spellweave", icon: "🌌", desc: "+intellect (steady power)." },
     { id: "m_multi", row: 1, requires: 2, grants: { ability: "multishot" }, name: "Arcane Missiles", icon: "🎯", desc: "Unlock a 3-bolt volley." },
     { id: "m_warp", row: 1, requires: 2, grants: { ability: "bloodlust" }, name: "Time Warp", icon: "🩸", desc: "Unlock a group haste burst." },
+    { id: "m_frost", row: 1, requires: 2, grants: { ability: "frostnova" }, name: "Frost Nova", icon: "❄️", desc: "Unlock an AoE freeze burst." },
     { id: "m_scatter", row: 2, requires: 4, grants: { ability: "scattershot" }, name: "Arcane Barrage", icon: "✴️", desc: "Capstone: a cone of bolts." },
   ],
   priest: [
@@ -71,6 +73,7 @@ export const TALENT_TREES: Record<Klass, TalentNode[]> = {
     { id: "r_swift", row: 0, choiceGroup: "r_spec", grants: { passive: "swift" }, name: "Swiftness", icon: "💨", desc: "+agility (speed + power)." },
     { id: "r_blast", row: 1, requires: 2, grants: { ability: "blastblade" }, name: "Blade Flurry", icon: "💥", desc: "Unlock a wide melee arc." },
     { id: "r_knives", row: 1, requires: 2, grants: { ability: "sharprocks" }, name: "Throwing Knives", icon: "🗿", desc: "Unlock thrown blades." },
+    { id: "r_ham", row: 1, requires: 2, grants: { ability: "hamstring" }, name: "Hamstring", icon: "🪢", desc: "Unlock a crippling root." },
     { id: "r_fan", row: 2, requires: 4, grants: { ability: "whirlwind" }, name: "Fan of Knives", icon: "🌀", desc: "Capstone: strike all around." },
   ],
   hunter: [
@@ -79,6 +82,7 @@ export const TALENT_TREES: Record<Klass, TalentNode[]> = {
     { id: "h_swift", row: 0, choiceGroup: "h_spec", grants: { passive: "swift" }, name: "Fleet", icon: "💨", desc: "+agility (speed + power)." },
     { id: "h_multi", row: 1, requires: 2, grants: { ability: "multishot" }, name: "Multi-Shot", icon: "🎯", desc: "Unlock a 3-shot volley." },
     { id: "h_rapid", row: 1, requires: 2, grants: { ability: "bloodlust" }, name: "Rapid Fire", icon: "🩸", desc: "Unlock a group haste burst." },
+    { id: "h_conc", row: 1, requires: 2, grants: { ability: "concussive" }, name: "Concussive Shot", icon: "💥", desc: "Unlock a stunning ranged shot." },
     { id: "h_scatter", row: 2, requires: 4, grants: { ability: "scattershot" }, name: "Volley", icon: "✴️", desc: "Capstone: a cone of shots." },
   ],
 };

@@ -116,6 +116,13 @@ var _windup_until := 0.0
 func windup(now_ms: float, ms: float) -> void:
 	_windup_until = now_ms + ms
 
+# ---- hard crowd control: persistent status tint while a foe is stun/root/frozen ----
+# Set every frame from the entity DTO's `cc` field ("" when free). The visual is what
+# makes a stun/freeze/root readable — a frozen foe reads as "safe to ignore for a beat".
+var _cc := ""
+func set_cc(kind: String) -> void:
+	_cc = kind
+
 # Flash this sprite (called by SpriteLayer on a dmg/death event near/at this entity).
 func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> void:
 	_flash_until = now_ms + FLASH_MS
@@ -809,6 +816,19 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		_apply_frame(loaded, frame_index, display_flip)
 	else:
 		_set_fallback()
+
+	# Hard CC status tint: frozen (steady icy blue), stunned (dazed yellow pulse), rooted
+	# (dim green). Applied before the wind-up tint so a rooted-but-winding-up foe still shows
+	# the orange "incoming" tell on top.
+	if _cc != "":
+		match _cc:
+			"freeze":
+				modulate = modulate.lerp(Color(0.5, 0.85, 2.0), 0.72)
+			"stun":
+				var cp := 0.5 + 0.5 * sin(now_ms * 0.02)
+				modulate = modulate.lerp(Color(2.1, 1.95, 0.6), 0.42 + 0.34 * cp)
+			"root":
+				modulate = modulate.lerp(Color(0.7, 1.35, 0.7), 0.5)
 
 	# Attack telegraph: pulsing orange "charge" tint while the enemy winds up (the tell).
 	if now_ms < _windup_until:

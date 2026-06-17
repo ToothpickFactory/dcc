@@ -392,6 +392,13 @@ func _on_events(events: Array) -> void:
 				# Enemy attack telegraph: charge tint on the attacker + a warning marker.
 				_sprites.windup_id(str(ev.get("by", "")), float(ev.get("ms", 300.0)))
 				_fx.windup_marker(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)), float(ev.get("ms", 300.0)))
+			"cc":
+				# Hard CC landed on a foe: a pop icon (stun/root/freeze) + a sfx if it's near you.
+				var ccx := float(ev.get("x", 0.0))
+				var ccy := float(ev.get("y", 0.0))
+				_fx.cc_marker(ccx, ccy, str(ev.get("kind", "stun")))
+				if Vector2(ccx, ccy).distance_to(pp) < 520.0:
+					_sfx.play("cast", -4.0)
 			"boss":
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))

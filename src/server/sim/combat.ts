@@ -1,4 +1,4 @@
-import { CRIT_MULT, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS } from "../../shared/constants";
+import { CRIT_MULT, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
@@ -178,4 +178,38 @@ export function applyHeal(
     if (sourceId) ctx.pushPlay({ e: "heal", by: sourceId, amount, ally: false });
   }
   ctx.pushFx({ e: "heal", x: target.x, y: target.y, amount });
+}
+
+// Apply hard crowd control to an ENEMY (monster or boss) — never a player; CC is a
+// player-side class tool against foes. `root` locks movement only; `stun`/`freeze`
+// lock movement AND action and interrupt any pending wind-up. A stun/freeze is never
+// downgraded to a root while still active (priority), though a longer one extends it.
+// `freeze` leaves a short SLOW tail once it thaws. No-ops if the ability has no CC.
+export function applyCc(
+  ctx: WorldCtx,
+  target: PlayerState | MonsterState | BossState,
+  cc: { stunMs?: number; rootMs?: number; freeze?: boolean },
+): void {
+  if (isPlayer(target)) return; // CC only ever lands on foes
+  if (target.dead) return;
+  const stun = cc.stunMs ?? 0;
+  const root = cc.rootMs ?? 0;
+  if (stun <= 0 && root <= 0) return;
+  const kind = stun > 0 ? (cc.freeze ? "freeze" : "stun") : "root";
+  const ms = stun > 0 ? stun : root;
+
+  const hardActive = target.ccUntil > ctx.now && (target.ccKind === "stun" || target.ccKind === "freeze");
+  if (!(hardActive && kind === "root")) target.ccKind = kind; // don't let a root override an active stun/freeze
+  target.ccUntil = Math.max(target.ccUntil, ctx.now + ms);
+
+  // Interrupt a pending swing/cast — the whole point of a stun is to break a tell.
+  if (isBoss(target)) {
+    target.meleeWindupUntil = 0;
+    target.castWindupUntil = 0;
+  } else {
+    target.windupUntil = 0;
+    // A freeze leaves a short slow once the foe thaws (monsters only — the boss has no slow).
+    if (kind === "freeze") target.slowUntil = Math.max(target.slowUntil, target.ccUntil + FREEZE_SLOW_TAIL_MS);
+  }
+  ctx.pushFx({ e: "cc", x: target.x, y: target.y, id: target.id, kind, ms });
 }
