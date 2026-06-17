@@ -37,7 +37,7 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   const openness = 0.2 + random() * 0.75;
 
   carveConnectedMaze(solid, gw, gh, start.x, start.y, random);
-  widen(solid, gw, gh, random, openness); // fatten corridors — preserves connectivity
+  widen(solid, gw, gh, random, openness); // fatten corridors on roomier floors — preserves connectivity
   addLoops(solid, gw, gh, random, Math.floor(gw * gh * 0.03 * openness));
   const roomCenters = carveRooms(solid, gw, gh, random, openness, depth);
 
@@ -45,9 +45,16 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
   carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2); // stairs room
 
-  const collision: CollisionGrid = { w: gw, h: gh, cell, solid };
-  const entrance = cellCenter(start.x, start.y, cell);
-  const stairs = { ...cellCenter(farthest.x, farthest.y, cell), r: 60 };
+  // Render the maze at 2× cell resolution: every wall is preserved but corridors are
+  // now 2 cells (≈160px) wide — wide CoN-style halls instead of 1-tile passages. The
+  // grid scales; all px positions scale by SCALE too (a fine block's centre is exactly
+  // 2× the logical cell centre), so speed/vision/attack ranges (all in px) are untouched.
+  const SCALE = 2;
+  const collision: CollisionGrid = { w: gw * SCALE, h: gh * SCALE, cell, solid: scaleGrid(solid, gw, gh, SCALE) };
+  const sc = <T extends { x: number; y: number }>(p: T): T => ({ ...p, x: p.x * SCALE, y: p.y * SCALE });
+
+  const entrance = sc(cellCenter(start.x, start.y, cell));
+  const stairs = { ...sc(cellCenter(farthest.x, farthest.y, cell)), r: 60 * SCALE };
 
   // Boss room: the room farthest from the entrance (a place to find the boss).
   let bossCell: { x: number; y: number } = farthest;
@@ -59,30 +66,29 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
       bossCell = c;
     }
   }
-  const bossRoom = cellCenter(bossCell.x, bossCell.y, cell);
+  const bossRoom = sc(cellCenter(bossCell.x, bossCell.y, cell));
 
-  const spawns = generateSpawns(solid, gw, gh, cell, random, roomCenters, start, farthest, depth, openness);
+  const spawns = generateSpawns(solid, gw, gh, cell, random, roomCenters, start, farthest, depth, openness).map(sc);
 
   // Chests + decorations on open cells away from the entrance.
   const open = openCells(solid, gw, gh).filter((p) => manhattan(p.x, p.y, start.x, start.y) > 4);
   shuffle(open, random);
-  const chests = open.slice(0, 2 + Math.floor(random() * 2)).map((p) => cellCenter(p.x, p.y, cell));
-  const decorations = open.slice(4, 4 + 18 + Math.floor(openness * 22)).map((p) => ({
+  const chests = open.slice(0, 2 + Math.floor(random() * 2)).map((p) => sc(cellCenter(p.x, p.y, cell)));
+  const decorations = open.slice(4, 4 + 18 + Math.floor(openness * 22)).map((p) => sc({
     ...cellCenter(p.x, p.y, cell),
     variant: 1 + Math.floor(random() * 15), // variant 0 reserved for the stairs sprite
     scale: 0.75 + random() * 0.45,
   }));
 
   const theme = THEMES[Math.floor(random() * THEMES.length)]!;
-  const pathCells = farthest.distance + 1;
 
   return {
     index: depth,
     seed,
     depth,
     theme,
-    w: gw * cell,
-    h: gh * cell,
+    w: gw * cell * SCALE,
+    h: gh * cell * SCALE,
     // TEMP: flat 10-minute timer on every floor (was: 5 min on floor 1, then scaled by
     // floor size / path length). Revert to the scaled formula when tuning difficulty.
     durationMs: 600000,
@@ -125,6 +131,23 @@ function carveConnectedMaze(solid: Uint8Array, w: number, h: number, startX: num
     solid[ny * w + nx] = 0;
     stack.push({ x: nx, y: ny });
   }
+}
+
+// Scale a logical solid grid up by an integer factor: each logical cell becomes an
+// f×f block of fine cells with the same value. This keeps the maze TOPOLOGY (every
+// wall preserved) but widens corridors to f cells across — the Champions-of-Norrath
+// "wide halls between thick walls" feel, with zero change to px-based tuning (speed,
+// vision, attack ranges all stay in px). World coordinates simply scale by f too.
+function scaleGrid(solid: Uint8Array, w: number, h: number, f: number): Uint8Array {
+  const fw = w * f;
+  const out = new Uint8Array(fw * h * f);
+  for (let y = 0; y < h * f; y++) {
+    const sy = (y / f) | 0;
+    for (let x = 0; x < fw; x++) {
+      out[y * fw + x] = solid[sy * w + ((x / f) | 0)];
+    }
+  }
+  return out;
 }
 
 // Dilation: open solid cells that touch the open set, with probability scaled by
