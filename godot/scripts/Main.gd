@@ -420,8 +420,9 @@ func _process(dt: float) -> void:
 		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
 	var cx: float = _cam_xy.x + shake.x
 	var cy: float = _cam_xy.y + shake.y
-	_cam.position = Vector3(cx, 820, cy + 460)
+	_cam.position = Vector3(cx, CAMERA_HEIGHT, cy + CAMERA_BACK_OFFSET)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
+	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
 
