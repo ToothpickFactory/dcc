@@ -246,7 +246,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (prop.hp <= 0) return;
     prop.hp = 0;
     this.rollPropDrops(prop);
-    this.events.push({ e: "hit", x: prop.x, y: prop.y, ability });
+    this.events.push({ e: "death", x: prop.x, y: prop.y, id: prop.id });
     if (sourceIsPlayer && sourceId) this.gainXp(sourceId, ability, false);
   }
 

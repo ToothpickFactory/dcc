@@ -111,6 +111,7 @@ export class Renderer {
   private walls: THREE.InstancedMesh | null = null;
   private decorations: THREE.Sprite[] = [];
   private livePropIds = new Set<string>();
+  private propsSeen = false;
   private floatingTexts: FloatingText[] = [];
   private ground: THREE.Mesh;
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
@@ -340,6 +341,8 @@ export class Renderer {
       (sprite.material as THREE.SpriteMaterial).dispose();
     }
     this.decorations = [];
+    this.propsSeen = false;
+    this.livePropIds = new Set();
   }
 
   private spriteFor(id: string, color: number, size: number): SpriteState {
@@ -633,6 +636,12 @@ export class Renderer {
       seen.add(e.id);
       if (e.kind === "prop") {
         propIds.add(e.id);
+        const stale = this.sprites.get(e.id);
+        if (stale) {
+          this.scene.remove(stale.sprite);
+          (stale.sprite.material as THREE.SpriteMaterial).dispose();
+          this.sprites.delete(e.id);
+        }
         continue;
       }
       let color: number;
@@ -759,7 +768,7 @@ export class Renderer {
         s.sprite.visible = true;
       }
     }
-    if (propIds.size > 0) this.livePropIds = propIds;
+    if (ents.length > 0) { this.propsSeen = true; this.livePropIds = propIds; }
     for (const [id, s] of this.sprites) {
       if (!seen.has(id)) {
         this.scene.remove(s.sprite);
@@ -884,7 +893,7 @@ export class Renderer {
     if (this.stairs) this.stairs.visible = canSeeSprite(this.stairs);
     for (const sprite of this.decorations) {
       const propId = String(sprite.userData.propId ?? "");
-      const alive = this.livePropIds.size === 0 || this.livePropIds.has(propId);
+      const alive = !this.propsSeen || this.livePropIds.has(propId);
       sprite.visible = alive && canSeeSprite(sprite);
     }
   }

@@ -117,21 +117,16 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		decoration_sprites.append(sprite)
 
 func set_live_props(ents: Array) -> void:
+	if ents.is_empty():
+		return  # no state yet — leave sprites in their initial visible state
 	var live := {}
-	var saw_props := false
 	for e in ents:
 		if typeof(e) != TYPE_DICTIONARY:
 			continue
 		var d: Dictionary = e
 		if str(d.get("kind", "")) != "prop":
 			continue
-		saw_props = true
 		live[str(d.get("id", ""))] = true
-	if not saw_props:
-		for sprite in decoration_sprites:
-			if is_instance_valid(sprite):
-				sprite.set_meta("dcc_alive", true)
-		return
 	for sprite in decoration_sprites:
 		if not is_instance_valid(sprite):
 			continue

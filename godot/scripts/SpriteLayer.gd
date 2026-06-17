@@ -39,12 +39,23 @@ var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, f
 var _net                        # Net node (prev/cur snapshots); set via set_net
 var _grid: Dictionary = {}      # collision grid for canSee()
 var _hero_attack_toggle := false # render.ts heroAttackToggle (alternates cleave punch frames)
+var _you_class := ""            # local player's chosen Klass; drives hero model selection
 
 func set_net(net) -> void:
 	_net = net
 
 func set_grid(grid: Dictionary) -> void:
 	_grid = grid
+
+func set_you_class(klass: String) -> void:
+	if _you_class == klass:
+		return
+	_you_class = klass
+	for id in _sprites:
+		var spr: EntitySprite = _sprites[id]
+		if spr.is_self:
+			spr.set_chosen_class(klass)
+			break
 
 # ---- hit flash dispatch (juice) -------------------------------------------
 # Flash a specific entity's sprite (death event carries an id).
@@ -91,12 +102,19 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		seen[id] = true
 		var k := str(d.get("kind", ""))
 		if k == "prop":
+			var stale: EntitySprite = _sprites.get(id)
+			if stale != null:
+				stale.queue_free()
+				_sprites.erase(id)
+				_last_pos.erase(id)
 			continue
 		var is_self := id == you_id
 
 		var spr: EntitySprite = _sprites.get(id)
 		if spr == null:
 			spr = EntitySprite.new()
+			if is_self:
+				spr.set_chosen_class(_you_class)
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr

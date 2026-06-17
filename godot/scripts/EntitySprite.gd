@@ -26,6 +26,10 @@ const HERO_ROOT := "res://assets/Heroes/Kevin"
 const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Barbarian-3d-animated.glb"
 const HERO_MODEL_SCALE := 84.0
 const HERO_LIGHT_ENERGY := 1.35
+const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb"
+const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
+const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue-3d-animated.glb"
+const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
 const BOSS_ROOT := "res://assets/Bosses/Slime"
 const JAILOR_NAME := "Iron Jailor"
 const JAILOR_MODEL_PATH := "res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb"
@@ -95,6 +99,7 @@ var ent_id := ""
 var kind := ""
 var is_self := false
 var _entity_name := ""
+var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue"|"hunter")
 var _model_root: Node3D
 var _model_anim: AnimationPlayer
 var _model_anim_name := ""
@@ -227,6 +232,21 @@ func set_entity_name(v: String) -> void:
 	_entity_name = v
 	_ensure_model_for_entity()
 
+func set_chosen_class(klass: String) -> void:
+	if _chosen_class == klass:
+		return
+	_chosen_class = klass
+	if kind != "player":
+		return
+	# Swap to the new class model. Free the old one so _ensure_model_for_entity re-runs.
+	if _model_root != null:
+		_model_root.queue_free()
+		_model_root = null
+		_model_anim = null
+		_model_anim_name = ""
+		_model_profile = {}
+	_ensure_model_for_entity()
+
 # ---------------------------------------------------------------------------
 # FNV-1a (render.ts hash()) -> pick a stable enemy variant root per entity id.
 # ---------------------------------------------------------------------------
@@ -244,9 +264,24 @@ func _enemy_root() -> String:
 
 func _model_profile_for_entity() -> Dictionary:
 	if kind == "player":
+		var model_path := HERO_MODEL_PATH
+		var label := "Kevin"
+		match _chosen_class:
+			"warrior":
+				model_path = BARBARIAN_MODEL_PATH
+				label = "Barbarian"
+			"mage":
+				model_path = WIZARD_MODEL_PATH
+				label = "Wizard"
+			"priest":
+				model_path = CLERIC_MODEL_PATH
+				label = "Cleric"
+			"rogue":
+				model_path = ROGUE_MODEL_PATH
+				label = "Rogue"
 		return {
-			"label": "Kevin Barbarian",
-			"path": HERO_MODEL_PATH,
+			"label": label,
+			"path": model_path,
 			"scale": HERO_MODEL_SCALE,
 			"light_energy": HERO_LIGHT_ENERGY,
 			"light_range": 260.0,

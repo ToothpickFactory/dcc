@@ -562,6 +562,7 @@ func _process(dt: float) -> void:
 				_fx.proj_trail(ex, ey, int(e.get("sprite", 0)) == 99)
 
 	# Render + UI.
+	_sprites.set_you_class(str(_net.self_dto.get("chosenClass", "")))
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_minimap.update_map(_pred.x, _pred.y, _net.ents, _net.you, alive)
 	_hud.update(_net)
