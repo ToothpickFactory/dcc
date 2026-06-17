@@ -18,6 +18,11 @@ extends Node3D
 
 const VISION_RADIUS := 1000.0   # DccConst.VISION_RADIUS; render.ts VISION_RADIUS (kept in sync)
 const VISION_RADIUS_SQ := VISION_RADIUS * VISION_RADIUS
+# Anything this close is ALWAYS shown, even if a wall corner clips the sight-line — so an
+# enemy hugging a long wall while it attacks you can never be invisible. Distant foes still
+# need line-of-sight (corners stay a mystery). ~5 melee-ranges of reveal.
+const NEAR_REVEAL := 340.0
+const NEAR_REVEAL_SQ := NEAR_REVEAL * NEAR_REVEAL
 const SPRITE_PX_NORMAL := 84.0 # players / monsters
 const SPRITE_PX_BOSS := 76.0
 const SPRITE_PX_PROJ := 16.0
@@ -156,13 +161,15 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		spr.update_visual(wpos.x, wpos.y, dx, dy, aim, now_ms, sprite_px)
 		_last_pos[id] = wpos
 
-		# Fog of war (render.ts): self + allies always visible; monsters/boss/proj only
-		# within VISION_RADIUS AND with clear line-of-sight to the local player.
+		# Fog of war: self + allies always visible; monsters/boss/proj need line-of-sight
+		# within VISION_RADIUS — EXCEPT anything within NEAR_REVEAL, which is always shown so
+		# a wall-hugging attacker can't hit you while invisible.
 		var fogged := k == "monster" or k == "boss" or k == "proj"
 		if fogged:
 			var ddx := wpos.x - self_pos.x
 			var ddy := wpos.y - self_pos.y
-			spr.visible = (ddx * ddx + ddy * ddy <= VISION_RADIUS_SQ) and _can_see(self_pos.x, self_pos.y, wpos.x, wpos.y)
+			var dsq := ddx * ddx + ddy * ddy
+			spr.visible = dsq <= NEAR_REVEAL_SQ or (dsq <= VISION_RADIUS_SQ and _can_see(self_pos.x, self_pos.y, wpos.x, wpos.y))
 		else:
 			spr.visible = true
 
