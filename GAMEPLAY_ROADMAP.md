@@ -71,12 +71,13 @@ the headline ability grant currently arrives **silently** on the native client.
   so you can spot a legendary across the room.
 - ⬜ **Rolled affixes** (M, server) — named prefixes/suffixes ("Vicious … of the Bear") so two same-rarity
   drops differ; the loot lottery that makes "is this better?" meaningful.
-- ⬜ **Economy: a buy vendor** (M, server) — gold is sell-only today (a dead-end number). A waiting-room
-  shop (potions + rotating stat gear / reroll) completes the sell-trash → buy-upgrade loop.
+- ✅ **Economy: a buy vendor** — a waiting-room shop (2 potions + 4 rotating gear, priced sellValue×4,
+  plus a gold reroll) completes the sell-trash → buy-upgrade loop. Server-authoritative (validates gold
+  + carry space before charging); a SHOP section in the inventory screen, waiting-room only.
 - ⬜ **Uniques & sets** (L, server) — a handful of named drops with procs / set bonuses; the chase items
   that drive "one more floor."
-- ⬜ **Equip-vs-candidate stat delta** (M, client) — green/red +/- per attribute vs your equipped item, so
-  the loot sweep is a glance, not manual math.
+- ✅ **Equip-vs-candidate stat delta** — carried/loot/shop tiles show green/red ± per attribute vs the item
+  worn in that slot (mirrors compatibleSlots), so judging an upgrade is a glance, not manual math.
 - ⬜ **Magic-find / luck** (M, server) — a stat that nudges drop rate/rarity, so farming compounds.
 
 ## 5. Co-op play & run progression
@@ -91,9 +92,11 @@ isn't *needed*; death is an instant dead-end.
 - ⬜ **Downed / bleed-out + revive** (L, server) — *the* missing CoN pillar: a teammate's death becomes a
   recoverable crisis (stand over them / revive) instead of a spectator screen, and finally justifies healers/tanks.
 - ⬜ **Party-size enemy scaling** (M, server) — a 4-player camp should be tougher than a solo one.
-- ⬜ **Ally HP bars + class nameplates** (M, client) — you can't see a teammate's HP mid-fight; needed for a
-  healer to play their role and for revive to read.
-- ⬜ **Loot etiquette** (M, server) — a short owner-priority window / round-robin on bags to avoid ninja-looting.
+- ✅ **Ally HP bars + class nameplates** — a floating class-icon nameplate + HP bar above each teammate
+  (billboarded, reads through walls for co-op); `klass`/hp/maxHp now broadcast per player. A healer can read
+  party HP at a glance (and it's the readout revive will build on).
+- ✅ **Loot etiquette** — the player who earns a kill owns the bag for an 8s priority window before others
+  can take (anti-ninja); the bag dims + 🔒s for everyone else until the window passes.
 - ⬜ **Meta-progression** (M, server) — spend lifetime XP on small persistent unlocks so a wiped run feeds the
   next one (the standard permadeath-fatigue fix). Today only a leaderboard number persists.
 

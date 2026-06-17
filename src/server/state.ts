@@ -41,6 +41,7 @@ export interface PlayerState {
   comboStep: number; // current swing in the chain (resets after the finisher / on lapse)
   comboExpireAt: number; // chain resets to step 0 if you don't swing again by this tick
   potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
+  shop: { item: Item; price: number }[]; // transient: waiting-room vendor stock (regenerated per visit)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)
   inv: Inventory; // equipped gear + bags + carried items
@@ -145,6 +146,8 @@ export interface LootBagState {
   items: Item[];
   corpseId?: string; // entity whose body should remain visible until this bag is gone
   expiresAt: number; // wall-clock ms; despawns after this so the floor stays clean
+  owner?: string; // loot etiquette: playerId who earned the kill — priority to loot first
+  ownerUntil?: number; // wall-clock ms the owner-priority window closes (then free-for-all)
 }
 
 // The slice of the world the simulation modules operate on. The Durable Object
@@ -162,8 +165,8 @@ export interface WorldCtx {
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
-  dropLoot(x: number, y: number, items: Item[], corpseId?: string): void; // spawn a loot/corpse bag
-  rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
+  dropLoot(x: number, y: number, items: Item[], corpseId?: string, ownerId?: string): void; // spawn a loot/corpse bag (ownerId = kill earner, gets a priority window)
+  rollDrops(m: MonsterState, ownerId?: string): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions); ownerId gets loot priority
   rollPropDrops(p: PropState): void; // on destructible prop death
   damageProp(prop: PropState, sourceId?: string, sourceIsPlayer?: boolean, ability?: number): void;
   corpseLootExists(corpseId: string): boolean;

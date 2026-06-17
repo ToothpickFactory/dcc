@@ -95,6 +95,104 @@ var _loot_rarity := "common"
 func set_loot_rarity(r: String) -> void:
 	_loot_rarity = r
 
+# Loot etiquette: a bag owned by another player during the priority window reads as locked.
+var _loot_locked := false
+var _lock_label: Label3D
+func set_loot_owner(locked: bool) -> void:
+	_loot_locked = locked
+
+# ---- ally nameplate + HP bar (other players only; self uses the top HUD) ----
+const ALLY_BAR_W := 90.0
+var _ally_hp := 0.0
+var _ally_hp_max := 0.0
+var _ally_klass := ""
+var _nameplate: Label3D
+var _hp_bg: Sprite3D
+var _hp_fill: Sprite3D
+static var _bar_tex: Texture2D  # shared 1x1 white texture for the HP bar quads
+func set_ally_status(hp: float, max_hp: float, klass: String) -> void:
+	_ally_hp = hp
+	_ally_hp_max = max_hp
+	_ally_klass = klass
+
+# Shared 1x1 white texture for the HP-bar quads (created once).
+static func _white_texture() -> Texture2D:
+	if _bar_tex == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+		img.set_pixel(0, 0, Color.WHITE)
+		_bar_tex = ImageTexture.create_from_image(img)
+	return _bar_tex
+
+func _make_bar(w: float, h: float, y: float, prio: int) -> Sprite3D:
+	var s := Sprite3D.new()
+	s.texture = _white_texture()
+	s.centered = false  # anchor at the left edge so the fill shrinks from the right
+	s.pixel_size = 1.0
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.no_depth_test = true  # ally bars read through walls (co-op visibility)
+	s.scale = Vector3(w, h, 1.0)
+	s.position = Vector3(-w * 0.5, y, 0.0)
+	s.render_priority = prio
+	add_child(s)
+	return s
+
+func _ensure_nameplate() -> void:
+	if _nameplate != null:
+		return
+	var y := 150.0
+	_hp_bg = _make_bar(ALLY_BAR_W, 11.0, y, 5)
+	_hp_bg.modulate = Color(0.06, 0.07, 0.10, 0.85)
+	_hp_fill = _make_bar(ALLY_BAR_W, 11.0, y, 6)
+	_nameplate = Label3D.new()
+	_nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_nameplate.no_depth_test = true
+	_nameplate.font_size = 28
+	_nameplate.outline_size = 8
+	_nameplate.outline_modulate = Color(0, 0, 0, 0.8)
+	_nameplate.pixel_size = 1.0
+	_nameplate.position = Vector3(0.0, y + 28.0, 0.0)
+	_nameplate.render_priority = 6
+	add_child(_nameplate)
+
+# Float a name (with class icon) + an HP bar above an ally each frame. No-op for non-allies.
+func _update_ally_overlay() -> void:
+	if _ally_hp_max <= 0.0 or _is_dead_body:
+		if _nameplate != null:
+			_nameplate.visible = false
+			_hp_bg.visible = false
+			_hp_fill.visible = false
+		return
+	_ensure_nameplate()
+	_nameplate.visible = true
+	_hp_bg.visible = true
+	_hp_fill.visible = true
+	var icon := ""
+	if _ally_klass != "" and Talents.CLASS_INFO.has(_ally_klass):
+		icon = str((Talents.CLASS_INFO[_ally_klass] as Dictionary).get("icon", ""))
+	_nameplate.text = (icon + " " + _entity_name).strip_edges() if icon != "" else _entity_name
+	var ratio := clampf(_ally_hp / _ally_hp_max, 0.0, 1.0)
+	_hp_fill.scale.x = maxf(0.0, ALLY_BAR_W * ratio)
+	_hp_fill.modulate = Color(0.35, 0.85, 0.4) if ratio > 0.5 else (Color(0.95, 0.75, 0.25) if ratio > 0.25 else Color(0.9, 0.3, 0.3))
+
+# A 🔒 over a loot bag owned by someone else during the priority window.
+func _update_loot_lock() -> void:
+	if not _loot_locked:
+		if _lock_label != null:
+			_lock_label.visible = false
+		return
+	if _lock_label == null:
+		_lock_label = Label3D.new()
+		_lock_label.text = "\U01f512"  # 🔒
+		_lock_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_lock_label.no_depth_test = true
+		_lock_label.font_size = 30
+		_lock_label.pixel_size = 1.0
+		_lock_label.position = Vector3(0.0, 70.0, 0.0)
+		_lock_label.render_priority = 6
+		add_child(_lock_label)
+	_lock_label.visible = true
+
 # ---- identity ----
 var ent_id := ""
 var kind := ""
@@ -750,6 +848,7 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 # Mirrors the per-entity body of render.ts sync().
 # ---------------------------------------------------------------------------
 func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float) -> void:
+	_update_ally_overlay() # ally nameplate + HP bar (no-op for non-allies)
 	if _is_dead_body:
 		position = Vector3(wx, _height_for_kind(), wy)
 		_show_tombstone()
@@ -811,7 +910,10 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			var col: Color = LOOT_RARITY_COL.get(_loot_rarity, COL_LOOT)
 			if _loot_rarity != "common":
 				col = col * (0.85 + 0.25 * (0.5 + 0.5 * sin(now_ms * 0.006)))
+			if _loot_locked:
+				col = col * 0.45 # dimmed — owned by another player for now
 			modulate = col
+			_update_loot_lock()
 		_apply_size(sprite_px)
 		return
 

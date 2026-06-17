@@ -31,6 +31,18 @@ export const MONSTER_DMG = 6;
 export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accruing (boss trigger)
 export const LOOT_BAG_TTL = 120000; // ms a dropped loot bag lingers before despawning
 export const LOOT_REACH = 90; // px a player must be within to loot a bag
+// Loot etiquette: whoever earned the kill owns the bag for this window — others can't take from it
+// yet (avoids ninja-looting). After the window, it's free-for-all until it despawns.
+export const LOOT_OWNER_MS = 8000;
+
+// Waiting-room vendor (gold sink completing sell-trash -> buy-upgrade). Buy price is the item's
+// sell value times a markup; potions are a flat price; rerolling the rotating gear costs gold.
+export const BUY_MARKUP = 4; // gear buy price = sellValue(item) * BUY_MARKUP
+export const POTION_PRICE = 14; // flat price for a healing potion in the shop
+export const SHOP_GEAR_COUNT = 4; // rotating gear slots
+export const SHOP_POTION_COUNT = 2; // potion slots
+export const VENDOR_REROLL_BASE = 20; // reroll cost = base + depth * step
+export const VENDOR_REROLL_STEP = 6;
 export const POISON_PROJECTILE_SPRITE = 95; // EntityDTO.sprite marker for poison GLB projectiles
 export const ICE_PROJECTILE_SPRITE = 96; // EntityDTO.sprite marker for ice/rock GLB projectiles
 export const FIREBALL_PROJECTILE_SPRITE = 97; // EntityDTO.sprite marker for fireball GLB projectiles

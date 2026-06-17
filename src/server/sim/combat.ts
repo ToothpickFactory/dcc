@@ -80,7 +80,7 @@ export function applyDamage(
       target.status = "spectator";
       target.mvx = 0;
       target.mvy = 0;
-      ctx.dropLoot(target.x, target.y, allItems(target.inv), target.id);
+      ctx.dropLoot(target.x, target.y, allItems(target.inv), target.id, sourceIsPlayer && sourceId !== target.id ? sourceId : undefined);
       target.inv = emptyInventory();
       ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
       if (sourceIsPlayer && sourceId !== target.id) {
@@ -143,7 +143,7 @@ export function applyDamage(
     // Roll drops: NOT every kill drops (chance per kind), and when it does it's a
     // fresh floor-appropriate item — not a copy of the monster's own stat gear, so
     // the floor doesn't drown in loot. (Players still drop everything on death.)
-    ctx.rollDrops(target);
+    ctx.rollDrops(target, sourceIsPlayer ? sourceId : undefined);
     ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
     if (sourceIsPlayer) {
       ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });

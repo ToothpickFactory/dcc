@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, CcKind, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 14; // was 13 (projectile render kind + hard CC) - added attribute points + respec
+export const PROTOCOL_VERSION = 15; // was 14 (attr points + respec) - ally hp/class on wire, loot owner, buy vendor
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -34,6 +34,8 @@ export type ClientMsg =
   | { t: "spendTalent"; node: string } // spend a talent point on a tree node
   | { t: "spendAttr"; attr: AttrKey } // spend one attribute point into STR/AGI/INT/STA/CRIT/HASTE/ARMOR
   | { t: "respec" } // refund all spent attribute + talent points (waiting room only)
+  | { t: "buyItem"; id: string } // buy a shop item by id (waiting-room vendor; costs gold)
+  | { t: "reroll" } // reroll the vendor's rotating gear stock (waiting room only; costs gold)
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -45,7 +47,14 @@ export type ServerMsg =
   | { t: "loot"; grant: LootGrantDTO }
   | { t: "inv"; inv: Inventory; attrs: Attributes; derived: DerivedStats; capacity: number; gold: number } // character screen
   | { t: "bag"; id: string; items: Item[] } // contents of an opened loot bag
+  | { t: "shop"; items: ShopEntry[]; rerollCost: number } // waiting-room vendor stock + reroll price
   | { t: "pong"; ts: number };
+
+// A vendor stock entry: an item plus its gold buy-price.
+export interface ShopEntry {
+  item: Item;
+  price: number;
+}
 
 export interface WorldInfo {
   w: number;
@@ -63,11 +72,14 @@ export interface EntityDTO {
   maxHp?: number;
   dead?: boolean;
   name?: string; // players + named bosses
-  cls?: PlayerClass; // players only
+  cls?: PlayerClass; // players only (emergent playstyle label)
+  klass?: Klass; // players only: chosen WoW class (drives the ally nameplate icon)
   sprite?: number; // atlas frame id (kind-specific)
   proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
   n?: number; // item count (loot bags)
   rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
+  owner?: string; // loot bags: playerId with priority during the owner window (loot etiquette)
+  ownerUntil?: number; // loot bags: wall-clock ms the owner-priority window closes
   variant?: number; // props: themed decoration sheet index
   scale?: number; // props: decoration scale
   cc?: CcKind; // monster/boss: active hard CC (stun/root/freeze) — drives the status tint

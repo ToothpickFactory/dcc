@@ -239,6 +239,7 @@ func _ready() -> void:
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
+	_net.shop_received.connect(func(m): _inv.on_shop(m))
 	_net.events_received.connect(_on_events)
 	_net.loot_received.connect(_on_loot)
 	_net.welcomed.connect(func(you): print("[DCC] welcome you=", you))

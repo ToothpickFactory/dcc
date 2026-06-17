@@ -134,6 +134,12 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		spr.set_projectile_render(str(d.get("proj", "")))
 		if k == "lootbag":
 			spr.set_loot_rarity(str(d.get("rarity", "common")))
+			# Loot etiquette: a bag owned by someone else (during the priority window) reads as locked.
+			var lb_owner := str(d.get("owner", ""))
+			spr.set_loot_owner(lb_owner != "" and lb_owner != you_id)
+		elif k == "player" and not is_self:
+			# Ally nameplate + HP bar (so a healer can read teammate HP). Self uses the top HUD.
+			spr.set_ally_status(float(d.get("hp", 0.0)), float(d.get("maxHp", 0.0)), str(d.get("klass", "")))
 		spr.set_cc(str(d.get("cc", ""))) # hard CC status tint (stun/root/freeze)
 		spr.set_dead_body(bool(d.get("dead", false)), now_ms)
 
