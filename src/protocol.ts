@@ -7,16 +7,17 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 7; // was 6 — added the `useItem` client message (drink consumables)
+export const PROTOCOL_VERSION = 12; // was 11 (addHotbarItem) — added lootbag `rarity` on EntityDTO (ground rarity beams)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
   | { t: "join"; name: string; token?: string } // token = signed playerId for reconnect
   | { t: "input"; seq: number; mv: [number, number]; aim: number } // mv = move vec; aim = radians
   | { t: "cast"; seq: number; ability: number; aim: number } // fire ability N in aim direction
+  | { t: "dash"; seq: number; dir: [number, number] } // dodge/evade burst in dir (move vec or aim)
   // ---- inventory / gear (character screen) ----
   | { t: "equip"; item: string } // equip a carried item (auto-slots)
   | { t: "unequip"; slot: EquipSlot } // move equipped gear back to carry
@@ -24,10 +25,13 @@ export type ClientMsg =
   | { t: "sell"; item: string } // sell a carried item for gold (waiting room only)
   | { t: "drop"; item: string } // drop a carried item onto the floor
   | { t: "useItem"; item: string } // drink/use a carried consumable (e.g. a potion)
+  | { t: "addHotbarItem"; item: string } // toggle a carried consumable onto/off the action bar
   | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "swapAbility"; a: number; b: number } // reorder/swap two action-bar slots
   | { t: "evolve"; slot: number; to: string } // evolve a matured ability into a chosen branch
+  | { t: "chooseClass"; cls: string } // pick a WoW class at the first level-up (one-time)
+  | { t: "spendTalent"; node: string } // spend a talent point on a tree node
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -60,6 +64,7 @@ export interface EntityDTO {
   cls?: PlayerClass; // players only
   sprite?: number; // atlas frame id (kind-specific)
   n?: number; // item count (loot bags)
+  rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
 }
 
 export interface SelfDTO {
@@ -75,20 +80,27 @@ export interface SelfDTO {
   derived: DerivedStats; // gear-derived stats (HUD + client movement prediction)
   abilities: Ability[]; // the action bar (slot 1 auto-casts) — incl. live ammo + xp/tier
   charXp: number; // character XP (skill system) — client derives level via charLevelOf
+  // ---- WoW-style class & talents (RPG Phase 2) ----
+  chosenClass: Klass | null; // picked at the first level-up; null = picker pending
+  talents: Record<string, number>; // talent node id -> rank
+  talentPoints: number; // unspent talent points (a pending point w/ no class = "pick a class")
+  shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  dashReadyAt?: number; // tick when the dodge/dash is off cooldown (HUD cue)
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
   bestFloor?: number; // deepest floor ever reached (all-time)
   kills?: number; // all-time kills (all-time)
 }
 
 export type GameEvent =
-  | { e: "dmg"; x: number; y: number; amount: number; by?: string }
+  | { e: "dmg"; x: number; y: number; amount: number; by?: string; crit?: boolean }
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
   | { e: "cast"; x: number; y: number; ability: number }
   | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
+  | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
 
 // Static floor geometry shipped to clients that don't run the TS procgen (e.g. the

@@ -35,6 +35,7 @@ var _key := ""
 var _root: Control
 var _char_box: VBoxContainer
 var _stats_box: VBoxContainer
+var _talent_box: VBoxContainer
 var _list: VBoxContainer
 
 
@@ -143,6 +144,9 @@ func _render() -> void:
 	_stats_box.add_child(_stat_row_node("Lifetime XP", str(int(self_dto.get("lifetimeXp", 0)))))
 	_stats_box.add_child(_stat_row_node("Best floor", str(int(self_dto.get("bestFloor", 0)))))
 	_stats_box.add_child(_stat_row_node("Kills", str(int(self_dto.get("kills", 0)))))
+
+	# Class picker / talent tree.
+	_render_talents(self_dto)
 
 	# Per-ability cards.
 	_clear(_list)
@@ -419,6 +423,11 @@ func _build_panel() -> void:
 	_stats_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_stats_box)
 
+	_talent_box = VBoxContainer.new()
+	_talent_box.add_theme_constant_override("separation", 5)
+	_talent_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_talent_box)
+
 	var sect := Label.new()
 	sect.text = "ABILITIES"
 	sect.add_theme_font_size_override("font_size", 11)
@@ -488,17 +497,106 @@ func _stat_rows(a: Dictionary, d: Dictionary) -> Array:
 	return [
 		["Max HP", str(roundi(float(d.get("maxHp", 0.0))))],
 		["Move", str(roundi(float(d.get("moveSpeed", 0.0))))],
-		["Power", "%d · %s dmg" % [int(a.get("power", 0)), _pct(float(d.get("spellPower", 1.0)))]],
-		["Spirit", "%d · %s heal" % [int(a.get("spirit", 0)), _pct(float(d.get("healPower", 1.0)))]],
-		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
-		["Vitality", str(int(a.get("vitality", 0)))],
+		["Strength", "%d · %s dmg" % [int(a.get("strength", 0)), _pct(float(d.get("spellPower", 1.0)))]],
+		["Intellect", "%d · %s heal" % [int(a.get("intellect", 0)), _pct(float(d.get("healPower", 1.0)))]],
+		["Stamina", str(int(a.get("stamina", 0)))],
 		["Agility", str(int(a.get("agility", 0)))],
+		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
+		["Crit", "%d · %s" % [int(a.get("crit", 0)), _pct(float(d.get("critChance", 0.0)))]],
 		["Armor", "%d · %s block" % [int(a.get("armor", 0)), _pct(float(d.get("dr", 0.0)))]],
 	]
 
 
 func _pct(x: float) -> String:
 	return "%d%%" % roundi(x * 100.0)
+
+
+# Class picker (before a class is chosen) or the point-buy talent tree.
+func _render_talents(self_dto: Dictionary) -> void:
+	_clear(_talent_box)
+	var klass := str(self_dto.get("chosenClass", ""))
+	var pts := int(self_dto.get("talentPoints", 0))
+	var talents: Dictionary = self_dto.get("talents", {})
+
+	if klass == "" or not Talents.CLASS_INFO.has(klass):
+		if pts <= 0:
+			return
+		_talent_box.add_child(_talent_section("⚔️  Choose your class — %d pt" % pts))
+		for k in Talents.KLASSES:
+			var info: Dictionary = Talents.CLASS_INFO[k]
+			var sub := "%s · %s · %s" % [Talents.CLASS_ROLE[k], Talents.CLASS_MAIN_STAT[k], str(info.get("armor", ""))]
+			_talent_box.add_child(_choice_button("%s  %s" % [str(info.get("icon", "")), str(info.get("name", k))], str(info.get("blurb", "")), sub, true, func(): _send({"t": "chooseClass", "cls": k})))
+		return
+
+	var cinfo: Dictionary = Talents.CLASS_INFO[klass]
+	_talent_box.add_child(_talent_section("%s  %s talents — %d point%s" % [str(cinfo.get("icon", "")), str(cinfo.get("name", klass)), pts, ("" if pts == 1 else "s")]))
+	for node in Talents.tree(klass):
+		var nid := str(node.get("id", ""))
+		var rank := int(talents.get(nid, 0))
+		var can := Talents.can_spend(klass, talents, pts, nid)
+		var tag := ""
+		if rank > 0:
+			tag = "✓ learned"
+		elif int(node.get("requires", 0)) > 0:
+			tag = "needs %d spent" % int(node.get("requires", 0))
+		_talent_box.add_child(_choice_button("%s  %s" % [str(node.get("icon", "•")), str(node.get("name", nid))], str(node.get("desc", "")), tag, can, func(): _send({"t": "spendTalent", "node": nid}), rank > 0))
+
+
+func _talent_section(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 12)
+	l.add_theme_color_override("font_color", READY_TEXT)
+	return l
+
+
+# A tappable card used for both class choices and talent nodes.
+func _choice_button(title: String, desc: String, tag: String, enabled: bool, on_tap: Callable, taken := false) -> PanelContainer:
+	var tile := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = CARD_BG
+	sb.set_corner_radius_all(8)
+	sb.set_border_width_all(1)
+	sb.border_color = (XP_FILL if taken else CARD_BORDER)
+	sb.set_content_margin_all(8)
+	tile.add_theme_stylebox_override("panel", sb)
+	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tile.modulate = Color(1, 1, 1, 1.0 if enabled else 0.5)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 1)
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.add_child(vb)
+	var nm := Label.new()
+	nm.text = title
+	nm.add_theme_font_size_override("font_size", 13)
+	nm.add_theme_color_override("font_color", TEXT_NAME)
+	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(nm)
+	if desc != "":
+		var ed := Label.new()
+		ed.text = desc
+		ed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ed.add_theme_font_size_override("font_size", 11)
+		ed.add_theme_color_override("font_color", TEXT_SUB)
+		ed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(ed)
+	if tag != "":
+		var tg := Label.new()
+		tg.text = tag
+		tg.add_theme_font_size_override("font_size", 10)
+		tg.add_theme_color_override("font_color", XP_FILL if taken else TEXT_HINT)
+		tg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(tg)
+
+	if enabled:
+		tile.gui_input.connect(func(ev: InputEvent):
+			if _is_tap(ev):
+				on_tap.call()
+				var vp := get_viewport()
+				if vp != null:
+					vp.set_input_as_handled())
+	return tile
 
 
 func _send(obj: Dictionary) -> void:

@@ -52,8 +52,33 @@ export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
 };
 
 export const PROJECTILE_RADIUS = 7;
+export const CRIT_MULT = 1.5; // a critical strike deals +50% (see DerivedStats.critChance)
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
 export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost) is active
+
+// Dodge/dash (Champions-of-Norrath-style evade): a short high-speed burst with brief
+// invulnerability, on a cooldown. The defensive tool every class shares.
+export const DASH_SPEED = 760; // px/s during the dash burst (~3.3x base move)
+export const DASH_MS = 180; // dash duration
+export const DASH_IFRAME_MS = 240; // i-frames (covers the dash + a hair of recovery)
+export const DASH_CD = 1400; // cooldown between dashes
+
+// Per-floor enemy scaling so descent gets genuinely deadlier, not just more crowded.
+export const FLOOR_HP_SCALE = 0.12; // +12% enemy HP per floor depth (linear)
+export const FLOOR_DMG_SCALE = 0.08; // +8% enemy damage per floor depth
+
+// Attack telegraphs: enemy melee winds up before it lands, so you can dodge/step out
+// during the tell (CoN's read-and-evade dance). Brutes/bosses telegraph longer + heavier.
+export const MELEE_WINDUP_MS = 340; // monster melee wind-up before damage
+export const BRUTE_WINDUP_MULT = 1.6; // brutes telegraph slower (heavier swing)
+export const BOSS_MELEE_WINDUP_MS = 480;
+export const BOSS_CAST_WINDUP_MS = 420; // boss bolt-fan tell
+
+// Knockback: player hits shove enemies (and they stagger), so blows have weight. Per-kind
+// resistance differentiates a swarm bug (flies) from a brute (barely budges).
+export const KNOCK_SPEED = 560; // px/s knockback burst on a player hit
+export const KNOCK_MS = 170; // knockback impulse duration (decays out)
+export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, ranged: 1.1, healer: 1.0, brute: 0.4 };
 
 // Directional heal (ported): a heal projectile mends the first ally it hits, and
 // casting it draws aggro from nearby foes — so support play carries risk.

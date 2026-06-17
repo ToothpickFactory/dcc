@@ -5,6 +5,8 @@ extends Node
 ## so GdUnit4 test runs don't open sockets.
 
 signal welcomed(you)
+signal protocol_mismatch(server_v, client_v)
+signal loot_received(grant)
 signal floor_received(geometry, info)
 signal inv_received(msg)
 signal bag_received(msg)
@@ -30,6 +32,11 @@ var _name := "GodotHero"
 func start(url: String, player_name: String) -> void:
 	_url = url
 	_name = player_name
+	# Dev hook: rebind to an existing character by signed token (e.g. to inspect a
+	# leveled save). Mirrors the web client's stored identity token.
+	var tok := OS.get_environment("DCC_TOKEN")
+	if tok != "":
+		token = tok
 	var err := _ws.connect_to_url(_url)
 	if err != OK:
 		push_error("WS connect_to_url failed: %s" % error_string(err))
@@ -61,6 +68,7 @@ func _handle(m: Dictionary) -> void:
 			var sv := int(m.get("protocol", -1))
 			if sv != DccConst.PROTOCOL_VERSION:
 				push_warning("Protocol mismatch: server=%d client=%d" % [sv, DccConst.PROTOCOL_VERSION])
+				protocol_mismatch.emit(sv, DccConst.PROTOCOL_VERSION)
 			welcomed.emit(you)
 		"floor":
 			floor_info = m.get("info", {})
@@ -81,6 +89,8 @@ func _handle(m: Dictionary) -> void:
 			inv_received.emit(m)
 		"bag":
 			bag_received.emit(m)
+		"loot":
+			loot_received.emit(m.get("grant", {}))
 		_:
 			pass
 
@@ -89,6 +99,9 @@ func send_input(seq: int, mv: Vector2, aim: float) -> void:
 
 func send_cast(seq: int, ability: int, aim: float) -> void:
 	_send({"t": "cast", "seq": seq, "ability": ability, "aim": aim})
+
+func send_dash(seq: int, dir: Vector2) -> void:
+	_send({"t": "dash", "seq": seq, "dir": [dir.x, dir.y]})
 
 ## Generic outbound for inventory/sell/swap/loot messages (see src/protocol.ts ClientMsg).
 func send_msg(obj: Dictionary) -> void:

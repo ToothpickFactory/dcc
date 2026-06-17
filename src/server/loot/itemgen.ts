@@ -20,16 +20,17 @@ const SLOT_NOUN: Record<ItemSlot, string> = {
   bag: "Satchel",
   consumable: "Potion",
 };
-// Each slot favours a themed set of attributes.
+// Each slot favours a themed set of attributes. Weapons/gloves/rings can roll the
+// crit secondary; armor pieces favour stamina/armor; casters' gear favours intellect.
 const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
-  helmet: ["vitality", "armor", "spirit"],
-  chest: ["vitality", "armor"],
-  legs: ["vitality", "agility", "armor"],
-  gloves: ["power", "haste", "agility"],
-  weapon: ["power", "power", "haste"], // weighted toward power
-  ring: ["power", "spirit", "haste", "agility"],
-  amulet: ["spirit", "power", "vitality"],
-  bag: ["vitality"],
+  helmet: ["stamina", "armor", "intellect"],
+  chest: ["stamina", "armor"],
+  legs: ["stamina", "agility", "armor"],
+  gloves: ["strength", "haste", "agility", "crit"],
+  weapon: ["strength", "strength", "intellect", "agility", "crit"], // a mix of main stats + crit
+  ring: ["strength", "intellect", "agility", "haste", "crit"],
+  amulet: ["intellect", "strength", "stamina"],
+  bag: ["stamina"],
   consumable: [], // potions carry no equip stats
 };
 // Slots the generic gear roller can produce. Consumables are minted only via

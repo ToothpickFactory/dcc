@@ -10,13 +10,20 @@ extends Node3D
 @export var server_url := DccConst.DEFAULT_WS_URL
 @export var player_name := "GodotHero"
 
-const CAMERA_HEIGHT := 700.0
-const CAMERA_BACK_OFFSET := 560.0
+const DEFAULT_CAMERA_HEIGHT := 700.0
+const DEFAULT_CAMERA_BACK_OFFSET := 560.0
 const KEY_LIGHT_HEIGHT := 900.0
 const KEY_LIGHT_RIGHT_OFFSET := 520.0
 const KEY_LIGHT_BACK_OFFSET := 620.0
 const KEY_LIGHT_ENERGY := 1.45
 const AMBIENT_LIGHT_ENERGY := 0.72
+
+# Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
+# live in the editor. height = how far above; back = how far behind (lower back = more
+# top-down). Distance ≈ hypot(height, back); was 820/460 (~940 away, steep top-down).
+@export var cam_height := DEFAULT_CAMERA_HEIGHT
+@export var cam_back := DEFAULT_CAMERA_BACK_OFFSET
+@export var cam_fov := 60.0
 
 var _net                       # Net (Node)
 var _world: World
@@ -37,10 +44,12 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
+var _gate_hint: Label
+var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
-var _skill_ready_was := false
+var _skill_nudge_was := ""
 var _sfx: Sfx
 var _music: Music
 var _char_level := -1          # last seen character level (for level-up celebration)
@@ -55,6 +64,7 @@ var _last_hitstop := 0.0       # throttle hit-stop so swarms don't strobe
 var _boss_present_was := false # tracks boss presence for the combat-music layer
 var _trail_frame := 0          # throttles projectile trail dots
 var _key_light: DirectionalLight3D
+var _dash_ready_at := 0.0      # client-side dodge cooldown gate (ms)
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -73,6 +83,12 @@ func _ready() -> void:
 		get_tree().create_timer(3.8).timeout.connect(func():
 			if open_ui == "skills": _skills.open()
 			else: _inv.open())
+	var cam_env := OS.get_environment("DCC_CAM")  # "height,back,fov" — quick camera tuning
+	if cam_env != "":
+		var p := cam_env.split(",")
+		if p.size() >= 1 and p[0] != "": cam_height = float(p[0])
+		if p.size() >= 2 and p[1] != "": cam_back = float(p[1])
+		if p.size() >= 3 and p[2] != "": cam_fov = float(p[2])
 
 	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
 	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
@@ -96,7 +112,7 @@ func _ready() -> void:
 	add_child(env)
 
 	_cam = Camera3D.new()
-	_cam.fov = 55
+	_cam.fov = cam_fov
 	_cam.far = 8000
 	add_child(_cam)
 	_setup_scene_lighting()
@@ -145,6 +161,16 @@ func _ready() -> void:
 	_loot_prompt.position.y -= 170
 	_loot_prompt.visible = false
 	loot_layer.add_child(_loot_prompt)
+
+	# Boss-gate hint — the stairs stay shut until the floor's guardian is dead.
+	_gate_hint = Label.new()
+	_gate_hint.text = "⚔ Defeat the boss to descend"
+	_gate_hint.add_theme_font_size_override("font_size", 20)
+	_gate_hint.add_theme_color_override("font_color", Color(1.0, 0.55, 0.5))
+	_gate_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_gate_hint.position.y -= 140
+	_gate_hint.visible = false
+	loot_layer.add_child(_gate_hint)
 
 	# Run-over death summary: a centered card with your run stats + how to restart.
 	_runover_panel = PanelContainer.new()
@@ -209,10 +235,12 @@ func _ready() -> void:
 	_vignette = DangerVignette.new()
 	add_child(_vignette)
 
+	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
 	_net.events_received.connect(_on_events)
+	_net.loot_received.connect(_on_loot)
 	_net.welcomed.connect(func(you): print("[DCC] welcome you=", you))
 
 	# Name screen before connecting (skipped headless / in diagnostic modes).
@@ -281,6 +309,45 @@ func _reset_run() -> void:
 		_hud.toast("Reset request failed", Color(1.0, 0.5, 0.5))
 		http.queue_free()
 
+# Server is on a newer protocol than this build — surface it LOUDLY (a stale build that
+# silently joins a newer server renders a confusing blank/half-broken world). Persistent
+# banner so it can't be missed; the fix is to rebuild (run launch-dcc).
+func _on_protocol_mismatch(server_v, client_v) -> void:
+	var banner := Label.new()
+	banner.text = "⚠ Outdated build — server v%d, you v%d. Rebuild to update (run launch-dcc)." % [server_v, client_v]
+	banner.add_theme_font_size_override("font_size", 18)
+	banner.add_theme_color_override("font_color", Color(1.0, 0.45, 0.45))
+	banner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	banner.add_theme_constant_override("shadow_offset_y", 2)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	banner.position.y += 60
+	var layer := CanvasLayer.new()
+	layer.layer = 40  # above everything
+	add_child(layer)
+	layer.add_child(banner)
+
+# A playstyle-tailored ability dropped — celebrate it (the server sends t:"loot"; this was
+# silently dropped before). Rarity-colored toast + a pop sfx so the reward lands.
+func _on_loot(grant) -> void:
+	if not (grant is Dictionary):
+		return
+	var ability: Dictionary = grant.get("ability", {})
+	var rarity := str(grant.get("rarity", "common"))
+	var icon := str(ability.get("icon", "✦")) if ability.get("icon", null) != null else "✦"
+	var nm := str(ability.get("name", "New ability"))
+	_hud.toast("%s  %s!  (%s)" % [icon, nm, rarity], _rarity_color(rarity))
+	_sfx.play("loot")
+	if rarity == "epic" or rarity == "legendary":
+		_shake = 0.6  # a little screen pop for the big ones
+
+func _rarity_color(r: String) -> Color:
+	match r:
+		"uncommon": return Color8(0x3f, 0xae, 0x5a)
+		"rare": return Color8(0x3a, 0x7b, 0xd5)
+		"epic": return Color8(0x9b, 0x59, 0xd0)
+		"legendary": return Color8(0xe7, 0xc1, 0x4d)
+		_: return Color8(0xcf, 0xd6, 0xe6)
+
 func _bag_present(id: String) -> bool:
 	for e in _net.ents:
 		if typeof(e) == TYPE_DICTIONARY and str(e.get("id", "")) == id:
@@ -321,6 +388,10 @@ func _on_events(events: Array) -> void:
 				# Only your own casts (origin ~ your position) — avoids audio spam from every caster.
 				if Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0))).distance_to(pp) < 40.0:
 					_sfx.play("cast")
+			"windup":
+				# Enemy attack telegraph: charge tint on the attacker + a warning marker.
+				_sprites.windup_id(str(ev.get("by", "")), float(ev.get("ms", 300.0)))
+				_fx.windup_marker(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)), float(ev.get("ms", 300.0)))
 			"boss":
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
@@ -366,6 +437,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), geometry.get("stairs", {}))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
+	var st: Dictionary = geometry.get("stairs", {})
+	_stairs = Vector2(float(st.get("x", 0.0)), float(st.get("y", 0.0)))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
 	_music.set_theme(str(info.get("theme", "fantasy")))
 	_hud.floor_title(int(info.get("depth", 1)), str(info.get("theme", "")))  # "Floor N · Theme" card
@@ -399,10 +472,23 @@ func _process(dt: float) -> void:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
-		for idx in _inp.take_casts():
-			_seq += 1
-			_net.send_cast(_seq, int(idx), aim)
-			_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+		var casts: Array = _inp.take_casts()
+		if not casts.is_empty():
+			var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
+			for idx in casts:
+				_seq += 1
+				_net.send_cast(_seq, int(idx), cast_aim)
+				_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+		# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
+		if _inp.consume_dash():
+			var now_ms := float(Time.get_ticks_msec())
+			if now_ms >= _dash_ready_at:
+				_dash_ready_at = now_ms + DccConst.DASH_CD
+				var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
+				_seq += 1
+				_net.send_dash(_seq, ddir)
+				_pred.dash(ddir)
+				_sfx.play("dash")
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
 	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
@@ -420,7 +506,7 @@ func _process(dt: float) -> void:
 		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
 	var cx: float = _cam_xy.x + shake.x
 	var cy: float = _cam_xy.y + shake.y
-	_cam.position = Vector3(cx, CAMERA_HEIGHT, cy + CAMERA_BACK_OFFSET)
+	_cam.position = Vector3(cx, cam_height, cy + cam_back)
 	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
 	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
@@ -453,6 +539,8 @@ func _process(dt: float) -> void:
 	if boss_present != _boss_present_was:
 		_boss_present_was = boss_present
 		_music.set_combat(boss_present)
+	# Boss gates the stairs: hint when you're at the exit but the guardian still lives.
+	_gate_hint.visible = alive and boss_present and _stairs != Vector2.ZERO and Vector2(_pred.x, _pred.y).distance_to(_stairs) < 150.0
 
 	# Projectile trails: drop a fading dot behind in-vision projectiles (throttled).
 	_trail_frame += 1
@@ -507,14 +595,25 @@ func _process(dt: float) -> void:
 		var life := int(_net.self_dto.get("lifetimeXp", 0))
 		_runover_stats.text = "Reached Floor %d · Level %d\n%d kills · %d lifetime XP" % [floor_reached, lvl_now, kills, life]
 
-	# Skills: keep XP bars live while open; nudge + glow when an ability matures.
+	# Skills/build nudge: surface the highest-priority pending action behind the K screen —
+	# pick a class, spend a talent point, or evolve a matured ability (all live in SkillsUI).
 	if _skills.is_open():
 		_skills.sync_if_open()
-	var skill_ready: bool = alive and _skills.any_ready()
-	_skill_hint.visible = skill_ready and not _skills.is_open() and not _inv.is_open()
-	if skill_ready and not _skill_ready_was:
-		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
-	_skill_ready_was = skill_ready
+	var nudge := ""
+	if alive and not _skills.is_open():
+		var sd: Dictionary = _net.self_dto
+		if str(sd.get("chosenClass", "")) == "" and int(sd.get("talentPoints", 0)) > 0:
+			nudge = "✨ Choose your class — press K"
+		elif int(sd.get("talentPoints", 0)) > 0:
+			nudge = "✦ Talent point ready — press K"
+		elif _skills.any_ready():
+			nudge = "✨ A skill is ready to evolve — press K"
+	_skill_hint.visible = nudge != "" and not _inv.is_open()
+	if nudge != "":
+		_skill_hint.text = nudge
+	if nudge != "" and nudge != _skill_nudge_was:
+		_hud.toast(nudge, Color8(0xff, 0xd3, 0x4d))
+	_skill_nudge_was = nudge
 
 	# XP feel: float "+N XP" on kills (charXp accrues from kills) + level-up celebration.
 	if not _net.self_dto.is_empty():
@@ -596,3 +695,29 @@ func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
 		return Color.from_string(s, Color.WHITE)
 	return Color.WHITE
+
+# Light aim-assist: if an enemy sits within a cone of the player's aim (and in range),
+# snap the cast toward it — so fast swarms aren't pure precision-mouse. Picks the closest
+# enemy within ±~32° and ~560px; otherwise returns the raw aim untouched.
+func _assist_aim(aim: float) -> float:
+	var pp := Vector2(_pred.x, _pred.y)
+	var best_d := -1.0
+	var best_ang := aim
+	const CONE := 0.56
+	const RANGE := 560.0
+	for e in _net.ents:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var k := str(e.get("kind", ""))
+		if k != "monster" and k != "boss":
+			continue
+		var to := Vector2(float(e.get("x", 0.0)), float(e.get("y", 0.0))) - pp
+		var d := to.length()
+		if d < 1.0 or d > RANGE:
+			continue
+		if absf(wrapf(atan2(to.y, to.x) - aim, -PI, PI)) > CONE:
+			continue
+		if best_d < 0.0 or d < best_d:
+			best_d = d
+			best_ang = atan2(to.y, to.x)
+	return best_ang

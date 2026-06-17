@@ -30,7 +30,7 @@ func _ready() -> void:
 	box.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "WASD move · mouse aim · 1–4 / click cast. Friendly fire is ON. One life."
+	hint.text = "WASD move · mouse aim · 1–4 / click cast · SPACE dodge. Friendly fire is ON. One life."
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.modulate = Color(0.6, 0.66, 0.78)

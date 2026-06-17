@@ -95,7 +95,7 @@ godot --headless --path godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd \
 `geo_test.gd` checks the pure-logic ports (geometry decode, collision, line-of-sight).
 
 ## 7. Controls
-- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast
+- **WASD / arrows** move · **mouse** aim · **1–4 / left-click** cast · **Space / LB** dodge (i-frames)
 - **I** inventory/character (equip, drop, sell) · **K** skills & evolution · **Q** drink a potion · **E** loot a nearby bag
 - **Tab** cycle spectate target · **V** toggle free-cam (while dead/in the waiting room)
 - **F2** start a new run (admin reset — works while the server's `ADMIN_OPEN=true`)
@@ -112,31 +112,77 @@ godot --headless --path godot -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd \
 | `DCC_RESET=1` | Fire the F2 admin reset ~2.5s after launch (smoke test) |
 
 ## 9. Building a native release (Phase 3 packaging)
-Produces a standalone app — no Godot install needed to play.
+Produces a standalone app — no Godot install needed to *play* it (you do need Godot to *build* it).
 
-**One-time: install the export templates** (matched to the editor version, ~1.2 GB):
-- **Editor:** *Editor → Manage Export Templates… → Download and Install*.
-- **CLI:** download `Godot_v4.6.x-stable_export_templates.tpz` from the
-  [release page](https://github.com/godotengine/godot-builds/releases), then unzip its
-  `templates/` into `~/Library/Application Support/Godot/export_templates/<version>.stable/`
-  (macOS) · `~/.local/share/godot/export_templates/<version>.stable/` (Linux) ·
-  `%APPDATA%\Godot\export_templates\<version>.stable\` (Windows).
+**Prereqs:** Godot 4.6 (step 2) + `git`. The blocks below handle everything else (assets,
+GdUnit4, the ~1.2 GB export templates, and the build). Run them from the **repo root**.
 
-**Export** (presets live in `godot/export_presets.cfg` — macOS / Windows / Linux):
+### Build from scratch — macOS (one copy-paste, run from repo root)
 ```bash
-cd godot
-godot --headless --path . --export-release "macOS"          build/macos/DCC.app
-godot --headless --path . --export-release "Windows Desktop" build/windows/DCC.exe
-godot --headless --path . --export-release "Linux/X11"       build/linux/DCC.x86_64
-```
-The macOS preset builds a **universal** (Intel + Apple Silicon) `.app`. `build/` is gitignored.
-The bundle is **unsigned** — to run it locally without Gatekeeper griping:
-`xattr -dr com.apple.quarantine build/macos/DCC.app`. For distribution, set a signing identity
-+ notarization in the preset (`codesign/…`, `notarization/…`).
+GODOT="${GODOT:-/Applications/Godot.app/Contents/MacOS/Godot}"   # or: export GODOT=godot
+VER="$("$GODOT" --version | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 
-> The universal/arm64 macOS export needs `rendering/textures/vram_compression/import_etc2_astc`
-> (already set in `project.godot`). The server URL is baked from the `Main` node's `server_url`
-> export (defaults to the deployed worker); players can still override it with `DCC_WS`.
+./godot/setup.sh                                                 # GdUnit4 + assets + import
+
+TPL="$HOME/Library/Application Support/Godot/export_templates/${VER}.stable"   # one-time
+if [ ! -d "$TPL" ]; then
+  curl -L -o /tmp/dcc-tpl.tpz "https://github.com/godotengine/godot-builds/releases/download/${VER}-stable/Godot_v${VER}-stable_export_templates.tpz"
+  rm -rf /tmp/dcc-tpl && unzip -q /tmp/dcc-tpl.tpz -d /tmp/dcc-tpl
+  mkdir -p "$TPL" && cp /tmp/dcc-tpl/templates/* "$TPL/"
+fi
+
+mkdir -p "$PWD/godot/build/macos"
+"$GODOT" --headless --path godot --export-release "macOS" "$PWD/godot/build/macos/DCC.app"
+open "$PWD/godot/build/macos/DCC.app"
+```
+
+### Build from scratch — Windows (one copy-paste, PowerShell, run from repo root)
+```powershell
+$Godot = if ($env:GODOT) { $env:GODOT } else { "godot" }         # or full path to Godot.exe
+$Ver = ((& $Godot --version) -join "") -replace '^(\d+\.\d+\.\d+).*','$1'
+
+pwsh godot/setup.ps1                                             # GdUnit4 + assets + import
+
+$Tpl = "$env:APPDATA\Godot\export_templates\$Ver.stable"        # one-time
+if (-not (Test-Path $Tpl)) {
+  Invoke-WebRequest "https://github.com/godotengine/godot-builds/releases/download/$Ver-stable/Godot_v$Ver-stable_export_templates.tpz" -OutFile "$env:TEMP\dcc-tpl.zip"
+  Expand-Archive "$env:TEMP\dcc-tpl.zip" "$env:TEMP\dcc-tpl" -Force
+  New-Item -ItemType Directory -Force $Tpl | Out-Null
+  Copy-Item "$env:TEMP\dcc-tpl\templates\*" $Tpl
+}
+
+New-Item -ItemType Directory -Force "$PWD\godot\build\windows" | Out-Null
+& $Godot --headless --path godot --export-release "Windows Desktop" "$PWD\godot\build\windows\DCC.exe"
+& "$PWD\godot\build\windows\DCC.exe"
+```
+
+> **Gotcha (the error you hit):** Godot resolves the export path **relative to the project
+> dir** (`--path`), and it does **not** create the output folder. So use an **absolute** path
+> (as above) or `cd godot` + a project-relative `build/...` path, and `mkdir` the folder first.
+> A bare repo-root `godot/build/macos/...` with `--path godot` fails with *"Target folder does
+> not exist."*
+
+The macOS preset builds a **universal** (Intel + Apple Silicon) `.app`; `build/` is gitignored.
+Builds are **unsigned**: on macOS first-run, `xattr -dr com.apple.quarantine godot/build/macos/DCC.app`
+(or right-click → Open); on Windows, click "More info → Run anyway" past SmartScreen. For real
+distribution, add a signing identity + notarization in `export_presets.cfg`.
+
+> Templates are a one-time, version-matched download (re-run the `TPL`/`$Tpl` block after a Godot
+> upgrade). The universal macOS export needs `rendering/textures/vram_compression/import_etc2_astc`
+> (already set in `project.godot`). The server URL defaults to the deployed worker; override with `DCC_WS`.
+
+### Click-to-play launcher — the single command (recommended)
+Instead of the blocks above, devs can just run the launcher: it **self-installs everything the
+first time** (GdUnit4 + assets + the ~1.2 GB export templates), then on every run fast-forwards
+`main` (only if your tree is clean), re-exports when there's a new version, and launches the game.
+Only prereqs: **git + Godot 4.6**.
+
+- **macOS:** double-click **`godot/launch-dcc.command`** (right-click → Open the first time), or
+  drag an alias to your Desktop/Dock. From a terminal: `./godot/launch-dcc.command`.
+- **Windows:** `pwsh godot/launch-dcc.ps1` (or a desktop shortcut targeting
+  `pwsh -File <repo>\godot\launch-dcc.ps1`).
+
+If your tree has local changes it skips the auto-update and launches your current code.
 
 ## 10. Troubleshooting
 - **Black screen / "No floor geometry" toast** → the server isn't on protocol v6. Run a

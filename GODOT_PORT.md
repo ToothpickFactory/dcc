@@ -12,6 +12,10 @@
 > **Protocol changelog** (keep `DccConst.PROTOCOL_VERSION` + Godot handling in lockstep with `src/protocol.ts`):
 > - **v6** — added `floor.geometry` (server sends the maze grid for non-procgen clients).
 > - **v7** — added the `useItem` client message (drink carried consumables, e.g. health potions). Godot: `InventoryUI` drinks consumables on tap + `Q` quick-use in `Main.gd`.
+> - **v8** — RPG Phase 2. Attributes renamed to WoW stats (Strength/Intellect/Stamina/Agility/Haste/Crit/Armor); `SelfDTO` gains `chosenClass`/`talents`/`talentPoints`/`shield` + `derived.critChance`; new `chooseClass`/`spendTalent` client messages; `dmg` event gains an optional `crit` flag. Godot: `Talents.gd` (class + tree data, mirrors classes.ts/talents.ts), class picker + talent grid in `SkillsUI.gd`, updated stat labels in `SkillsUI`/`InventoryUI`.
+> - **v9** — added the `dash` client message (dodge/evade i-frame burst).
+> - **v10** — added the `windup` game event (enemy attack telegraphs) + knockback.
+> - **v11** — added the `addHotbarItem` client message: park a carried consumable (potion) on the action bar as a 🧪 slot; casting that slot drinks one (server routes `cast` on a `usesItem` slot to the drink path; the slot's `ammo` shows your potion count). Godot: `InventoryUI` "+bar" toggle on consumables; the HUD ability bar shows the count via the existing ammo render.
 
 ## 1. Executive Summary
 

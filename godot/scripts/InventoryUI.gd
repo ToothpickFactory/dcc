@@ -24,11 +24,11 @@ const SLOT_EMOJI := {
 const ITEM_EMOJI := {
 	"helmet": "⛑️", "chest": "\U01f6e1️", "legs": "\U01f456",
 	"gloves": "\U01f9e4", "weapon": "⚔️", "ring": "\U01f48d",
-	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U0001f9ea",
+	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U01f9ea",
 }
 const ATTR_ABBR := {
-	"power": "PWR", "spirit": "SPR", "haste": "HST",
-	"vitality": "VIT", "agility": "AGI", "armor": "ARM",
+	"strength": "STR", "intellect": "INT", "stamina": "STA",
+	"agility": "AGI", "haste": "HST", "crit": "CRIT", "armor": "ARM",
 }
 # EQUIP_SLOTS order from shared/items.ts (drives the equipped grid layout).
 const EQUIP_SLOTS := ["helmet", "chest", "legs", "gloves", "mainHand", "offHand", "ring1", "ring2", "amulet"]
@@ -254,6 +254,27 @@ func _render(msg: Dictionary) -> void:
 		# Consumables drink (heal self); everything else equips on tap.
 		var tap_msg := {"t": "useItem", "item": item_id} if is_consumable else {"t": "equip", "item": item_id}
 		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send(tap_msg))
+		# Consumables: a "+bar" toggle to park a potion slot on the hotbar.
+		if is_consumable:
+			var sd: Variant = _net.get("self_dto")
+			var on_bar := false
+			if sd is Dictionary:
+				for a in (sd as Dictionary).get("abilities", []):
+					if a is Dictionary and a.get("usesItem", null) != null:
+						on_bar = true
+			var tobar := Label.new()
+			tobar.text = "✓bar" if on_bar else "+bar"
+			tobar.add_theme_font_size_override("font_size", 10)
+			tobar.add_theme_color_override("font_color", Color(0.36, 1.0, 0.6) if on_bar else Color(0.6, 0.9, 1.0))
+			tobar.mouse_filter = Control.MOUSE_FILTER_STOP
+			tobar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+			tobar.position = Vector2(3, -18)
+			tobar.tooltip_text = "Remove the potion slot from your hotbar" if on_bar else "Add a potion slot to your hotbar (cast it to drink)"
+			tobar.gui_input.connect(func(ev: InputEvent):
+				if _is_tap(ev):
+					_send({"t": "addHotbarItem", "item": item_id})
+					_consume(ev))
+			body.add_child(tobar)
 		# Drop affordance (top-right).
 		var drop := _corner_label("\U01f5d1", DROP_COLOR, false)
 		drop.tooltip_text = "Drop on the floor"
@@ -280,11 +301,12 @@ func _render_stats(msg: Dictionary) -> void:
 	var rows := [
 		["Max HP", str(roundi(float(d.get("maxHp", 0.0))))],
 		["Move", str(roundi(float(d.get("moveSpeed", 0.0))))],
-		["Power", "%d · %s dmg" % [int(a.get("power", 0)), _pct(float(d.get("spellPower", 1.0)))]],
-		["Spirit", "%d · %s heal" % [int(a.get("spirit", 0)), _pct(float(d.get("healPower", 1.0)))]],
-		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
-		["Vitality", str(int(a.get("vitality", 0)))],
+		["Strength", "%d · %s dmg" % [int(a.get("strength", 0)), _pct(float(d.get("spellPower", 1.0)))]],
+		["Intellect", "%d · %s heal" % [int(a.get("intellect", 0)), _pct(float(d.get("healPower", 1.0)))]],
+		["Stamina", str(int(a.get("stamina", 0)))],
 		["Agility", str(int(a.get("agility", 0)))],
+		["Haste", "%d · -%d%% cd" % [int(a.get("haste", 0)), roundi((1.0 - float(d.get("cdMult", 1.0))) * 100.0)]],
+		["Crit", "%d · %s" % [int(a.get("crit", 0)), _pct(float(d.get("critChance", 0.0)))]],
 		["Armor", "%d · %s block" % [int(a.get("armor", 0)), _pct(float(d.get("dr", 0.0)))]],
 	]
 	for r in rows:

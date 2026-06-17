@@ -16,7 +16,7 @@ const SLOT_EMOJI: Record<EquipSlot, string> = {
 const ITEM_EMOJI: Record<ItemSlot, string> = {
   helmet: "⛑️", chest: "🛡️", legs: "👖", gloves: "🧤", weapon: "⚔️", ring: "💍", amulet: "📿", bag: "🎒", consumable: "🧪",
 };
-const ATTR_ABBR: Record<string, string> = { power: "PWR", spirit: "SPR", haste: "HST", vitality: "VIT", agility: "AGI", armor: "ARM" };
+const ATTR_ABBR: Record<string, string> = { strength: "STR", intellect: "INT", stamina: "STA", agility: "AGI", haste: "HST", crit: "CRIT", armor: "ARM" };
 
 export class InventoryUI {
   private net: Net;
@@ -127,6 +127,17 @@ export class InventoryUI {
         tile.classList.add("usable");
         tile.title = "Drink to heal";
         tile.addEventListener("click", () => this.net.send({ t: "useItem", item: it.id }));
+        // Add-to-hotbar toggle: a 🧪 slot you can cast from the action bar.
+        const onBar = (this.net.self?.abilities ?? []).some((a) => a.usesItem);
+        const bar = document.createElement("span");
+        bar.className = "tobar" + (onBar ? " on" : "");
+        bar.textContent = onBar ? "✓bar" : "+bar";
+        bar.title = onBar ? "Remove the potion slot from your hotbar" : "Add a potion slot to your hotbar (cast it to drink)";
+        bar.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.net.send({ t: "addHotbarItem", item: it.id });
+        });
+        tile.appendChild(bar);
       } else {
         tile.addEventListener("click", () => this.net.send({ t: "equip", item: it.id }));
       }
@@ -230,11 +241,12 @@ export function renderStatRows(a: Attributes, d: DerivedStats): string {
   return [
     row("Max HP", String(Math.round(d.maxHp))),
     row("Move", String(Math.round(d.moveSpeed))),
-    row("Power", `${a.power} · ${pct(d.spellPower)} dmg`),
-    row("Spirit", `${a.spirit} · ${pct(d.healPower)} heal`),
-    row("Haste", `${a.haste} · -${Math.round((1 - d.cdMult) * 100)}% cd`),
-    row("Vitality", String(a.vitality)),
+    row("Strength", `${a.strength} · ${pct(d.spellPower)} dmg`),
+    row("Intellect", `${a.intellect} · ${pct(d.healPower)} heal`),
+    row("Stamina", String(a.stamina)),
     row("Agility", String(a.agility)),
+    row("Haste", `${a.haste} · -${Math.round((1 - d.cdMult) * 100)}% cd`),
+    row("Crit", `${a.crit} · ${pct(d.critChance)}`),
     row("Armor", `${a.armor} · ${pct(d.dr)} block`),
   ].join("");
 }

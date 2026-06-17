@@ -1,4 +1,4 @@
-import type { Ability, MonsterKind } from "../shared/types";
+import type { Ability, Klass, MonsterKind } from "../shared/types";
 import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
@@ -20,7 +20,22 @@ export interface PlayerState {
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
   charXp: number; // total character XP (from kills); drives character level + passive bonuses
+  // ---- WoW-style class & talents (RPG Phase 2) ----
+  chosenClass: Klass | null; // picked at the first level-up; drives main-stat scaling + talent tree
+  talents: Record<string, number>; // talent node id -> rank spent
+  talentPoints: number; // unspent talent points (1 granted per character level)
+  // ---- Tank/support state (set by talents; read by the sim) ----
+  threatMult: number; // multiplier on threat this player generates (tank talent raises it)
+  shield: number; // current absorb shield (consumed before HP)
+  shieldUntil: number; // shield expires at this tick
+  bloodlustUntil: number; // group-haste buff active while now < this
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  // ---- Dodge/dash (evade) ----
+  dashUntil: number; // dash burst active while now < this (movement overridden)
+  dashDirX: number; // unit dash direction
+  dashDirY: number;
+  dashReadyAt: number; // dash off cooldown at this tick
+  dashIframeUntil: number; // invulnerable (i-frames) while now < this
   potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)
@@ -47,6 +62,14 @@ export interface MonsterState {
   inv: Inventory; // monsters carry gear too — dropped on death
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
   threat: Map<string, number>; // playerId -> accumulated threat
+  dmgMult: number; // per-floor damage scaling (1 at floor 1, grows with depth)
+  // ---- Attack telegraph (melee wind-up) ----
+  windupUntil: number; // melee lands when now >= this (0 = not winding up)
+  windupTarget: string; // player id the wind-up is aimed at
+  // ---- Knockback (player hits shove + stagger) ----
+  knockUntil: number; // knockback impulse active while now < this
+  knockVx: number;
+  knockVy: number;
 }
 
 // The boss (ported from the monolith). Its own type so combat can tell it apart
@@ -64,6 +87,11 @@ export interface BossState {
   castReadyAt: number;
   meleeReadyAt: number;
   threat: Map<string, number>;
+  dmgMult: number; // per-floor damage scaling
+  // ---- Attack telegraphs (wind-up before melee / cast) ----
+  meleeWindupUntil: number; // boss melee lands when now >= this
+  castWindupUntil: number; // boss bolt-fan fires when now >= this
+  castTarget: string; // player id the pending cast is aimed at
 }
 
 export interface ProjectileState {
@@ -79,6 +107,8 @@ export interface ProjectileState {
   ttl: number; // seconds remaining
   hitR: number; // projectile's own collision radius (px), added to the target's
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players
+  allyOnly?: boolean; // support projectile: only ever resolves on allied players (heals/shields)
+  shield?: number; // support projectile: absorb shield applied to the struck ally
 }
 
 // A bag of dropped items sitting on the floor. Spawned when ANY entity dies
@@ -101,6 +131,7 @@ export interface WorldCtx {
   projectiles: ProjectileState[];
   boss: BossState | null;
   lootBags: LootBagState[];
+  groupHasteReadyAt: number; // shared cooldown for the group-haste (bloodlust) burst
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
@@ -108,4 +139,6 @@ export interface WorldCtx {
   rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
   // Award ability + character XP to a player for a hit/kill with action slot `idx`.
   gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;
+  // Co-op: split a kill's character-XP share to living allies near (x,y).
+  shareKillXp(x: number, y: number, killerId: string, kind?: MonsterKind | "boss"): void;
 }

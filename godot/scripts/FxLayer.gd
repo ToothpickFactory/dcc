@@ -85,6 +85,17 @@ func xp_popup(x: float, y: float, amount: int) -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
 
+# Attack telegraph: a warning marker over a winding-up enemy for the tell duration, so
+# you can read the incoming hit and dodge/step out (paired with the enemy's charge tint).
+func windup_marker(x: float, y: float, ms: float) -> void:
+	var dur: float = clampf(ms / 1000.0, 0.15, 1.2)
+	var lbl := _new_label("❗", Color(1.0, 0.62, 0.12), 30, x, y, 110.0)
+	lbl.scale = Vector3(0.6, 0.6, 0.6)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "scale", Vector3(1.3, 1.3, 1.3), dur * 0.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(lbl, "modulate:a", 0.0, dur).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(lbl.queue_free)
+
 # Projectile/melee impact: a quick bright burst that scales up and fades (the "hit"
 # event is emitted by the server but was previously rendered by neither client).
 func _impact(e: Dictionary) -> void:

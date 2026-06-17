@@ -230,10 +230,15 @@ function frame(now: number) {
     hud?.update(net);
     if (invUI.isOpen()) invUI.syncBar(); // keep the action-bar swap section live
     skillsUI.syncIfOpen();
-    // Evolution-ready: glow the Skills button + toast once when it first happens.
-    const skillReady = skillsUI.anyReady();
+    // Glow the Skills button + toast once when an evolution is ready OR a class /
+    // talent point is waiting to be spent (level-up).
+    const pending = skillsUI.classOrTalentPending();
+    const skillReady = skillsUI.anyReady() || pending;
     skillsUI.setGlow(skillReady);
-    if (skillReady && !skillReadyWas) showToast("✨ A skill is ready to evolve! Press E", "#ffd34d");
+    if (skillReady && !skillReadyWas) {
+      const noClass = net.self?.chosenClass == null && pending;
+      showToast(noClass ? "⚔️ Level up! Choose your class — press E" : pending ? "✨ A talent point is ready — press E" : "✨ A skill is ready to evolve! Press E", "#ffd34d");
+    }
     skillReadyWas = skillReady;
   }
 

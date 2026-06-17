@@ -3,6 +3,11 @@ import {
   BOSS_MAX_HP,
   BOSS_RADIUS,
   bossNameForDepth,
+  DASH_CD,
+  DASH_IFRAME_MS,
+  DASH_MS,
+  FLOOR_DMG_SCALE,
+  FLOOR_HP_SCALE,
   LOOT_BAG_TTL,
   LOOT_REACH,
   MAX_FLOORS,
@@ -11,7 +16,7 @@ import {
   PLAYER_SPEED,
   TICK_MS,
 } from "../shared/constants";
-import type { Ability, MonsterKind, Rarity } from "../shared/types";
+import type { Ability, Klass, MonsterKind, Rarity } from "../shared/types";
 import {
   addItem,
   aggregateAttrs,
@@ -32,8 +37,10 @@ import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
-import { DEFAULT_ABILITIES, starterAbilities } from "../shared/abilities";
+import { DEFAULT_ABILITIES, potionHotbarSlot, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
+import { CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
+import { TALENT_TREES, canSpendTalent, pointsForLevel } from "../shared/talents";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor, rng } from "../procgen";
@@ -65,6 +72,7 @@ const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
   brute: 0.45,
 };
 const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
+const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-side validation)
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
 
@@ -78,6 +86,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   projectiles: ProjectileState[] = [];
   boss: BossState | null = null;
   lootBags: LootBagState[] = [];
+  groupHasteReadyAt = 0; // shared cooldown for the group-haste (bloodlust) burst
 
   private events: GameEvent[] = [];
   private loop: ReturnType<typeof setInterval> | null = null;
@@ -227,13 +236,39 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     const amount = killed ? (kind ? MONSTER_XP[kind] : PVP_KILL_XP) : HIT_XP;
     ab.xp = (ab.xp ?? 0) + amount;
     this.bumpLb(p, amount, killed); // all-time leaderboard score (every hit + kill)
-    if (killed) {
-      const before = charLevelOf(p.charXp);
-      p.charXp += amount;
-      if (charLevelOf(p.charXp) > before) {
-        recomputePlayer(p); // new character level -> more max HP
-        p.hp = p.derived.maxHp; // top off on level-up
-      }
+    if (killed) this.grantCharXp(p, amount);
+  }
+
+  // Add character XP + handle the level-up (talent point, more HP). Shared by the
+  // killer (gainXp) and nearby allies (shareKillXp).
+  private grantCharXp(p: PlayerState, amount: number): void {
+    const before = charLevelOf(p.charXp);
+    p.charXp += amount;
+    const after = charLevelOf(p.charXp);
+    if (after > before) {
+      // 1 talent point per level gained. Until a class is chosen, the client
+      // shows the class picker (a pending point means "choose your class").
+      p.talentPoints += after - before;
+      recomputePlayer(p); // new character level -> more max HP
+      p.hp = p.derived.maxHp; // top off on level-up
+      this.persistPlayer(p);
+    }
+  }
+
+  // Co-op shared XP: living allies near a kill get a CHARACTER-XP share (50%), so a
+  // tank/healer who didn't land the killing blow still levels with the party. Ability
+  // XP stays with whoever used the ability (the killer, via gainXp).
+  shareKillXp(x: number, y: number, killerId: string, kind?: MonsterKind | "boss"): void {
+    const amount = kind ? MONSTER_XP[kind] : PVP_KILL_XP;
+    const share = Math.max(1, Math.round(amount * 0.5));
+    const R2 = 600 * 600;
+    for (const p of this.players.values()) {
+      if (p.id === killerId || p.status !== "alive" || p.reached) continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy > R2) continue;
+      this.grantCharXp(p, share);
+      this.bumpLb(p, share, false);
     }
   }
 
@@ -289,6 +324,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // floor.spawns carry real variety (any non-grunt present), honor them as-is.
     const homogeneousGrunt = this.floor.spawns.every((s) => s.kind === "grunt");
     const VARIETY: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "swarm", "grunt"];
+    // Per-floor scaling so descent gets deadlier, not just more crowded.
+    const depthSteps = Math.max(0, this.floor.depth - 1);
+    const hpMult = 1 + depthSteps * FLOOR_HP_SCALE;
+    const dmgMult = 1 + depthSteps * FLOOR_DMG_SCALE;
     this.monsters = this.floor.spawns.map((s, i) => {
       const kind = homogeneousGrunt ? VARIETY[i % VARIETY.length] : s.kind;
       const def = MONSTER_KINDS[kind];
@@ -310,9 +349,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         inv: emptyInventory(),
         derived: deriveStats(def.hp, def.speed, base),
         threat: new Map(),
+        dmgMult,
+        windupUntil: 0,
+        windupTarget: "",
+        knockUntil: 0,
+        knockVx: 0,
+        knockVy: 0,
       };
     });
     for (const m of this.monsters) this.gearUpMonster(m);
+    // Apply depth HP scaling AFTER gear/recompute set the base maxHp.
+    for (const m of this.monsters) {
+      m.derived.maxHp = Math.round(m.derived.maxHp * hpMult);
+      m.maxHp = m.derived.maxHp;
+      m.hp = m.maxHp;
+    }
   }
 
   // Give a monster 1-2 generated items (so kills actually drop loot), then fold
@@ -330,6 +381,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private spawnBoss() {
     // The exit guardian starts near the stairs on every floor.
     const { x, y } = this.bossSpawnNearStairs();
+    const depthSteps = Math.max(0, this.floor.depth - 1);
+    const maxHp = Math.round(BOSS_MAX_HP * (1 + depthSteps * FLOOR_HP_SCALE));
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
@@ -337,12 +390,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       x,
       y,
       aim: 0,
-      hp: BOSS_MAX_HP,
-      maxHp: BOSS_MAX_HP,
+      hp: maxHp,
+      maxHp,
       dead: false,
       castReadyAt: this.now + 1500,
       meleeReadyAt: 0,
       threat: new Map(),
+      dmgMult: 1 + depthSteps * FLOOR_DMG_SCALE,
+      meleeWindupUntil: 0,
+      castWindupUntil: 0,
+      castTarget: "",
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
@@ -385,6 +442,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           inv: emptyInventory(),
           gold: 0,
           charXp: 0,
+          chosenClass: null, // fresh run = pick your class again
+          talents: {},
+          talentPoints: 0,
           lastSeen: Date.now(),
         });
       }
@@ -412,6 +472,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.seen.clear();
       p.abilities = starterAbilities(); // fresh run = base sword + rocks, all skill progress wiped
       p.charXp = 0;
+      p.chosenClass = null; // fresh run = re-pick class + re-spend talents
+      p.talents = {};
+      p.talentPoints = 0;
+      p.threatMult = 1;
+      p.shield = 0;
+      p.shieldUntil = 0;
+      p.bloodlustUntil = 0;
       p.base = zeroAttrs(); // fresh run = fresh character: gear wiped
       p.inv = emptyInventory();
       recomputePlayer(p);
@@ -703,12 +770,24 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : starterAbilities()).map((a) => ({ ...a })),
       charXp: rec?.charXp ?? 0,
+      chosenClass: rec?.chosenClass ?? null,
+      talents: rec?.talents ?? {},
+      talentPoints: rec?.talentPoints ?? 0,
+      threatMult: 1,
+      shield: 0,
+      shieldUntil: 0,
+      bloodlustUntil: 0,
       slowUntil: 0,
+      dashUntil: 0,
+      dashDirX: 0,
+      dashDirY: 0,
+      dashReadyAt: 0,
+      dashIframeUntil: 0,
       potionReadyAt: 0,
       seen: new Set(),
       base,
       inv,
-      derived: deriveStats(PLAYER_MAX_HP, PLAYER_SPEED, base),
+      derived: deriveStats(PLAYER_MAX_HP, PLAYER_SPEED, base, rec?.chosenClass ? CLASS_MAIN_STAT[rec.chosenClass] : "strength"),
       ws,
       linkdead: false,
     };
@@ -757,7 +836,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (player.reached) return; // in the waiting room — no casting
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
-      castAbility(this, player, msg.ability | 0, player.aim);
+      const slot = msg.ability | 0;
+      // A consumable hotbar slot drinks an item; everything else casts normally.
+      if (player.abilities[slot]?.usesItem) this.castConsumable(player, slot);
+      else castAbility(this, player, slot, player.aim);
+    } else if (msg.t === "dash") {
+      if (player.reached) return; // in the waiting room — no dashing
+      player.lastSeq = msg.seq | 0;
+      this.dash(player, msg.dir);
     } else if (msg.t === "sell") {
       this.sellItem(player, String(msg.item));
     } else if (msg.t === "equip") {
@@ -768,6 +854,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.applyInv(player, () => unequipBag(player.inv, msg.index | 0));
     } else if (msg.t === "drop") {
       this.dropItem(player, String(msg.item));
+    } else if (msg.t === "addHotbarItem") {
+      this.addHotbarItem(player, String(msg.item));
     } else if (msg.t === "useItem") {
       this.useItem(player, String(msg.item));
     } else if (msg.t === "openLoot") {
@@ -778,7 +866,67 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.swapAbility(player, msg.a | 0, msg.b | 0);
     } else if (msg.t === "evolve") {
       this.evolveAbility(player, msg.slot | 0, String(msg.to));
+    } else if (msg.t === "chooseClass") {
+      this.chooseClass(player, String(msg.cls));
+    } else if (msg.t === "spendTalent") {
+      this.spendTalent(player, String(msg.node));
     }
+  }
+
+  // Dodge/dash: a short invulnerable burst in `dir` (the client's move vec, or aim
+  // if standing still), gated by a cooldown. Server-authoritative; the client predicts.
+  private dash(p: PlayerState, dir: unknown): void {
+    if (p.status !== "alive") return;
+    if (this.now < p.dashReadyAt) return; // on cooldown
+    let dx = 0;
+    let dy = 0;
+    if (Array.isArray(dir)) {
+      dx = Number(dir[0]) || 0;
+      dy = Number(dir[1]) || 0;
+    }
+    let len = Math.hypot(dx, dy);
+    if (len < 0.01) {
+      // No direction given (standing still, no aim) — dash toward facing.
+      dx = Math.cos(p.aim);
+      dy = Math.sin(p.aim);
+      len = 1;
+    }
+    p.dashDirX = dx / len;
+    p.dashDirY = dy / len;
+    p.dashUntil = this.now + DASH_MS;
+    p.dashIframeUntil = this.now + DASH_IFRAME_MS;
+    p.dashReadyAt = this.now + DASH_CD;
+  }
+
+  // Pick a WoW-style class — only allowed once (the first level-up's pending
+  // point unlocks it). Sets the main stat (recompute) + opens the talent tree.
+  private chooseClass(p: PlayerState, cls: string): void {
+    if (p.status !== "alive") return;
+    if (p.chosenClass) return; // class is permanent for the run
+    if (!(KLASSES_SET.has(cls))) return;
+    p.chosenClass = cls as Klass;
+    recomputePlayer(p); // pick up the class main stat
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Spend one talent point on a node. Server-authoritative: validates the node is
+  // in the class tree, the row is unlocked, rank room remains, no choice conflict.
+  // Ability grants land on the action bar; passives refold stats.
+  private spendTalent(p: PlayerState, nodeId: string): void {
+    if (p.status !== "alive" || !p.chosenClass) return;
+    if (!canSpendTalent(p.chosenClass, p.talents, p.talentPoints, nodeId)) return;
+    const node = TALENT_TREES[p.chosenClass].find((n) => n.id === nodeId);
+    if (!node) return;
+    p.talents[nodeId] = (p.talents[nodeId] ?? 0) + 1;
+    p.talentPoints -= 1;
+    if (node.grants?.ability) {
+      const grant = ABILITY_NODES[node.grants.ability];
+      if (grant && !p.abilities.some((a) => a.id === grant.id)) this.slotLoot(p, { ...grant, tier: 0, xp: 0, fromTalent: true });
+    }
+    recomputePlayer(p); // passive bonuses (attrs / threat) take effect
+    this.persistPlayer(p);
+    this.sendInv(p);
   }
 
   // Reorder the action bar (e.g. move a found ability into the auto-cast slot).
@@ -832,22 +980,72 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.sendInv(p);
   }
 
-  // Drink/use a carried consumable (e.g. a potion). Server-authoritative: validates
-  // it's a consumable and off cooldown, applies the heal to SELF, removes the item.
+  // Drink/use a carried consumable (e.g. a potion) by id — the inventory "Drink"
+  // button / Q key. Server-authoritative; off the shared consumable cooldown.
   private useItem(p: PlayerState, itemId: string): void {
     if (p.status !== "alive" || p.reached) return; // not while dead or in the waiting room
     if (this.now < p.potionReadyAt) return; // shared consumable cooldown
-    const idx = findCarried(p.inv, itemId);
-    if (idx < 0) return;
-    const it = p.inv.carried[idx]!;
-    if (!it.consumable) return; // only consumables are drinkable
+    this.consumeFrom(p, findCarried(p.inv, itemId));
+  }
+
+  // Apply a carried consumable at index `idx` (heal self, remove it). Returns true
+  // if it actually consumed something. Shared by useItem + the hotbar potion slot.
+  private consumeFrom(p: PlayerState, idx: number): boolean {
+    if (idx < 0) return false;
+    const it = p.inv.carried[idx];
+    if (!it?.consumable) return false; // only consumables are drinkable
     const amount = it.consumable.heal ?? Math.round(p.derived.maxHp * (it.consumable.healPct ?? 0));
-    if (amount <= 0) return;
+    if (amount <= 0) return false;
     p.inv.carried.splice(idx, 1); // consume it
     p.potionReadyAt = this.now + POTION_CD;
     applyHeal(this, p, amount, p.id); // clamps to maxHp, pushes the heal fx
     this.persistPlayer(p);
     this.sendInv(p);
+    return true;
+  }
+
+  // Cast a hotbar consumable slot (a "potion" action): drink the first carried
+  // consumable, set the slot's cooldown so the HUD shows it. No-op if none/on cd.
+  private castConsumable(p: PlayerState, idx: number): void {
+    if (p.status !== "alive" || p.reached) return;
+    const ab = p.abilities[idx];
+    if (!ab?.usesItem) return;
+    if ((p.cds[idx] ?? 0) > this.now || this.now < p.potionReadyAt) return; // on cooldown
+    const c = p.inv.carried.findIndex((i) => i.consumable);
+    if (c < 0) return; // no consumables to use
+    if (this.consumeFrom(p, c)) p.cds[idx] = this.now + ab.cd * p.derived.cdMult;
+  }
+
+  // Toggle a carried consumable onto the action bar (or off, if already there).
+  // The hotbar slot draws from your consumable supply when cast.
+  private addHotbarItem(p: PlayerState, itemId: string): void {
+    if (p.status !== "alive") return;
+    const existing = p.abilities.findIndex((a) => a.usesItem);
+    if (existing >= 0) {
+      this.removeAbilitySlot(p, existing); // toggle off
+    } else {
+      const it = p.inv.carried[findCarried(p.inv, itemId)];
+      if (!it?.consumable) return; // must reference a carried consumable
+      if (p.abilities.length >= MAX_ABILITY_SLOTS) {
+        if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: "hotbar-full", ability: potionHotbarSlot(), rarity: "common", flavor: { name: "Hotbar full", flavor: "Swap out an ability first." } } });
+        return; // bar is full — surface a hint instead of silently dropping an ability
+      }
+      p.abilities.push(potionHotbarSlot());
+    }
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Remove the ability at `idx` and reindex the cooldown map.
+  private removeAbilitySlot(p: PlayerState, idx: number): void {
+    p.abilities.splice(idx, 1);
+    const cds: Record<number, number> = {};
+    for (const [k, v] of Object.entries(p.cds)) {
+      const i = Number(k);
+      if (i < idx) cds[i] = v;
+      else if (i > idx) cds[i - 1] = v;
+    }
+    p.cds = cds;
   }
 
   // Sell a CARRIED item for gold — a waiting-room action (you must be "reached").
@@ -956,8 +1154,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         // (frozen wherever they dropped) must not block the others.
         if (p.status !== "alive" || p.linkdead) continue;
         // Latch: the instant you touch the stairs you're "done" — safe in the
-        // waiting room. You don't have to stay on the tile.
-        if (!p.reached && this.atStairs(p)) this.markReached(p);
+        // waiting room. You don't have to stay on the tile. BUT the boss gates the
+        // exit — the stairs only open once the floor's guardian is dead (CoN act beat).
+        if (!p.reached && this.atStairs(p) && (!this.boss || this.boss.dead)) this.markReached(p);
         living++;
         if (!p.reached) allReached = false;
       }
@@ -1012,6 +1211,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       inv: p.inv,
       gold: p.gold,
       charXp: p.charXp,
+      chosenClass: p.chosenClass,
+      talents: p.talents,
+      talentPoints: p.talentPoints,
       lastSeen: Date.now(),
     };
   }
@@ -1072,16 +1274,22 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.abilities.push(ability);
       return;
     }
-    let target = BASE;
+    // Random LOOT grants never evict a talent-chosen ability; a talent grant may
+    // replace any extra (talents take priority over loot).
+    const incomingIsTalent = ability.fromTalent === true;
+    let target = -1;
     let worst = Infinity;
     for (let i = BASE; i < p.abilities.length; i++) {
       const a = p.abilities[i];
+      if (a.usesItem) continue; // never evict a hotbar consumable slot
+      if (!incomingIsTalent && a.fromTalent) continue; // protect chosen talents from loot
       const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
       if (score < worst) {
         worst = score;
         target = i;
       }
     }
+    if (target < 0) return; // every extra slot is a protected talent — keep the chosen kit
     p.abilities[target] = ability;
   }
 
@@ -1091,6 +1299,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private autoCast(p: PlayerState): void {
     const ab = p.abilities[0];
     if (!ab) return;
+    if (ab.usesItem) return; // never auto-drink a consumable parked in the auto slot
     if ((p.cds[0] ?? 0) > this.now) return;
     if (ab.ammo !== undefined && ab.ammo <= 0) return;
     const target = this.nearestEnemy(p.x, p.y, ab.range);
@@ -1163,7 +1372,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       });
     }
     for (const b of this.lootBags) {
-      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length });
+      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items) });
     }
     for (const pr of this.projectiles) {
       ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), sprite: pr.ability });
@@ -1171,6 +1380,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     for (const p of this.players.values()) {
       if (p.linkdead) continue; // no live socket to send to
+      // Live consumable count on any hotbar potion slot so the HUD shows "N left".
+      const potions = p.inv.carried.reduce((n, it) => n + (it.consumable ? 1 : 0), 0);
+      for (const a of p.abilities) if (a.usesItem) a.ammo = potions;
       const self: SelfDTO = {
         x: r(p.x),
         y: r(p.y),
@@ -1183,6 +1395,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         derived: p.derived,
         abilities: p.abilities,
         charXp: p.charXp,
+        chosenClass: p.chosenClass,
+        talents: p.talents,
+        talentPoints: p.talentPoints,
+        shield: p.shieldUntil > this.now ? Math.round(p.shield) : 0,
+        dashReadyAt: p.dashReadyAt,
         status: p.status,
         reached: p.reached,
         lifetimeXp: this.lb.get(p.id)?.xp ?? 0,
@@ -1267,6 +1484,21 @@ function r2(v: number) {
 function clampUnit(v: number) {
   const n = Number(v) || 0;
   return n < -1 ? -1 : n > 1 ? 1 : n;
+}
+
+// Best (highest) rarity among a loot bag's items — drives the ground glow on the client.
+const RARITY_RANK: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+function bestRarity(items: Item[]): string {
+  let best = "common";
+  let bestRank = -1;
+  for (const it of items) {
+    const rank = RARITY_RANK[it.rarity] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = it.rarity;
+    }
+  }
+  return best;
 }
 
 const RUN_PHASES: readonly RunPhase[] = ["lobby", "running", "ended", "cooldown"];

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16121f"/>
+      <stop offset="1" stop-color="#0a0c12"/>
+    </linearGradient>
+    <linearGradient id="ch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5dd6ff"/>
+      <stop offset="1" stop-color="#e7c14d"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="180" fill="url(#bg)" stroke="#2c3a59" stroke-width="12"/>
+  <!-- three descending chevrons: "the infinite descent" -->
+  <g fill="none" stroke="url(#ch)" stroke-width="78" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="316,304 512,460 708,304" opacity="1.0"/>
+    <polyline points="316,476 512,632 708,476" opacity="0.78"/>
+    <polyline points="316,648 512,804 708,648" opacity="0.55"/>
+  </g>
+</svg>

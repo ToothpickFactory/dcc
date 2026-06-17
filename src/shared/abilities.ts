@@ -15,3 +15,11 @@ export function starterAbilities(): Ability[] {
 // Back-compat alias (older imports). A fresh copy each access so callers can
 // mutate per-player without aliasing the templates.
 export const DEFAULT_ABILITIES: Ability[] = starterAbilities();
+
+// A hotbar slot that consumes a carried item when cast — e.g. drink a Healing
+// Potion on yourself from the bar. Added via the inventory ("Add to bar"); its
+// `ammo` is set live to how many consumables you're carrying.
+export const HOTBAR_POTION_ID = "potion";
+export function potionHotbarSlot(): Ability {
+  return { id: HOTBAR_POTION_ID, category: "support", cd: 6000, range: 0, dmg: 0, projectile: false, usesItem: "consumable", name: "Healing Potion", icon: "🧪", color: "#5dff9b" };
+}
