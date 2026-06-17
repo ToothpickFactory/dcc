@@ -2,6 +2,7 @@ import {
   AGGRO_HEAL_RADIUS,
   AGGRO_PER_HEAL,
   BOSS_RADIUS,
+  FIREBALL_PROJECTILE_SPRITE,
   MONSTER_KINDS,
   PLAYER_RADIUS,
   PROJECTILE_RADIUS,
@@ -56,6 +57,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
         dmg, // negative = heal projectile
         slowMs: ab.slowMs ?? 0,
         ability: idx,
+        sprite: isFireballProjectile(ab) ? FIREBALL_PROJECTILE_SPRITE : undefined,
         ttl: ab.range / speed,
         hitR: PROJECTILE_RADIUS,
         boss: false,
@@ -91,6 +93,10 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
   }
   return true;
+}
+
+function isFireballProjectile(ab: PlayerState["abilities"][number]): boolean {
+  return ab.projectile === true && ab.dmg > 0 && ab.id.startsWith("loot-") && (ab.category === "ranged" || ab.category === "aoe");
 }
 
 // Taunt: set every foe within range to top-threat + a margin on the caster, so

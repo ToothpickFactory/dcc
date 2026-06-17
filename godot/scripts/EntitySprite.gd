@@ -56,6 +56,9 @@ const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
+const FIREBALL_PROJECTILE_SPRITE := 97 # src/shared/constants.ts FIREBALL_PROJECTILE_SPRITE
+const FIREBALL_MODEL_PATH := "res://assets/Projectiles/Fireball/Fireball.glb"
+const FIREBALL_MODEL_SCALE := 18.0
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 
@@ -92,6 +95,8 @@ var _model_profile: Dictionary = {}
 var _model_slash_index := 0
 var _dead_until := 0.0
 var _is_dead_body := false
+var _death_freeze_at := 0.0
+var _death_frozen := false
 
 # ---- hit flash (juice): brief overbright/red tint on taking damage ----
 const FLASH_MS := 110.0
@@ -111,8 +116,10 @@ func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> v
 		return
 	if reaction == "death":
 		_action = "death"
-		_action_until = now_ms + MODEL_DEATH_MS
+		_action_until = now_ms + _model_anim_duration_ms("death", MODEL_DEATH_MS)
 		_dead_until = _action_until
+		_death_freeze_at = _action_until
+		_death_frozen = false
 		_play_model_anim("death")
 	elif _action != "death":
 		_action = "hit"
@@ -130,11 +137,16 @@ func set_dead_body(dead: bool, now_ms: float) -> void:
 		_action = "death"
 		_action_until = INF
 		_dead_until = INF
+		if _death_freeze_at <= now_ms:
+			_death_freeze_at = now_ms + _model_anim_duration_ms("death", MODEL_DEATH_MS)
+		_death_frozen = false
 		_moving_until = 0.0
 		if _model_root != null:
 			_play_model_anim("death")
 	else:
 		_dead_until = 0.0
+		_death_freeze_at = 0.0
+		_death_frozen = false
 		if _action == "death":
 			_action = ""
 			_action_until = now_ms
@@ -221,6 +233,18 @@ func _model_profile_for_entity() -> Dictionary:
 			"light_y": 95.0,
 			"contrast": 1.2,
 			"saturation": 1.2,
+		}
+	if kind == "proj" and _sprite_id == FIREBALL_PROJECTILE_SPRITE:
+		return {
+			"label": "Fireball",
+			"path": FIREBALL_MODEL_PATH,
+			"scale": FIREBALL_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": 2.0,
+			"light_range": 90.0,
+			"light_y": 16.0,
+			"contrast": 1.25,
+			"saturation": 1.35,
 		}
 	if kind == "monster":
 		var root := _enemy_root()
@@ -469,7 +493,57 @@ func _play_model_anim(intent: String) -> void:
 	if chosen == _model_anim_name and _model_anim.is_playing():
 		return
 	_model_anim_name = chosen
+	if intent == "death":
+		var anim := _model_anim.get_animation(chosen)
+		if anim != null:
+			anim.loop_mode = Animation.LOOP_NONE
 	_model_anim.play(chosen)
+
+func _model_anim_duration_ms(intent: String, fallback_ms: float) -> float:
+	if _model_anim == null:
+		return fallback_ms
+	var name := _model_anim_name_for_intent(intent)
+	if name == "":
+		return fallback_ms
+	var anim := _model_anim.get_animation(name)
+	if anim == null or anim.length <= 0.0:
+		return fallback_ms
+	return maxf(fallback_ms, anim.length * 1000.0)
+
+func _model_anim_name_for_intent(intent: String) -> String:
+	if _model_anim == null:
+		return ""
+	var names := _model_anim.get_animation_list()
+	if names.is_empty():
+		return ""
+	var needles: Array[String] = []
+	match intent:
+		"death":
+			needles = ["death", "die", "dead"]
+		"hit", "hurt":
+			needles = ["hit", "hurt", "damage", "impact", "react"]
+		"run":
+			needles = ["run", "walk", "move"]
+		_:
+			needles = ["idle"]
+	for anim_name in names:
+		var lower := String(anim_name).to_lower()
+		for needle in needles:
+			if lower.contains(needle):
+				return String(anim_name)
+	return String(names[0])
+
+func _freeze_death_anim_if_ready(now_ms: float) -> void:
+	if not _is_dead_body or _death_frozen or now_ms < _death_freeze_at:
+		return
+	if _model_anim == null or _model_anim_name == "":
+		_death_frozen = true
+		return
+	var anim := _model_anim.get_animation(_model_anim_name)
+	if anim != null and anim.length > 0.0:
+		_model_anim.seek(maxf(0.0, anim.length - 0.001), true)
+	_model_anim.pause()
+	_death_frozen = true
 
 # ---------------------------------------------------------------------------
 # Facing helpers (render.ts: facingFromVector / facingFromAngle / facingWithHysteresis).
@@ -607,11 +681,12 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		_action = ""
 
 	if _model_root != null:
-		position = Vector3(wx, 0.0, wy)
+		position = Vector3(wx, float(_model_profile.get("y", 0.0)), wy)
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
 		if _is_dead_body:
+			_freeze_death_anim_if_ready(now_ms)
 			return
 		var face_angle := aim
 		if position_changed:
@@ -758,7 +833,10 @@ func _fallback_color() -> Color:
 # Cached sprite id from the DTO (used to distinguish 98/99 bolt sentinels).
 var _sprite_id := 0
 func set_sprite_id(v: int) -> void:
+	if _sprite_id == v:
+		return
 	_sprite_id = v
+	_ensure_model_for_entity()
 
 # Scale a 128px frame (or fallback quad) to roughly `sprite_px` world units tall/wide.
 # render.ts sets sprite.scale to the pixel size directly; with pixel_size=1 a 128px frame

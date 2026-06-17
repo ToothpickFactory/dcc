@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { BOSS_BOLT_SPRITE } from "../shared/constants";
+import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent } from "../protocol";
 import type { CollisionGrid, FloorDescriptor } from "../procgen/types";
@@ -586,8 +586,8 @@ export class Renderer {
         color = C.boss;
         size = 76;
       } else if (e.kind === "proj") {
-        color = e.sprite === BOSS_BOLT_SPRITE ? C.bossbolt : (ABILITY_COLORS[e.sprite ?? 0] ?? C.proj);
-        size = e.sprite === BOSS_BOLT_SPRITE ? 24 : 16;
+        color = e.sprite === BOSS_BOLT_SPRITE ? C.bossbolt : e.sprite === FIREBALL_PROJECTILE_SPRITE ? 0xff6a2a : (ABILITY_COLORS[e.sprite ?? 0] ?? C.proj);
+        size = e.sprite === BOSS_BOLT_SPRITE ? 24 : e.sprite === FIREBALL_PROJECTILE_SPRITE ? 28 : 16;
       } else if (e.id === selfId) {
         color = C.self;
         size = 84;

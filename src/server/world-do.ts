@@ -1402,7 +1402,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items) });
     }
     for (const pr of this.projectiles) {
-      ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), sprite: pr.ability });
+      ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), aim: r2(Math.atan2(pr.vy, pr.vx)), sprite: pr.sprite ?? pr.ability });
     }
 
     for (const p of this.players.values()) {

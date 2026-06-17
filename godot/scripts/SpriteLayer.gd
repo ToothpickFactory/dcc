@@ -21,9 +21,11 @@ const VISION_RADIUS_SQ := VISION_RADIUS * VISION_RADIUS
 const SPRITE_PX_NORMAL := 84.0 # players / monsters
 const SPRITE_PX_BOSS := 76.0
 const SPRITE_PX_PROJ := 16.0
+const SPRITE_PX_FIREBALL := 28.0
 const SPRITE_PX_BOSSBOLT := 24.0
 const SPRITE_PX_LOOT := 34.0
 const SNAPSHOT_MS := 100.0     # ~2 ticks (TICK_MS=50); interpolation window for remotes
+const FIREBALL_PROJECTILE_SPRITE := 97
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
@@ -244,7 +246,7 @@ func _nearest_entity(ents: Array, x: float, y: float, kinds: Array, max_distance
 func _sprite_px_for(kind: String, sprite_id: int) -> float:
 	match kind:
 		"boss": return SPRITE_PX_BOSS
-		"proj": return SPRITE_PX_BOSSBOLT if sprite_id == BOSS_BOLT_SPRITE else SPRITE_PX_PROJ
+		"proj": return SPRITE_PX_BOSSBOLT if sprite_id == BOSS_BOLT_SPRITE else (SPRITE_PX_FIREBALL if sprite_id == FIREBALL_PROJECTILE_SPRITE else SPRITE_PX_PROJ)
 		"lootbag": return SPRITE_PX_LOOT
 		_: return SPRITE_PX_NORMAL
 
