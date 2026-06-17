@@ -158,7 +158,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		var aim := float(d.get("aim", 0.0))
 		var sprite_px := _sprite_px_for(k, int(d.get("sprite", 0)))
 
-		spr.update_visual(wpos.x, wpos.y, dx, dy, aim, now_ms, sprite_px)
+		var ground_z := Geo.ground_height(_grid, wpos.x, wpos.y) # heightfield 2.5D: seat on terrain
+		spr.update_visual(wpos.x, wpos.y, dx, dy, aim, now_ms, sprite_px, ground_z)
 		_last_pos[id] = wpos
 
 		# Fog of war: self + allies always visible; monsters/boss/proj need line-of-sight

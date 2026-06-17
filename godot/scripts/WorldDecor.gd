@@ -127,7 +127,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		var sx := float(stairs.get("x", 0.0))
 		var sy := float(stairs.get("y", 0.0))
 		var stairs_tex: Texture2D = props[0] if props.size() > 0 else null
-		stairs_sprite = _make_billboard(stairs_tex, sx, STAIRS_Y, sy, 120.0)
+		stairs_sprite = _make_billboard(stairs_tex, sx, STAIRS_Y + _gh(sx, sy), sy, 120.0)
 		_stairs_tex_h = float(stairs_tex.get_height()) if (stairs_tex != null and stairs_tex.get_height() > 0) else 64.0
 		if stairs_tex == null:
 			stairs_sprite.modulate = STAIRS_FALLBACK
@@ -153,7 +153,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		var scale := float(deco.get("scale", 1.0))
 		var dx := float(deco.get("x", 0.0))
 		var dy := float(deco.get("y", 0.0))
-		var sprite := _make_billboard(tex, dx, DECO_Y, dy, DECO_SIZE * scale)
+		var sprite := _make_billboard(tex, dx, DECO_Y + _gh(dx, dy), dy, DECO_SIZE * scale)
 		sprite.set_meta("dcc_prop_id", "prop_%s" % _base36(i))
 		add_child(sprite)
 		decoration_sprites.append(sprite)
@@ -255,10 +255,11 @@ func _place_atmosphere() -> void:
 				else: continue
 				var fx := (cx + 0.5 + float(ox) * 0.7) * cell
 				var fz := (cy + 0.5 + float(oy) * 0.7) * cell
-				var pool := _floor_quad(_glow_texture(), fx, GLOW_Y, fz, TORCH_GLOW_SIZE, TORCH_COLOR, true)
+				var fgz := Geo.ground_height(grid, fx, fz)
+				var pool := _floor_quad(_glow_texture(), fx, GLOW_Y + fgz, fz, TORCH_GLOW_SIZE, TORCH_COLOR, true, _ground_normal(fx, fz))
 				atmo_sprites.append(pool)
 				_glow_quads.append(pool)
-				var flame := _make_billboard(_glow_texture(), fx, TORCH_FLAME_Y, fz, 46.0)
+				var flame := _make_billboard(_glow_texture(), fx, TORCH_FLAME_Y + fgz, fz, 46.0)
 				flame.modulate = Color(1.0, 0.74, 0.4)
 				add_child(flame)
 				atmo_sprites.append(flame)
@@ -269,14 +270,15 @@ func _place_atmosphere() -> void:
 					continue
 				var dx := (cx + 0.5) * cell
 				var dz := (cy + 0.5) * cell
-				var decal := _floor_quad(_decal_texture(), dx, DECAL_Y, dz, DECAL_SIZE * (0.8 + _hash01(cx, cy + 7) * 0.8), Color(1, 1, 1, 0.5), false)
+				var decal := _floor_quad(_decal_texture(), dx, DECAL_Y + Geo.ground_height(grid, dx, dz), dz, DECAL_SIZE * (0.8 + _hash01(cx, cy + 7) * 0.8), Color(1, 1, 1, 0.5), false, _ground_normal(dx, dz))
 				decal.rotate_y(_hash01(cx + 3, cy) * TAU)
 				atmo_sprites.append(decal)
 				decals += 1
 
-## A flat quad lying on the floor (facing up) at (wx,wy,wz). additive=true for light pools,
-## false (alpha-blended) for decals. Carries dcc_world meta so Main fog-culls it.
-func _floor_quad(tex: Texture2D, wx: float, wy: float, wz: float, size: float, color: Color, additive: bool) -> MeshInstance3D:
+## A flat quad lying on the floor at (wx,wy,wz), tilted to the ground `normal` so it hugs slopes
+## instead of z-fighting/clipping. additive=true for light pools, false (alpha-blended) for decals.
+## Carries dcc_world meta so Main fog-culls it.
+func _floor_quad(tex: Texture2D, wx: float, wy: float, wz: float, size: float, color: Color, additive: bool, normal: Vector3 = Vector3.UP) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(size, size)
@@ -290,11 +292,31 @@ func _floor_quad(tex: Texture2D, wx: float, wy: float, wz: float, size: float, c
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	q.material = m
-	mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)  # lie flat, facing up
-	mi.position = Vector3(wx, wy, wz)
+	# QuadMesh faces +Z locally; orient that normal to the ground normal (flat -> faces up, as before).
+	var zaxis := normal.normalized()
+	var xaxis := Vector3.RIGHT if absf(zaxis.dot(Vector3.RIGHT)) < 0.9 else Vector3.FORWARD
+	var yaxis := zaxis.cross(xaxis).normalized()
+	xaxis = yaxis.cross(zaxis).normalized()
+	mi.transform = Transform3D(Basis(xaxis, yaxis, zaxis), Vector3(wx, wy, wz))
 	mi.set_meta("dcc_world", Vector2(wx, wz))
 	add_child(mi)
 	return mi
+
+## Ground height at (x,y) in px, 0 when there's no terrain (flat). Heightfield 2.5D.
+func _gh(x: float, y: float) -> float:
+	if world == null or world.grid.is_empty():
+		return 0.0
+	return Geo.ground_height(world.grid, x, y)
+
+## Approximate ground surface normal at (x,y) via central differences of the height field.
+func _ground_normal(x: float, y: float) -> Vector3:
+	if world == null or world.grid.is_empty():
+		return Vector3.UP
+	var grid: Dictionary = world.grid
+	var cell: float = grid["cell"]
+	var sx := (Geo.ground_height(grid, x + cell, y) - Geo.ground_height(grid, x - cell, y)) / (2.0 * cell)
+	var sz := (Geo.ground_height(grid, x, y + cell) - Geo.ground_height(grid, x, y - cell)) / (2.0 * cell)
+	return Vector3(-sx, 1.0, -sz).normalized()
 
 ## Warm radial glow texture (white; tinted by modulate). Soft falloff to transparent edges.
 static func _glow_texture() -> Texture2D:

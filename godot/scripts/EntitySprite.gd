@@ -872,10 +872,10 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 # raw inter-snapshot delta (dx, dy) for facing, then calls this. `now_ms` is wall-clock ms.
 # Mirrors the per-entity body of render.ts sync().
 # ---------------------------------------------------------------------------
-func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float) -> void:
+func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float, ground_z: float = 0.0) -> void:
 	_update_ally_overlay() # ally nameplate + HP bar (no-op for non-allies)
 	if _is_dead_body:
-		position = Vector3(wx, _height_for_kind(), wy)
+		position = Vector3(wx, _height_for_kind() + ground_z, wy)
 		_show_tombstone()
 		return
 
@@ -910,7 +910,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		_action = ""
 
 	if _model_root != null:
-		position = Vector3(wx, float(_model_profile.get("y", 0.0)), wy)
+		position = Vector3(wx, float(_model_profile.get("y", 0.0)) + ground_z, wy)
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
@@ -922,9 +922,9 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			_play_model_anim("run" if moving else "idle")
 		return
 
-	# Position. Height offset is kind-dependent (render.ts h).
+	# Position. Height offset is kind-dependent (render.ts h), plus the terrain ground height.
 	var h := _height_for_kind()
-	position = Vector3(wx, h, wy)
+	position = Vector3(wx, h + ground_z, wy)
 
 	# Non-animated kinds: flat-colored billboard (proj / lootbag / spectator etc.).
 	if kind != "player" and kind != "monster" and kind != "boss":

@@ -526,8 +526,11 @@ func _process(dt: float) -> void:
 		shake = Vector2(randf_range(-mag, mag), randf_range(-mag, mag))
 	var cx: float = _cam_xy.x + shake.x
 	var cy: float = _cam_xy.y + shake.y
-	_cam.position = Vector3(cx, cam_height, cy + cam_back)
-	_cam.look_at(Vector3(cx, 0, cy), Vector3.UP)
+	# Heightfield 2.5D: lift the camera + its look target by the focus point's ground height so the
+	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
+	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
+	_cam.position = Vector3(cx, cam_height + fgz, cy + cam_back)
+	_cam.look_at(Vector3(cx, fgz, cy), Vector3.UP)
 	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
