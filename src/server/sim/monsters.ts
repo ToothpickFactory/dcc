@@ -17,6 +17,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
   for (const m of ctx.monsters) {
     const def = MONSTER_KINDS[m.kind];
     if (m.dead) {
+      if (ctx.corpseLootExists(m.id)) continue;
       // Respawn so collective kills keep accruing toward the boss trigger.
       if (ctx.now >= m.respawnAt) {
         m.dead = false;

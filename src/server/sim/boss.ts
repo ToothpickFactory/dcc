@@ -27,6 +27,7 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   const boss = ctx.boss;
   if (!boss) return;
   if (boss.dead) {
+    if (ctx.corpseLootExists(boss.id)) return;
     ctx.boss = null; // cleared the tick after death (events already emitted)
     return;
   }

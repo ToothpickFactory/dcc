@@ -79,7 +79,7 @@ export function applyDamage(
       target.status = "spectator";
       target.mvx = 0;
       target.mvy = 0;
-      ctx.dropLoot(target.x, target.y, allItems(target.inv));
+      ctx.dropLoot(target.x, target.y, allItems(target.inv), target.id);
       target.inv = emptyInventory();
       ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
       if (sourceIsPlayer && sourceId !== target.id) {

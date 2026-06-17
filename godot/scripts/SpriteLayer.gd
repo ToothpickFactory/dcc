@@ -26,7 +26,7 @@ const SPRITE_PX_LOOT := 34.0
 const SNAPSHOT_MS := 100.0     # ~2 ticks (TICK_MS=50); interpolation window for remotes
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
 
 var _sprites: Dictionary = {}   # id -> EntitySprite
 var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, for facing delta)
@@ -107,6 +107,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 		spr.set_sprite_id(int(d.get("sprite", 0)))
 		if k == "lootbag":
 			spr.set_loot_rarity(str(d.get("rarity", "common")))
+		spr.set_dead_body(bool(d.get("dead", false)), now_ms)
 
 		# Facing delta = movement since the last displayed frame (render.ts dx/dy).
 		var prev: Variant = _last_pos.get(id)

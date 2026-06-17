@@ -118,6 +118,7 @@ export interface LootBagState {
   x: number;
   y: number;
   items: Item[];
+  corpseId?: string; // entity whose body should remain visible until this bag is gone
   expiresAt: number; // wall-clock ms; despawns after this so the floor stays clean
 }
 
@@ -135,8 +136,9 @@ export interface WorldCtx {
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;
   pushPlay(e: PlaystyleEvent): void;
-  dropLoot(x: number, y: number, items: Item[]): void; // spawn a loot bag (no-op if empty)
+  dropLoot(x: number, y: number, items: Item[], corpseId?: string): void; // spawn a loot/corpse bag
   rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
+  corpseLootExists(corpseId: string): boolean;
   // Award ability + character XP to a player for a hit/kill with action slot `idx`.
   gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;
   // Co-op: split a kill's character-XP share to living allies near (x,y).

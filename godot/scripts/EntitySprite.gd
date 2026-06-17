@@ -37,6 +37,9 @@ const PRIMAL_CONFLUX_MODEL_PATH := "res://assets/Bosses/PrimalConflux/Primal Con
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
+const INFERNAX_MODEL_PATH := "res://assets/Enemies/Infernax/Warlock - Infernax (Transformation)-3d-animated.glb"
+const INFERNAX_MODEL_SCALE := 122.0
+const INFERNAX_LIGHT_ENERGY := 1.65
 const ORC_MODEL_PATH := "res://assets/Enemies/Orc/Orc-3d-animated.glb"
 const ORC_MODEL_SCALE := 124.0
 const ORC_LIGHT_ENERGY := 1.55
@@ -46,10 +49,13 @@ const SKELETON_LIGHT_ENERGY := 1.45
 const TROLL_MODEL_PATH := "res://assets/Enemies/Troll/Troll-3d-animated.glb"
 const TROLL_MODEL_SCALE := 132.0
 const TROLL_LIGHT_ENERGY := 1.6
+const WRAITH_MODEL_PATH := "res://assets/Enemies/Wraith/Wraith-3d-animated.glb"
+const WRAITH_MODEL_SCALE := 118.0
+const WRAITH_LIGHT_ENERGY := 1.7
 const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 
@@ -85,6 +91,7 @@ var _model_anim_name := ""
 var _model_profile: Dictionary = {}
 var _model_slash_index := 0
 var _dead_until := 0.0
+var _is_dead_body := false
 
 # ---- hit flash (juice): brief overbright/red tint on taking damage ----
 const FLASH_MS := 110.0
@@ -114,6 +121,23 @@ func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> v
 
 func is_waiting_for_death_anim(now_ms: float) -> bool:
 	return _dead_until > now_ms
+
+func set_dead_body(dead: bool, now_ms: float) -> void:
+	if _is_dead_body == dead:
+		return
+	_is_dead_body = dead
+	if dead:
+		_action = "death"
+		_action_until = INF
+		_dead_until = INF
+		_moving_until = 0.0
+		if _model_root != null:
+			_play_model_anim("death")
+	else:
+		_dead_until = 0.0
+		if _action == "death":
+			_action = ""
+			_action_until = now_ms
 
 # ---- spawn pop (juice): a quick over-shooting scale-in when first seen ----
 const SPAWN_MS := 200.0
@@ -211,6 +235,17 @@ func _model_profile_for_entity() -> Dictionary:
 				"contrast": 1.25,
 				"saturation": 1.2,
 			}
+		if root.ends_with("/Infernax"):
+			return {
+				"label": "Infernax",
+				"path": INFERNAX_MODEL_PATH,
+				"scale": INFERNAX_MODEL_SCALE,
+				"light_energy": INFERNAX_LIGHT_ENERGY,
+				"light_range": 310.0,
+				"light_y": 112.0,
+				"contrast": 1.35,
+				"saturation": 1.35,
+			}
 		if root.ends_with("/Orc"):
 			return {
 				"label": "Orc",
@@ -242,6 +277,17 @@ func _model_profile_for_entity() -> Dictionary:
 				"light_range": 320.0,
 				"light_y": 120.0,
 				"contrast": 1.25,
+				"saturation": 1.25,
+			}
+		if root.ends_with("/Wraith"):
+			return {
+				"label": "Wraith",
+				"path": WRAITH_MODEL_PATH,
+				"scale": WRAITH_MODEL_SCALE,
+				"light_energy": WRAITH_LIGHT_ENERGY,
+				"light_range": 310.0,
+				"light_y": 116.0,
+				"contrast": 1.3,
 				"saturation": 1.25,
 			}
 		if root.ends_with("/Zombie"):
@@ -557,7 +603,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 	_flip = face["flip"]
 
 	# Expire a finished action.
-	if _action != "" and now_ms >= _action_until:
+	if _action != "" and not _is_dead_body and now_ms >= _action_until:
 		_action = ""
 
 	if _model_root != null:
@@ -565,6 +611,8 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
+		if _is_dead_body:
+			return
 		var face_angle := aim
 		if position_changed:
 			face_angle = atan2(dy, dx)

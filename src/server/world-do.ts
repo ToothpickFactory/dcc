@@ -202,12 +202,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
   }
 
-  // Spawn a loot bag holding (fresh-id copies of) the given items. Called by the
-  // combat funnel whenever an entity dies. No-op for an empty drop.
-  dropLoot(x: number, y: number, items: Item[]): void {
-    if (items.length === 0) return;
+  // Spawn a loot bag holding fresh-id copies of the given items. A corpse-linked
+  // bag may be empty; opening it still counts as checking/looting the body.
+  dropLoot(x: number, y: number, items: Item[], corpseId?: string): void {
+    if (items.length === 0 && !corpseId) return;
     const copies = items.map((it) => ({ ...it, id: `i_${(++this.itemSeq).toString(36)}` }));
-    this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, expiresAt: Date.now() + LOOT_BAG_TTL });
+    this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, corpseId, expiresAt: Date.now() + LOOT_BAG_TTL });
+  }
+
+  corpseLootExists(corpseId: string): boolean {
+    return this.lootBags.some((b) => b.corpseId === corpseId);
   }
 
   // On monster death: chance-gated, floor-appropriate drops. NOT every kill drops
@@ -222,7 +226,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (this.gearRng() < POTION_DROP_CHANCE) {
       drops.push(generatePotion(this.floor.depth, this.gearRng));
     }
-    this.dropLoot(m.x, m.y, drops);
+    this.dropLoot(m.x, m.y, drops, m.id);
   }
 
   // Award XP to the ability that landed a hit/kill, plus character XP on kills.
@@ -1068,7 +1072,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
   private openLoot(p: PlayerState, bagId: string): void {
     const bag = this.bagInReach(p, bagId);
-    if (bag && !p.linkdead) this.send(p.ws, { t: "bag", id: bag.id, items: bag.items });
+    if (!bag) return;
+    if (!p.linkdead) this.send(p.ws, { t: "bag", id: bag.id, items: bag.items });
+    if (bag.corpseId && bag.items.length === 0) this.removeLootBag(bag.id);
   }
 
   // Take a specific item (or everything that fits) from a nearby bag.
@@ -1093,7 +1099,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.persistPlayer(p);
       this.sendInv(p);
       if (!p.linkdead) this.send(p.ws, { t: "bag", id: bag.id, items: bag.items }); // refresh (despawns when empty)
+      if (bag.corpseId && bag.items.length === 0) this.removeLootBag(bag.id);
     }
+  }
+
+  private removeLootBag(bagId: string): void {
+    this.lootBags = this.lootBags.filter((b) => b.id !== bagId);
   }
 
   // ---- Simulation loop ----
@@ -1119,7 +1130,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // Despawn expired loot bags so a long floor doesn't litter forever.
     if (this.lootBags.length) {
       const nowMs = Date.now();
-      this.lootBags = this.lootBags.filter((b) => b.expiresAt > nowMs && b.items.length > 0);
+      this.lootBags = this.lootBags.filter((b) => (b.corpseId ? true : b.expiresAt > nowMs && b.items.length > 0));
     }
 
     // Permadeath must be durable the instant it happens, not on the next
@@ -1139,7 +1150,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const hoard = Array.from({ length: 3 + Math.floor(this.gearRng() * 3) }, () =>
           generateItem(this.floor.depth, this.gearRng() < 0.5 ? bossRarity : "rare", this.gearRng),
         );
-        this.dropLoot(this.boss.x, this.boss.y, hoard);
+        this.dropLoot(this.boss.x, this.boss.y, hoard, this.boss.id);
       }
     }
 
@@ -1342,6 +1353,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private broadcast() {
     const ents: EntityDTO[] = [];
     for (const p of this.players.values()) {
+      if (p.status === "spectator" && this.corpseLootExists(p.id)) {
+        ents.push({
+          id: p.id,
+          kind: "player",
+          x: r(p.x),
+          y: r(p.y),
+          aim: r2(p.aim),
+          hp: 0,
+          maxHp: Math.round(p.derived.maxHp),
+          dead: true,
+          name: p.name,
+          cls: this.profiles.classOf(p.id),
+        });
+        continue;
+      }
       if (p.status !== "alive" || p.reached) continue; // reached players left the floor for the waiting room
       ents.push({
         id: p.id,
@@ -1356,10 +1382,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       });
     }
     for (const m of this.monsters) {
-      if (m.dead) continue;
-      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp });
+      if (m.dead && !this.corpseLootExists(m.id)) continue;
+      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead });
     }
-    if (this.boss && !this.boss.dead) {
+    if (this.boss && (!this.boss.dead || this.corpseLootExists(this.boss.id))) {
       ents.push({
         id: this.boss.id,
         kind: "boss",
@@ -1368,6 +1394,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         aim: r2(this.boss.aim),
         hp: Math.max(0, r(this.boss.hp)),
         maxHp: this.boss.maxHp,
+        dead: this.boss.dead,
         name: this.boss.name,
       });
     }
