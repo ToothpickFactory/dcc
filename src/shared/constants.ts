@@ -16,6 +16,13 @@ export const MAX_FLOORS = 100; // reaching past this ends the run as a victory (
 // were zero forever). Spent points live in PlayerState.base (already derived + persisted).
 export const ATTR_POINTS_PER_LEVEL = 3;
 
+// Action bar: the first HOTBAR_SIZE abilities are the live hotbar (castable via
+// keys 1-6 / the HUD bar). The rest are your benched COLLECTION — swap any into
+// the hotbar from the character screen. Total unlocked abilities cap at
+// MAX_ABILITY_SLOTS so the kit (and broadcast) stays bounded.
+export const HOTBAR_SIZE = 6;
+export const MAX_ABILITY_SLOTS = 12; // hotbar (6) + bench (6)
+
 export const PLAYER_SPEED = 230; // px/s
 export const PLAYER_MAX_HP = 100;
 export const PLAYER_RADIUS = 17;

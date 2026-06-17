@@ -364,7 +364,10 @@ func update(net) -> void:
 	if self_dto.is_empty() or cur.is_empty():
 		return
 	var tick := int(cur.get("tick", 0))
-	var abilities: Array = self_dto.get("abilities", [])
+	# The HUD bar shows ONLY the hotbar (first HOTBAR_SIZE slots); the rest are the
+	# benched collection, managed from the character screen.
+	var all_abilities: Array = self_dto.get("abilities", [])
+	var abilities: Array = all_abilities.slice(0, DccConst.HOTBAR_SIZE)
 
 	# Rebuild the bar only when its contents change (loot / swaps), like barKey.
 	var key := _bar_key_of(abilities)
