@@ -359,6 +359,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         knockUntil: 0,
         knockVx: 0,
         knockVy: 0,
+        ccUntil: 0,
+        ccKind: "",
       };
     });
     for (const m of this.monsters) this.gearUpMonster(m);
@@ -404,6 +406,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       meleeWindupUntil: 0,
       castWindupUntil: 0,
       castTarget: "",
+      ccUntil: 0,
+      ccKind: "",
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
@@ -1385,9 +1389,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
     for (const m of this.monsters) {
       if (m.dead && !this.corpseLootExists(m.id)) continue;
-      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead });
+      const mcc = m.ccUntil > this.now && m.ccKind !== "" ? m.ccKind : undefined;
+      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead, cc: mcc });
     }
     if (this.boss && (!this.boss.dead || this.corpseLootExists(this.boss.id))) {
+      const bcc = this.boss.ccUntil > this.now && this.boss.ccKind !== "" ? this.boss.ccKind : undefined;
       ents.push({
         id: this.boss.id,
         kind: "boss",
@@ -1398,6 +1404,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         maxHp: this.boss.maxHp,
         dead: this.boss.dead,
         name: this.boss.name,
+        cc: bcc,
       });
     }
     for (const b of this.lootBags) {

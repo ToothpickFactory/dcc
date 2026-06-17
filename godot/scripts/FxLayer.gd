@@ -96,6 +96,27 @@ func windup_marker(x: float, y: float, ms: float) -> void:
 	tw.tween_property(lbl, "modulate:a", 0.0, dur).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(lbl.queue_free)
 
+# Hard CC landed on a foe: a quick icon pop (💫 stun, ❄️ freeze, 🪢 root) so the control
+# reads at the moment it lands (paired with the persistent status tint on the sprite).
+func cc_marker(x: float, y: float, kind: String) -> void:
+	var icon := "\U01f4ab" # 💫 stun (dizzy)
+	var col := Color(1.0, 0.95, 0.5)
+	match kind:
+		"freeze":
+			icon = "❄️"
+			col = Color(0.7, 0.92, 1.0)
+		"root":
+			icon = "\U01faa2" # 🪢 knot
+			col = Color(0.65, 1.0, 0.6)
+	var lbl := _new_label(icon, col, 32, x, y, 115.0)
+	lbl.scale = Vector3(0.4, 0.4, 0.4)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "scale", Vector3(1.35, 1.35, 1.35), 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "position:y", 165.0, 0.7)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.7).set_ease(Tween.EASE_IN)
+	tw.set_parallel(false)
+	tw.tween_callback(lbl.queue_free)
+
 # Projectile/melee impact: a quick bright burst that scales up and fades (the "hit"
 # event is emitted by the server but was previously rendered by neither client).
 func _impact(e: Dictionary) -> void:

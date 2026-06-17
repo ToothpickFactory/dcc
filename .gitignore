@@ -169,6 +169,9 @@ dist
 # build output (esbuild client bundle)
 public/client.js
 
+# esbuild scratch dir for the *.test.ts runners (npm run test:*)
+.tmp/
+
 # Local OpenAI key for the art generator (scripts/gen-art.mjs)
 .openai-key
 

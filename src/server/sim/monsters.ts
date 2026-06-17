@@ -26,6 +26,8 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
         m.x = spawn.x;
         m.y = spawn.y;
         m.slowUntil = 0;
+        m.ccUntil = 0;
+        m.ccKind = "";
         m.threat.clear();
       }
       continue;
@@ -45,6 +47,11 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       continue;
     }
 
+    // Hard CC: a stun/freeze fully locks the monster out (no act, no move) — a wind-up
+    // was already cancelled when the CC landed. A root (handled below via speed=0) only
+    // stops movement, so a rooted foe can still swing if you stay in its reach.
+    if (m.ccUntil > ctx.now && (m.ccKind === "stun" || m.ccKind === "freeze")) continue;
+
     // Resolve a pending melee wind-up: the hit lands now — UNLESS you stepped out of
     // range during the tell (the dodge payoff). Then it whiffs.
     if (m.windupUntil > 0 && ctx.now >= m.windupUntil) {
@@ -62,7 +69,10 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       continue;
     }
 
-    const speed = m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    // A root (the only CC still active here — stun/freeze returned above) pins movement
+    // to 0 while letting attacks resolve; otherwise a slow halves speed.
+    const rooted = m.ccUntil > ctx.now; // ccKind === "root" at this point
+    const speed = rooted ? 0 : m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
     const prey = pickTarget(ctx, m);
 
     if (def.heal) {

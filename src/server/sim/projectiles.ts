@@ -18,7 +18,7 @@ import {
 import type { Ability } from "../../shared/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { blocked } from "../../procgen/collision";
-import { applyDamage, applyHeal } from "./combat";
+import { applyCc, applyDamage, applyHeal } from "./combat";
 
 let seq = 0;
 
@@ -35,8 +35,10 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   // intellect raises healing. The bloodlust group buff shortens cooldowns further.
   const hasteFactor = caster.bloodlustUntil > ctx.now ? 0.6 : 1;
   // Melee combo: light swings chain at a reduced cooldown; the heavy finisher (and every
-  // non-melee ability) uses the full cooldown as recovery.
-  const isMelee = !ab.projectile && !ab.taunt && ab.groupBuff !== "haste" && ab.dmg > 0;
+  // non-melee ability) uses the full cooldown as recovery. Deliberate CC abilities
+  // (shield bash, frost nova, hamstring) are NOT part of the basic swing chain — they
+  // keep their own long cooldown and never advance/consume the combo.
+  const isMelee = !ab.projectile && !ab.taunt && ab.groupBuff !== "haste" && ab.dmg > 0 && !ab.stunMs && !ab.rootMs;
   if (isMelee && ctx.now > caster.comboExpireAt) caster.comboStep = 0; // chain lapsed
   const isFinisher = isMelee && caster.comboStep >= COMBO_FINISHER_STEP;
   const cdBase = ab.cd * caster.derived.cdMult * hasteFactor;
@@ -71,6 +73,9 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
         vy: Math.sin(a) * speed,
         dmg, // negative = heal projectile
         slowMs: ab.slowMs ?? 0,
+        stunMs: ab.stunMs, // CC carried to the first foe the bolt strikes (e.g. concussive shot)
+        rootMs: ab.rootMs,
+        freeze: ab.freeze,
         ability: idx,
         sprite: projectileSpriteForAbility(ab),
         ttl: ab.range / speed,
@@ -102,10 +107,14 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   const knockMult = isFinisher ? COMBO_FINISHER_KNOCK_MULT : 1;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
-    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, m), knockMult);
+    if (inCone(caster, m, aim, ab.range, cone)) {
+      applyDamage(ctx, m, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, m), knockMult);
+      applyCc(ctx, m, ab); // stun/root/freeze if this is a CC ability (no-op otherwise)
+    }
   }
   if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, aim, ab.range, cone)) {
     applyDamage(ctx, ctx.boss, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss), knockMult);
+    applyCc(ctx, ctx.boss, ab);
   }
   for (const p of ctx.players.values()) {
     if (p.id === caster.id || p.status !== "alive" || p.reached) continue;
@@ -263,6 +272,7 @@ function resolve(
     const owner = ctx.players.get(pr.ownerId);
     const range = owner ? Math.hypot(owner.x - target.x, owner.y - target.y) : 0;
     applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs, pr.ability, range);
+    applyCc(ctx, target, { stunMs: pr.stunMs, rootMs: pr.rootMs, freeze: pr.freeze }); // CC bolts (concussive shot)
   }
   ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
 }

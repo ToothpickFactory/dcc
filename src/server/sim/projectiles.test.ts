@@ -4,6 +4,7 @@
 // hand-built WorldCtx (no Durable Object needed).
 //   node --experimental-strip-types src/server/sim/projectiles.test.ts
 import { castAbility, stepProjectiles } from "./projectiles.ts";
+import { updateMonsters } from "./monsters.ts";
 import { ABILITY_NODES } from "../../shared/skills.ts";
 import { deriveStats, zeroAttrs } from "../../shared/items.ts";
 import type { MonsterState, PlayerState, WorldCtx } from "../state.ts";
@@ -29,6 +30,7 @@ function monster(id: string, x: number, y: number): MonsterState {
     id, kind: "grunt", x, y, aim: 0, maxHp: 60, hp: 60, dead: false, respawnAt: 0, attackReadyAt: 0,
     wanderAt: 0, slowUntil: 0, base: zeroAttrs(), inv: { equipped: {}, bagEquip: [null, null, null, null], carried: [] },
     derived: deriveStats(60, 95, zeroAttrs()), threat: new Map(),
+    dmgMult: 1, windupUntil: 0, windupTarget: "", knockUntil: 0, knockVx: 0, knockVy: 0, ccUntil: 0, ccKind: "",
   };
 }
 function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
@@ -82,6 +84,48 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
   check("nearby ally got the haste buff", mate.bloodlustUntil > ctx.now);
   check("shared cooldown was set", ctx.groupHasteReadyAt > ctx.now);
   check("bloodlust blocked while shared cd active", castAbility(ctx, caster, 0, 0) === false);
+}
+
+// ---- hard CC: a stun fully locks a foe out + interrupts its wind-up --------
+{
+  const war = player("W", 0, 0, { abilities: [{ ...ABILITY_NODES.shieldbash }] });
+  const mob = monster("M", 60, 0); // inside the bash cone (range 118, aim 0)
+  mob.windupUntil = 1300; // mid-swing — the bash should interrupt it
+  const ctx = ctxOf([war], [mob]);
+  check("shield bash fired", castAbility(ctx, war, 0, 0) === true);
+  check("bash stunned the foe", mob.ccKind === "stun" && mob.ccUntil > ctx.now, `ccKind=${mob.ccKind} until=${mob.ccUntil}`);
+  check("stun interrupted the wind-up", mob.windupUntil === 0, `windupUntil=${mob.windupUntil}`);
+  // Isolate the stun from the hit's knockback, then prove the AI is inert.
+  mob.knockUntil = 0;
+  const x0 = mob.x;
+  for (let i = 0; i < 6; i++) { ctx.now += 50; updateMonsters(ctx, 0.05); }
+  check("stunned foe did not move", mob.x === x0, `x0=${x0} x=${mob.x}`);
+  check("stunned foe did not wind up an attack", mob.windupUntil === 0, `windupUntil=${mob.windupUntil}`);
+}
+
+// ---- hard CC: a root pins movement but the foe can still act ----------------
+{
+  const rogue = player("R", 0, 0, { abilities: [{ ...ABILITY_NODES.hamstring }] });
+  const mob = monster("M", 70, 0); // inside the hamstring cone (range 120)
+  const ctx = ctxOf([rogue], [mob]);
+  check("hamstring fired", castAbility(ctx, rogue, 0, 0) === true);
+  check("hamstring rooted the foe", mob.ccKind === "root" && mob.ccUntil > ctx.now, `ccKind=${mob.ccKind}`);
+  // Yank the rogue far away: a free grunt would chase, a rooted one can't.
+  rogue.x = 700;
+  mob.knockUntil = 0;
+  const x0 = mob.x;
+  for (let i = 0; i < 6; i++) { ctx.now += 50; updateMonsters(ctx, 0.05); }
+  check("rooted foe could not chase", mob.x === x0, `x0=${x0} x=${mob.x}`);
+}
+
+// ---- hard CC: a concussive bolt carries the stun to the foe it strikes ------
+{
+  const hunter = player("H", 0, 0, { abilities: [{ ...ABILITY_NODES.concussive }] });
+  const mob = monster("M", 200, 0);
+  const ctx = ctxOf([hunter], [mob]);
+  check("concussive fired", castAbility(ctx, hunter, 0, 0) === true);
+  for (let i = 0; i < 30 && ctx.projectiles.length; i++) stepProjectiles(ctx, 0.05);
+  check("concussive bolt stunned on impact", mob.ccKind === "stun" && mob.ccUntil > ctx.now, `ccKind=${mob.ccKind}`);
 }
 
 if (failures > 0) { console.error(`\n${failures} check(s) failed`); process.exit(1); }

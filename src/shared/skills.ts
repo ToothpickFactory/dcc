@@ -38,6 +38,16 @@ export const ABILITY_NODES: Record<string, Ability> = {
   // ---- Trinity utilities (tank threat + group haste) ----
   taunt: { id: "taunt", category: "utility", cd: 8000, range: 320, dmg: 0, projectile: false, taunt: true, name: "Taunt", icon: "🗯️", color: "#ff9a4d", flavor: "Roar — nearby foes turn on you." },
   bloodlust: { id: "bloodlust", category: "support", cd: 60000, range: 0, dmg: 0, projectile: false, groupBuff: "haste", name: "Bloodlust", icon: "🩸", color: "#ff5b6e", flavor: "Hasten the whole party for a short burst." },
+
+  // ---- Hard crowd control (class-defining; granted by a talent) ----
+  // Warrior: a wide frontal shield bash that STUNS — interrupts a wind-up, sets up a finisher.
+  shieldbash: { id: "shieldbash", category: "utility", cd: 7000, range: 118, dmg: 10, projectile: false, cone: Math.PI * 0.7, stunMs: 1500, name: "Shield Bash", icon: "🛡️", color: "#ffd24d", flavor: "Slam your shield — a stunning frontal blow." },
+  // Hunter: a head-ringing ranged shot that STUNS the first foe it hits.
+  concussive: { id: "concussive", category: "ranged", cd: 8000, range: 470, dmg: 8, projectile: true, speed: 560, stunMs: 1300, name: "Concussive Shot", icon: "💥", color: "#ffd24d", flavor: "A ringing shot that stuns at range." },
+  // Rogue: a crippling cut that ROOTS — the foe can still swing, but it can't chase you.
+  hamstring: { id: "hamstring", category: "utility", cd: 7000, range: 120, dmg: 13, projectile: false, cone: Math.PI / 3, rootMs: 2000, name: "Hamstring", icon: "🪢", color: "#9be07a", flavor: "Cut the legs — they can't move, only flail." },
+  // Mage: an AoE burst that FREEZES every foe around you solid, then a slow on thaw.
+  frostnova: { id: "frostnova", category: "aoe", cd: 9000, range: 205, dmg: 12, projectile: false, cone: Math.PI * 2, stunMs: 1500, freeze: true, name: "Frost Nova", icon: "❄️", color: "#9be7ff", flavor: "Flash-freeze everything around you." },
 };
 
 // node id -> the evolutions you may choose when it matures.

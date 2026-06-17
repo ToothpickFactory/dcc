@@ -1,4 +1,4 @@
-import type { Ability, Klass, MonsterKind } from "../shared/types";
+import type { Ability, CcKind, Klass, MonsterKind } from "../shared/types";
 import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
@@ -73,6 +73,9 @@ export interface MonsterState {
   knockUntil: number; // knockback impulse active while now < this
   knockVx: number;
   knockVy: number;
+  // ---- Hard crowd control (root / stun / freeze) ----
+  ccUntil: number; // CC active while now < this (0 = free)
+  ccKind: CcKind | ""; // which control is active (stun/freeze fully lock; root locks movement)
 }
 
 // The boss (ported from the monolith). Its own type so combat can tell it apart
@@ -95,6 +98,9 @@ export interface BossState {
   meleeWindupUntil: number; // boss melee lands when now >= this
   castWindupUntil: number; // boss bolt-fan fires when now >= this
   castTarget: string; // player id the pending cast is aimed at
+  // ---- Hard crowd control (root / stun / freeze) ----
+  ccUntil: number; // CC active while now < this (0 = free)
+  ccKind: CcKind | ""; // stun/freeze fully lock the boss; root only stops its movement
 }
 
 export interface ProjectileState {
@@ -106,6 +112,9 @@ export interface ProjectileState {
   vy: number;
   dmg: number;
   slowMs: number;
+  stunMs?: number; // CC carried by an offensive projectile (e.g. concussive shot)
+  rootMs?: number;
+  freeze?: boolean;
   ability: number;
   sprite?: number; // optional client render marker; ability remains the real caster slot
   ttl: number; // seconds remaining

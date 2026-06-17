@@ -13,6 +13,11 @@ export type PlayerClass =
   | "berserker";
 export type MonsterKind = "grunt" | "ranged" | "brute" | "swarm" | "healer";
 
+// Hard crowd control applied to enemies by player abilities. `root` locks movement
+// only; `stun`/`freeze` lock movement AND action (and interrupt a wind-up). `freeze`
+// is a stun flavored as ice (icy tint + a short slow on thaw).
+export type CcKind = "stun" | "root" | "freeze";
+
 // Chosen WoW-style classes (picked at the first level-up; distinct from the
 // emergent playstyle `PlayerClass` label above). Drives the main stat that scales
 // your abilities, your trinity role, and which talent tree you spend points in.
@@ -28,6 +33,10 @@ export interface Ability {
   projectile: boolean;
   speed?: number; // ballistic projectile speed (px/s)
   slowMs?: number;
+  // ---- hard crowd control (enemy-only; never lands on players) ----
+  stunMs?: number; // on hit: fully lock the foe (no move/act) + interrupt its wind-up
+  rootMs?: number; // on hit: lock the foe's movement only (it can still swing/shoot)
+  freeze?: boolean; // flavor: render the stun as ice + leave a short slow on thaw
   ammo?: number; // current charges (consumables like thrown rocks); undefined = unlimited
   maxAmmo?: number; // full ammo, for the UI bar
   // ---- evolution shape (drives how the cast behaves) ----
