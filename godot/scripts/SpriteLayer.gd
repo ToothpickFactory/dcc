@@ -90,6 +90,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			continue
 		seen[id] = true
 		var k := str(d.get("kind", ""))
+		if k == "prop":
+			continue
 		var is_self := id == you_id
 
 		var spr: EntitySprite = _sprites.get(id)

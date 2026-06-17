@@ -13,6 +13,7 @@ import type { Ability } from "../../shared/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { blocked } from "../../procgen/collision";
 import { applyDamage, applyHeal } from "./combat";
+import { propBlocking } from "./collision";
 
 let seq = 0;
 
@@ -85,6 +86,9 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The
   // cone widens with evolutions (blast blade / whirlwind).
   const cone = ab.cone ?? Math.PI / 3;
+  for (const prop of ctx.props) {
+    if (prop.hp > 0 && inCone(caster, prop, aim, ab.range, cone)) ctx.damageProp(prop, caster.id, true, idx);
+  }
   for (const m of ctx.monsters) {
     if (m.dead) continue;
     if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
@@ -189,6 +193,11 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
     pr.x += pr.vx * dt;
     pr.y += pr.vy * dt;
     if (blocked(grid, pr.x, pr.y)) return false; // stopped by a wall
+    const prop = propBlocking(ctx, pr.x, pr.y, pr.hitR);
+    if (prop) {
+      ctx.damageProp(prop, pr.ownerId, !pr.boss, pr.ability);
+      return false;
+    }
 
     // Enemy projectile (boss bolt OR monster bolt): affects players only.
     if (pr.boss) {

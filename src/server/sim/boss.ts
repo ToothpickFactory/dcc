@@ -14,9 +14,9 @@ import {
   BOSS_RADIUS,
   BOSS_SPEED,
 } from "../../shared/constants";
-import { moveWithCollisions } from "../../procgen/collision";
 import type { BossState, PlayerState, WorldCtx } from "../state";
 import { applyDamage } from "./combat";
+import { moveWithWorldCollisions } from "./collision";
 import { leadTarget } from "./monsters";
 
 let seq = 0;
@@ -61,7 +61,7 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   if (boss.meleeWindupUntil > ctx.now) return;
 
   if (d > BOSS_MELEE_RANGE) {
-    moveWithCollisions(ctx.floor.collision, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
+    moveWithWorldCollisions(ctx, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
   } else if (ctx.now >= boss.meleeReadyAt) {
     // Telegraph the heavy swing — resolved above after the wind-up.
     boss.meleeReadyAt = ctx.now + BOSS_MELEE_CD + BOSS_MELEE_WINDUP_MS;

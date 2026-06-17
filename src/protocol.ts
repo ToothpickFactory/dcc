@@ -50,7 +50,7 @@ export interface WorldInfo {
   h: number;
 }
 
-export type EntityKind = "player" | "monster" | "boss" | "proj" | "lootbag";
+export type EntityKind = "player" | "monster" | "boss" | "proj" | "lootbag" | "prop";
 export interface EntityDTO {
   id: string;
   kind: EntityKind;
@@ -66,6 +66,8 @@ export interface EntityDTO {
   proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
   n?: number; // item count (loot bags)
   rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
+  variant?: number; // props: themed decoration sheet index
+  scale?: number; // props: decoration scale
 }
 
 export interface SelfDTO {

@@ -113,6 +113,16 @@ export interface ProjectileState {
   shield?: number; // support projectile: absorb shield applied to the struck ally
 }
 
+export interface PropState {
+  id: string;
+  x: number;
+  y: number;
+  variant: number;
+  scale: number;
+  radius: number;
+  hp: number;
+}
+
 // A bag of dropped items sitting on the floor. Spawned when ANY entity dies
 // (player or monster) holding its full inventory; players walk up and loot it.
 export interface LootBagState {
@@ -132,6 +142,7 @@ export interface WorldCtx {
   players: Map<string, PlayerState>;
   monsters: MonsterState[];
   projectiles: ProjectileState[];
+  props: PropState[];
   boss: BossState | null;
   lootBags: LootBagState[];
   groupHasteReadyAt: number; // shared cooldown for the group-haste (bloodlust) burst
@@ -140,6 +151,8 @@ export interface WorldCtx {
   pushPlay(e: PlaystyleEvent): void;
   dropLoot(x: number, y: number, items: Item[], corpseId?: string): void; // spawn a loot/corpse bag
   rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
+  rollPropDrops(p: PropState): void; // on destructible prop death
+  damageProp(prop: PropState, sourceId?: string, sourceIsPlayer?: boolean, ability?: number): void;
   corpseLootExists(corpseId: string): boolean;
   // Award ability + character XP to a player for a hit/kill with action slot `idx`.
   gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;

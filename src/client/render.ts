@@ -105,10 +105,12 @@ export class Renderer {
   private clipPromises = new Map<string, Promise<LoadedClip | null>>();
   private lastPos = new Map<string, { x: number; y: number }>();
   private textureLoader = new THREE.TextureLoader();
+  private tombstoneTexture: THREE.CanvasTexture | null = null;
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
   private decorations: THREE.Sprite[] = [];
+  private livePropIds = new Set<string>();
   private floatingTexts: FloatingText[] = [];
   private ground: THREE.Mesh;
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
@@ -313,9 +315,9 @@ export class Renderer {
 
   private setDecorations(floor: FloorDescriptor, textures: THREE.Texture[]): void {
     this.clearDecorations();
-    for (const decoration of floor.decorations) {
+    floor.decorations.forEach((decoration, index) => {
       const texture = textures[decoration.variant] ?? textures[1];
-      if (!texture) continue;
+      if (!texture) return;
       const mat = new THREE.SpriteMaterial({
         map: texture,
         color: 0xffffff,
@@ -326,9 +328,10 @@ export class Renderer {
       const size = 58 * decoration.scale;
       sprite.scale.set(size, size, 1);
       sprite.position.set(decoration.x, 24, decoration.y);
+      sprite.userData.propId = `prop_${index.toString(36)}`;
       this.scene.add(sprite);
       this.decorations.push(sprite);
-    }
+    });
   }
 
   private clearDecorations(): void {
@@ -392,6 +395,53 @@ export class Renderer {
     mat.color.setHex(0xffffff);
     texture.repeat.set((flipX ? -1 : 1) * (f.w / clip.sheetW), f.h / clip.sheetH);
     texture.offset.set((f.x + (flipX ? f.w : 0)) / clip.sheetW, 1 - (f.y + f.h) / clip.sheetH);
+    mat.needsUpdate = true;
+  }
+
+  private applyTombstone(state: SpriteState): void {
+    if (!this.tombstoneTexture) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 96;
+      canvas.height = 112;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+        ctx.beginPath();
+        ctx.ellipse(48, 92, 40, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#9da3ad";
+        ctx.strokeStyle = "#30343c";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(20, 92);
+        ctx.lineTo(20, 42);
+        ctx.quadraticCurveTo(20, 14, 48, 14);
+        ctx.quadraticCurveTo(76, 14, 76, 42);
+        ctx.lineTo(76, 92);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = "#555c66";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(34, 52);
+        ctx.lineTo(62, 52);
+        ctx.moveTo(48, 36);
+        ctx.lineTo(48, 68);
+        ctx.moveTo(34, 76);
+        ctx.lineTo(62, 76);
+        ctx.stroke();
+      }
+      this.tombstoneTexture = new THREE.CanvasTexture(canvas);
+      this.tombstoneTexture.colorSpace = THREE.SRGBColorSpace;
+    }
+    state.texture?.dispose();
+    state.texture = null;
+    state.textureSource = null;
+    const mat = state.sprite.material as THREE.SpriteMaterial;
+    mat.map = this.tombstoneTexture;
+    mat.color.setHex(0xffffff);
     mat.needsUpdate = true;
   }
 
@@ -578,8 +628,13 @@ export class Renderer {
   sync(ents: EntityDTO[], selfId: string, predicted: { x: number; y: number } | null) {
     const now = performance.now();
     const seen = new Set<string>();
+    const propIds = new Set<string>();
     for (const e of ents) {
       seen.add(e.id);
+      if (e.kind === "prop") {
+        propIds.add(e.id);
+        continue;
+      }
       let color: number;
       let size: number;
       if (e.kind === "boss") {
@@ -632,7 +687,10 @@ export class Renderer {
       s.flipX = face.flipX;
       if (s.action && now >= s.actionUntil) s.action = null;
 
-      if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
+      if (e.dead && (e.kind === "player" || e.kind === "monster" || e.kind === "boss")) {
+        this.applyTombstone(s);
+        size = 52;
+      } else if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
         const root = e.kind === "player" ? HERO_ROOT : e.kind === "boss" ? BOSS_ROOT : this.enemyRoot(e.id);
         const displayFlipX = s.action ? s.actionFlipX : s.flipX;
         let actionClip = s.action ? this.actionClipPath(root, s.action, s.actionFacingDir) : null;
@@ -701,6 +759,7 @@ export class Renderer {
         s.sprite.visible = true;
       }
     }
+    if (propIds.size > 0) this.livePropIds = propIds;
     for (const [id, s] of this.sprites) {
       if (!seen.has(id)) {
         this.scene.remove(s.sprite);
@@ -823,7 +882,11 @@ export class Renderer {
       return dx * dx + dy * dy <= VISION_RADIUS_SQ && this.canSee(x, y, sprite.position.x, sprite.position.z);
     };
     if (this.stairs) this.stairs.visible = canSeeSprite(this.stairs);
-    for (const sprite of this.decorations) sprite.visible = canSeeSprite(sprite);
+    for (const sprite of this.decorations) {
+      const propId = String(sprite.userData.propId ?? "");
+      const alive = this.livePropIds.size === 0 || this.livePropIds.has(propId);
+      sprite.visible = alive && canSeeSprite(sprite);
+    }
   }
 
   // A wall is visible if any open floor cell adjacent to it (8-neighbour) has clear

@@ -20,6 +20,7 @@ const ACTION_FRAME_SPEED := 1.25
 const MOVEMENT_HOLD_MS := 150
 const MODEL_HIT_MS := 360.0
 const MODEL_DEATH_MS := 1400.0
+const TOMBSTONE_SPRITE_PX := 56.0
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Barbarian-3d-animated.glb"
@@ -149,11 +150,16 @@ func set_dead_body(dead: bool, now_ms: float) -> void:
 		_death_frozen = false
 		_moving_until = 0.0
 		if _model_root != null:
-			_play_model_anim("death")
+			_model_root.visible = false
+		_show_tombstone()
 	else:
 		_dead_until = 0.0
 		_death_freeze_at = 0.0
 		_death_frozen = false
+		texture = null
+		modulate = Color.WHITE
+		if _model_root != null:
+			_model_root.visible = true
 		if _action == "death":
 			_action = ""
 			_action_until = now_ms
@@ -681,6 +687,11 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 # Mirrors the per-entity body of render.ts sync().
 # ---------------------------------------------------------------------------
 func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float) -> void:
+	if _is_dead_body:
+		position = Vector3(wx, _height_for_kind(), wy)
+		_show_tombstone()
+		return
+
 	# Spawn-pop scale factor (ease-out-back overshoot) applied in _apply_size.
 	if now_ms < _spawn_until:
 		var p := 1.0 - (_spawn_until - now_ms) / SPAWN_MS
@@ -716,9 +727,6 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
-		if _is_dead_body:
-			_freeze_death_anim_if_ready(now_ms)
-			return
 		var face_angle := aim
 		if position_changed:
 			face_angle = atan2(dy, dx)
@@ -847,6 +855,16 @@ func _set_fallback() -> void:
 	modulate = _fallback_color()
 	flip_h = false
 
+func _show_tombstone() -> void:
+	texture = _tombstone_texture()
+	modulate = Color.WHITE
+	flip_h = false
+	if _model_root != null:
+		_model_root.visible = false
+	var th := texture.get_height()
+	var s := TOMBSTONE_SPRITE_PX / float(th if th > 0 else 56)
+	scale = Vector3(s, s, s)
+
 func _fallback_color() -> Color:
 	if kind == "boss":
 		return COL_BOSS
@@ -901,3 +919,44 @@ func _ensure_fallback_texture() -> void:
 		img.set_pixel(0, 0, Color.WHITE)
 		_white_tex = ImageTexture.create_from_image(img)
 	texture = _white_tex
+
+static var _tombstone_tex: Texture2D
+static func _tombstone_texture() -> Texture2D:
+	if _tombstone_tex != null:
+		return _tombstone_tex
+	var w := 48
+	var h := 56
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var stone := Color(0.62, 0.64, 0.68, 1)
+	var shade := Color(0.38, 0.4, 0.45, 1)
+	var edge := Color(0.18, 0.2, 0.24, 1)
+	for y in h:
+		for x in w:
+			var inside := false
+			if y >= 18 and x >= 9 and x <= 39 and y <= 48:
+				inside = true
+			else:
+				var dx := float(x - 24) / 15.0
+				var dy := float(y - 18) / 18.0
+				inside = y <= 18 and y >= 2 and dx * dx + dy * dy <= 1.0
+			if inside:
+				var border := x <= 10 or x >= 38 or y >= 47 or (y < 20 and absf(float(x - 24)) > 12.5)
+				img.set_pixel(x, y, edge if border else stone)
+	for y in range(42, 52):
+		for x in range(4, 44):
+			var alpha := 1.0 - absf(float(x - 24)) / 24.0
+			if alpha > 0.0:
+				img.set_pixel(x, y, Color(0.07, 0.08, 0.09, 0.35 * alpha))
+	_draw_tombstone_bar(img, 17, 26, 14, 2, shade)
+	_draw_tombstone_bar(img, 23, 20, 2, 14, shade)
+	_draw_tombstone_bar(img, 16, 34, 16, 2, shade)
+	_draw_tombstone_bar(img, 18, 39, 12, 2, shade)
+	_tombstone_tex = ImageTexture.create_from_image(img)
+	return _tombstone_tex
+
+static func _draw_tombstone_bar(img: Image, x0: int, y0: int, bw: int, bh: int, col: Color) -> void:
+	for y in range(y0, y0 + bh):
+		for x in range(x0, x0 + bw):
+			if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
+				img.set_pixel(x, y, col)

@@ -46,7 +46,7 @@ import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } fr
 import { generateFloor, rng } from "../procgen";
 import { canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
-import type { BossState, LootBagState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "./state";
+import type { BossState, LootBagState, MonsterState, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
@@ -72,6 +72,8 @@ const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
   brute: 0.45,
 };
 const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
+const PROP_LOOT_CHANCE = 0.14; // destructible decoration chance to spill a small pickup
+const PROP_RADIUS = 24; // px; matches ~58px billboard props without making corridors impossible
 const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-side validation)
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
@@ -84,6 +86,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   players = new Map<string, PlayerState>();
   monsters: MonsterState[] = [];
   projectiles: ProjectileState[] = [];
+  props: PropState[] = [];
   boss: BossState | null = null;
   lootBags: LootBagState[] = [];
   groupHasteReadyAt = 0; // shared cooldown for the group-haste (bloodlust) burst
@@ -173,6 +176,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.phase = "running";
     this.floor = generateFloor(FIRST_SEED, 1);
     this.seedLoot();
+    this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
     this.store.checkpointSync({ runId: this.runId, currentFloor: 1, seed: FIRST_SEED, phase: this.phase, savedAt: Date.now() });
@@ -183,6 +187,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
     this.floor = generateFloor(run.seed, run.currentFloor);
     this.seedLoot();
+    this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
   }
@@ -227,6 +232,34 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       drops.push(generatePotion(this.floor.depth, this.gearRng));
     }
     this.dropLoot(m.x, m.y, drops, m.id);
+  }
+
+  rollPropDrops(p: PropState): void {
+    if (this.gearRng() >= PROP_LOOT_CHANCE) return;
+    const item = this.gearRng() < 0.7
+      ? generatePotion(this.floor.depth, this.gearRng)
+      : generateItem(this.floor.depth, rollGearRarity(this.floor.depth, this.gearRng), this.gearRng);
+    this.dropLoot(p.x, p.y, [item]);
+  }
+
+  damageProp(prop: PropState, sourceId?: string, sourceIsPlayer = false, ability = 0): void {
+    if (prop.hp <= 0) return;
+    prop.hp = 0;
+    this.rollPropDrops(prop);
+    this.events.push({ e: "hit", x: prop.x, y: prop.y, ability });
+    if (sourceIsPlayer && sourceId) this.gainXp(sourceId, ability, false);
+  }
+
+  private spawnProps(): void {
+    this.props = this.floor.decorations.map((d, i) => ({
+      id: `prop_${i.toString(36)}`,
+      x: d.x,
+      y: d.y,
+      variant: d.variant,
+      scale: d.scale,
+      radius: Math.max(12, PROP_RADIUS * d.scale),
+      hp: 1,
+    }));
   }
 
   // Award XP to the ability that landed a hit/kill, plus character XP on kills.
@@ -458,6 +491,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.phase = "running";
     this.floor = generateFloor(seed, 1);
     this.seedLoot();
+    this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
     this.projectiles = [];
@@ -563,6 +597,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
     this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
     this.seedLoot();
+    this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
     this.projectiles = [];
@@ -1400,6 +1435,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     }
     for (const b of this.lootBags) {
       ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items) });
+    }
+    for (const prop of this.props) {
+      if (prop.hp <= 0) continue;
+      ents.push({ id: prop.id, kind: "prop", x: r(prop.x), y: r(prop.y), variant: prop.variant, scale: prop.scale });
     }
     for (const pr of this.projectiles) {
       ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), aim: r2(Math.atan2(pr.vy, pr.vx)), sprite: pr.sprite ?? pr.ability, proj: pr.proj });

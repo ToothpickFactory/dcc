@@ -96,7 +96,8 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 
 	# 4) Decorations (render.ts setDecorations). variant indexes the prop sheet,
 	#    fallback to index 1 (render.ts: textures[variant] ?? textures[1]).
-	for deco in decorations:
+	for i in decorations.size():
+		var deco = decorations[i]
 		if typeof(deco) != TYPE_DICTIONARY:
 			continue
 		var variant := int(deco.get("variant", 1))
@@ -111,8 +112,31 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		var dx := float(deco.get("x", 0.0))
 		var dy := float(deco.get("y", 0.0))
 		var sprite := _make_billboard(tex, dx, DECO_Y, dy, DECO_SIZE * scale)
+		sprite.set_meta("dcc_prop_id", "prop_%s" % _base36(i))
 		add_child(sprite)
 		decoration_sprites.append(sprite)
+
+func set_live_props(ents: Array) -> void:
+	var live := {}
+	var saw_props := false
+	for e in ents:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var d: Dictionary = e
+		if str(d.get("kind", "")) != "prop":
+			continue
+		saw_props = true
+		live[str(d.get("id", ""))] = true
+	if not saw_props:
+		for sprite in decoration_sprites:
+			if is_instance_valid(sprite):
+				sprite.set_meta("dcc_alive", true)
+		return
+	for sprite in decoration_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var prop_id := str(sprite.get_meta("dcc_prop_id", ""))
+		sprite.set_meta("dcc_alive", live.has(prop_id))
 
 
 ## Remove every spawned billboard and reset the stairs pulse. World's ground/wall
@@ -210,3 +234,14 @@ func _load_sheet(path: String) -> Texture2D:
 		push_warning("WorldDecor: sheet failed to load: %s" % path)
 	_sheet_cache[path] = tex
 	return tex
+
+func _base36(v: int) -> String:
+	const DIGITS := "0123456789abcdefghijklmnopqrstuvwxyz"
+	if v <= 0:
+		return "0"
+	var n := v
+	var out := ""
+	while n > 0:
+		out = DIGITS[n % 36] + out
+		n = n / 36
+	return out

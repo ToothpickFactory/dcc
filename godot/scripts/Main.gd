@@ -652,12 +652,16 @@ func _update_decor_visibility(x: float, y: float) -> void:
 	if _world == null or _world.grid.is_empty() or _decor == null:
 		return
 	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
+	_decor.set_live_props(_net.ents)
 	_set_static_sprite_visibility(_decor.stairs_sprite, x, y, vision_sq)
 	for sprite in _decor.decoration_sprites:
 		_set_static_sprite_visibility(sprite, x, y, vision_sq)
 
 func _set_static_sprite_visibility(sprite: Sprite3D, x: float, y: float, vision_sq: float) -> void:
 	if sprite == null or not is_instance_valid(sprite):
+		return
+	if sprite.has_meta("dcc_alive") and not bool(sprite.get_meta("dcc_alive")):
+		sprite.visible = false
 		return
 	var world_pos := Vector2(sprite.global_position.x, sprite.global_position.z)
 	if sprite.has_meta("dcc_world"):

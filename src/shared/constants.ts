@@ -66,9 +66,9 @@ export const DASH_MS = 180; // dash duration
 export const DASH_IFRAME_MS = 240; // i-frames (covers the dash + a hair of recovery)
 export const DASH_CD = 1400; // cooldown between dashes
 
-// Per-floor enemy scaling so descent gets genuinely deadlier, not just more crowded.
-export const FLOOR_HP_SCALE = 0.12; // +12% enemy HP per floor depth (linear)
-export const FLOOR_DMG_SCALE = 0.08; // +8% enemy damage per floor depth
+// Per-floor enemy/boss scaling so descent gets genuinely deadlier, not just more crowded.
+export const FLOOR_HP_SCALE = 0.5; // +50% enemy/boss HP per floor depth (linear)
+export const FLOOR_DMG_SCALE = 0.5; // +50% enemy/boss damage per floor depth
 
 // Attack telegraphs: enemy melee winds up before it lands, so you can dodge/step out
 // during the tell (CoN's read-and-evade dance). Brutes/bosses telegraph longer + heavier.

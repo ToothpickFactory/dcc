@@ -1,7 +1,8 @@
-import { moveWithCollisions, randomWalkablePosition } from "../../procgen/collision";
+import { randomWalkablePosition } from "../../procgen/collision";
 import { BRUTE_WINDUP_MULT, KNOCK_MS, MELEE_WINDUP_MS, MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage, applyHeal } from "./combat";
+import { moveWithWorldCollisions } from "./collision";
 
 let seq = 0;
 
@@ -41,7 +42,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
     // Knockback: shoved back + staggered by a player hit — no AI act this tick.
     if (m.knockUntil > ctx.now) {
       const kf = (m.knockUntil - ctx.now) / KNOCK_MS; // 1 -> 0 decay over the impulse
-      moveWithCollisions(ctx.floor.collision, m, m.knockVx * kf * dt, m.knockVy * kf * dt, def.radius);
+      moveWithWorldCollisions(ctx, m, m.knockVx * kf * dt, m.knockVy * kf * dt, def.radius);
       continue;
     }
 
@@ -84,9 +85,9 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       // Kite: back off if too close, close in if out of shooting range, else hold.
       const r = def.ranged;
       if (d < r.kite) {
-        moveWithCollisions(ctx.floor.collision, m, -(dx / d) * speed * dt, -(dy / d) * speed * dt, def.radius);
+        moveWithWorldCollisions(ctx, m, -(dx / d) * speed * dt, -(dy / d) * speed * dt, def.radius);
       } else if (d > r.shootRange) {
-        moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
+        moveWithWorldCollisions(ctx, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
       }
       if (d <= r.shootRange && ctx.now >= m.attackReadyAt) {
         m.attackReadyAt = ctx.now + def.attackCd;
@@ -102,7 +103,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
         ctx.pushFx({ e: "windup", by: m.id, x: m.x, y: m.y, ms: Math.round(windup) });
       }
     } else {
-      moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
+      moveWithWorldCollisions(ctx, m, (dx / d) * speed * dt, (dy / d) * speed * dt, def.radius);
     }
   }
 }
@@ -143,8 +144,8 @@ function wander(ctx: WorldCtx, m: MonsterState, speed: number, dt: number): void
     m.wanderAt = ctx.now + 2000 + Math.random() * 3000;
     m.aim = Math.random() * Math.PI * 2;
   }
-  moveWithCollisions(
-    ctx.floor.collision,
+  moveWithWorldCollisions(
+    ctx,
     m,
     Math.cos(m.aim) * speed * 0.5 * dt,
     Math.sin(m.aim) * speed * 0.5 * dt,
@@ -173,7 +174,7 @@ function updateHealer(
     const pd = Math.hypot(px, py) || 1;
     m.aim = Math.atan2(py, px);
     if (pd < heal.kite) {
-      moveWithCollisions(ctx.floor.collision, m, -(px / pd) * speed * dt, -(py / pd) * speed * dt, radius);
+      moveWithWorldCollisions(ctx, m, -(px / pd) * speed * dt, -(py / pd) * speed * dt, radius);
     }
   }
 
@@ -198,7 +199,7 @@ function updateHealer(
       const dy = far.y - m.y;
       const d = Math.hypot(dx, dy) || 1;
       m.aim = Math.atan2(dy, dx);
-      moveWithCollisions(ctx.floor.collision, m, (dx / d) * speed * dt, (dy / d) * speed * dt, radius);
+      moveWithWorldCollisions(ctx, m, (dx / d) * speed * dt, (dy / d) * speed * dt, radius);
     } else {
       wander(ctx, m, speed, dt);
     }
