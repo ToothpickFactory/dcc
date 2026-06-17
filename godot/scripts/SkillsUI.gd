@@ -398,14 +398,16 @@ func _build_panel() -> void:
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
 
+	# Roomy two-column layout so nothing needs scrolling on a normal window. The scroll
+	# stays as a safety net for very small windows / huge talent trees.
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(564, 640)
+	scroll.custom_minimum_size = Vector2(960, 720)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
 
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(540, 0)
-	col.add_theme_constant_override("separation", 8)
+	col.custom_minimum_size = Vector2(940, 0)
+	col.add_theme_constant_override("separation", 10)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(col)
 
@@ -414,7 +416,7 @@ func _build_panel() -> void:
 	headrow.add_theme_constant_override("separation", 8)
 	var title := Label.new()
 	title.text = "✨ Skills & Evolution"
-	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_font_size_override("font_size", 20)
 	title.add_theme_color_override("font_color", TEXT_NAME)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var close_btn := Button.new()
@@ -425,42 +427,63 @@ func _build_panel() -> void:
 	headrow.add_child(close_btn)
 	col.add_child(headrow)
 
+	# Character level + XP bar — full width under the header.
 	_char_box = VBoxContainer.new()
 	_char_box.add_theme_constant_override("separation", 4)
 	_char_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_char_box)
 
+	# Two columns: [stats + attributes] | [talents + abilities].
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 28)
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(cols)
+
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 8)
+	left.custom_minimum_size = Vector2(460, 0)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	right.custom_minimum_size = Vector2(440, 0)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+
+	# Left column: STATS then ATTRIBUTES (the attr box renders its own header).
 	var statsect := Label.new()
 	statsect.text = "STATS"
 	statsect.add_theme_font_size_override("font_size", 11)
 	statsect.add_theme_color_override("font_color", TEXT_SECTION)
-	col.add_child(statsect)
+	left.add_child(statsect)
 
 	_stats_box = VBoxContainer.new()
 	_stats_box.add_theme_constant_override("separation", 3)
 	_stats_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_child(_stats_box)
+	left.add_child(_stats_box)
 
 	_attr_box = VBoxContainer.new()
 	_attr_box.add_theme_constant_override("separation", 4)
 	_attr_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_child(_attr_box)
+	left.add_child(_attr_box)
 
+	# Right column: class picker / talents, then abilities.
 	_talent_box = VBoxContainer.new()
 	_talent_box.add_theme_constant_override("separation", 5)
 	_talent_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_child(_talent_box)
+	right.add_child(_talent_box)
 
 	var sect := Label.new()
 	sect.text = "ABILITIES"
 	sect.add_theme_font_size_override("font_size", 11)
 	sect.add_theme_color_override("font_color", TEXT_SECTION)
-	col.add_child(sect)
+	right.add_child(sect)
 
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 8)
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_child(_list)
+	right.add_child(_list)
 
 	col.add_child(_hint("Use an ability to earn its XP. When it's ready, pick a branch to evolve it. Permadeath wipes all of it."))
 
@@ -560,7 +583,7 @@ func _render_attrs(self_dto: Dictionary) -> void:
 	for k in ATTR_LIST:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
-		row.custom_minimum_size = Vector2(250, 0)
+		row.custom_minimum_size = Vector2(205, 0)
 		var lbl := Label.new()
 		lbl.text = "%s %d" % [_cap(k), int(attrs.get(k, 0))]
 		lbl.add_theme_color_override("font_color", TEXT_NAME)

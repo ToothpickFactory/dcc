@@ -16,7 +16,7 @@ extends Node3D
 ## latest snapshot (Net.cur.ents). Remote interpolation reads Net.prev/Net.cur by id;
 ## the local self uses `self_pos` (the predicted position) directly.
 
-const VISION_RADIUS := 520.0   # DccConst.VISION_RADIUS; render.ts VISION_RADIUS
+const VISION_RADIUS := 1000.0   # DccConst.VISION_RADIUS; render.ts VISION_RADIUS (kept in sync)
 const VISION_RADIUS_SQ := VISION_RADIUS * VISION_RADIUS
 const SPRITE_PX_NORMAL := 84.0 # players / monsters
 const SPRITE_PX_BOSS := 76.0

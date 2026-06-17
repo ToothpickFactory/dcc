@@ -731,13 +731,13 @@ func _card(parent: Control) -> Control:
 	center.add_child(panel)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(564, 640)
+	scroll.custom_minimum_size = Vector2(780, 760)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
 
 	# ScrollContainer needs a child that expands to its width to host the column.
 	var holder := VBoxContainer.new()
-	holder.custom_minimum_size = Vector2(540, 0)
+	holder.custom_minimum_size = Vector2(752, 0)
 	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(holder)
 	return holder
@@ -761,7 +761,7 @@ func _hint(text: String) -> Label:
 
 func _grid() -> GridContainer:
 	var g := GridContainer.new()
-	g.columns = 6
+	g.columns = 8  # wider modal -> more columns -> fewer rows -> less scrolling
 	g.add_theme_constant_override("h_separation", 8)
 	g.add_theme_constant_override("v_separation", 8)
 	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL

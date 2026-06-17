@@ -16,7 +16,7 @@ uniform sampler2D u_grid : filter_nearest, repeat_disable;       // R8: 1.0 = wa
 uniform sampler2D u_wall_vis : filter_nearest, repeat_disable;   // R8: 1.0 = wall lit
 uniform vec2 u_grid_size = vec2(1.0, 1.0);                        // cells (w, h)
 uniform float u_cell = 80.0;                                     // px per cell
-uniform float u_vision = 520.0;                                 // VISION_RADIUS
+uniform float u_vision = 1000.0;                                // VISION_RADIUS (Fog.gd overrides from DccConst)
 uniform bool u_is_wall = false;                                  // material switch
 uniform vec4 u_albedo : source_color = vec4(0.086, 0.114, 0.180, 1.0); // flat fallback color
 uniform sampler2D u_tex : source_color, filter_nearest, repeat_enable; // optional theme tile
