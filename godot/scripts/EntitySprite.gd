@@ -56,6 +56,12 @@ const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
+const POISON_PROJECTILE_SPRITE := 95 # src/shared/constants.ts POISON_PROJECTILE_SPRITE
+const POISON_MODEL_PATH := "res://assets/Projectiles/Poisonball/Poisonball.glb"
+const POISON_MODEL_SCALE := 18.0
+const ICE_PROJECTILE_SPRITE := 96 # src/shared/constants.ts ICE_PROJECTILE_SPRITE
+const ICE_MODEL_PATH := "res://assets/Projectiles/Iceball/An ice projectile.glb"
+const ICE_MODEL_SCALE := 18.0
 const FIREBALL_PROJECTILE_SPRITE := 97 # src/shared/constants.ts FIREBALL_PROJECTILE_SPRITE
 const FIREBALL_MODEL_PATH := "res://assets/Projectiles/Fireball/Fireball.glb"
 const FIREBALL_MODEL_SCALE := 18.0
@@ -244,6 +250,30 @@ func _model_profile_for_entity() -> Dictionary:
 			"light_range": 90.0,
 			"light_y": 16.0,
 			"contrast": 1.25,
+			"saturation": 1.35,
+		}
+	if kind == "proj" and _sprite_id == ICE_PROJECTILE_SPRITE:
+		return {
+			"label": "Iceball",
+			"path": ICE_MODEL_PATH,
+			"scale": ICE_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": 1.6,
+			"light_range": 90.0,
+			"light_y": 16.0,
+			"contrast": 1.25,
+			"saturation": 1.25,
+		}
+	if kind == "proj" and _sprite_id == POISON_PROJECTILE_SPRITE:
+		return {
+			"label": "Poisonball",
+			"path": POISON_MODEL_PATH,
+			"scale": POISON_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": 1.7,
+			"light_range": 90.0,
+			"light_y": 16.0,
+			"contrast": 1.3,
 			"saturation": 1.35,
 		}
 	if kind == "monster":

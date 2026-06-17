@@ -21,10 +21,14 @@ const VISION_RADIUS_SQ := VISION_RADIUS * VISION_RADIUS
 const SPRITE_PX_NORMAL := 84.0 # players / monsters
 const SPRITE_PX_BOSS := 76.0
 const SPRITE_PX_PROJ := 16.0
+const SPRITE_PX_POISON := 28.0
+const SPRITE_PX_ICE := 28.0
 const SPRITE_PX_FIREBALL := 28.0
 const SPRITE_PX_BOSSBOLT := 24.0
 const SPRITE_PX_LOOT := 34.0
 const SNAPSHOT_MS := 100.0     # ~2 ticks (TICK_MS=50); interpolation window for remotes
+const POISON_PROJECTILE_SPRITE := 95
+const ICE_PROJECTILE_SPRITE := 96
 const FIREBALL_PROJECTILE_SPRITE := 97
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
@@ -246,9 +250,17 @@ func _nearest_entity(ents: Array, x: float, y: float, kinds: Array, max_distance
 func _sprite_px_for(kind: String, sprite_id: int) -> float:
 	match kind:
 		"boss": return SPRITE_PX_BOSS
-		"proj": return SPRITE_PX_BOSSBOLT if sprite_id == BOSS_BOLT_SPRITE else (SPRITE_PX_FIREBALL if sprite_id == FIREBALL_PROJECTILE_SPRITE else SPRITE_PX_PROJ)
+		"proj": return _projectile_sprite_px(sprite_id)
 		"lootbag": return SPRITE_PX_LOOT
 		_: return SPRITE_PX_NORMAL
+
+func _projectile_sprite_px(sprite_id: int) -> float:
+	match sprite_id:
+		BOSS_BOLT_SPRITE: return SPRITE_PX_BOSSBOLT
+		FIREBALL_PROJECTILE_SPRITE: return SPRITE_PX_FIREBALL
+		ICE_PROJECTILE_SPRITE: return SPRITE_PX_ICE
+		POISON_PROJECTILE_SPRITE: return SPRITE_PX_POISON
+		_: return SPRITE_PX_PROJ
 
 # Line-of-sight to the collision grid (render.ts canSee -> Geo.line_of_sight 1:1 port).
 # No grid yet -> visible (radius-only fallback).

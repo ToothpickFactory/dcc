@@ -26,6 +26,8 @@ export const MONSTER_DMG = 6;
 export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accruing (boss trigger)
 export const LOOT_BAG_TTL = 120000; // ms a dropped loot bag lingers before despawning
 export const LOOT_REACH = 90; // px a player must be within to loot a bag
+export const POISON_PROJECTILE_SPRITE = 95; // EntityDTO.sprite marker for poison GLB projectiles
+export const ICE_PROJECTILE_SPRITE = 96; // EntityDTO.sprite marker for ice/rock GLB projectiles
 export const FIREBALL_PROJECTILE_SPRITE = 97; // EntityDTO.sprite marker for fireball GLB projectiles
 export const MONSTER_BOLT_SPRITE = 98; // EntityDTO.sprite for a ranged monster's bolt
 

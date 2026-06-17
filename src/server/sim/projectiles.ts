@@ -3,10 +3,13 @@ import {
   AGGRO_PER_HEAL,
   BOSS_RADIUS,
   FIREBALL_PROJECTILE_SPRITE,
+  ICE_PROJECTILE_SPRITE,
   MONSTER_KINDS,
+  POISON_PROJECTILE_SPRITE,
   PLAYER_RADIUS,
   PROJECTILE_RADIUS,
 } from "../../shared/constants";
+import type { Ability } from "../../shared/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { blocked } from "../../procgen/collision";
 import { applyDamage, applyHeal } from "./combat";
@@ -57,7 +60,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
         dmg, // negative = heal projectile
         slowMs: ab.slowMs ?? 0,
         ability: idx,
-        sprite: isFireballProjectile(ab) ? FIREBALL_PROJECTILE_SPRITE : undefined,
+        sprite: projectileSpriteForAbility(ab),
         ttl: ab.range / speed,
         hitR: PROJECTILE_RADIUS,
         boss: false,
@@ -95,7 +98,23 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   return true;
 }
 
-function isFireballProjectile(ab: PlayerState["abilities"][number]): boolean {
+function projectileSpriteForAbility(ab: Ability): number | undefined {
+  if (isIceOrRockProjectile(ab)) return ICE_PROJECTILE_SPRITE;
+  if (isPoisonProjectile(ab)) return POISON_PROJECTILE_SPRITE;
+  if (isFireballProjectile(ab)) return FIREBALL_PROJECTILE_SPRITE;
+  return undefined;
+}
+
+function isIceOrRockProjectile(ab: Ability): boolean {
+  const rockIds = new Set(["rocks", "sharprocks", "boulder", "multishot", "scattershot"]);
+  return ab.projectile === true && (rockIds.has(ab.id) || (ab.slowMs ?? 0) > 0);
+}
+
+function isPoisonProjectile(ab: Ability): boolean {
+  return ab.projectile === true && ab.dmg > 0 && ab.id.startsWith("loot-") && ab.category === "stealth";
+}
+
+function isFireballProjectile(ab: Ability): boolean {
   return ab.projectile === true && ab.dmg > 0 && ab.id.startsWith("loot-") && (ab.category === "ranged" || ab.category === "aoe");
 }
 
