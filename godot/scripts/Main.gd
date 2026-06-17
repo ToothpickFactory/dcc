@@ -10,6 +10,14 @@ extends Node3D
 @export var server_url := DccConst.DEFAULT_WS_URL
 @export var player_name := "GodotHero"
 
+const CAMERA_HEIGHT := 700.0
+const CAMERA_BACK_OFFSET := 560.0
+const KEY_LIGHT_HEIGHT := 900.0
+const KEY_LIGHT_RIGHT_OFFSET := 520.0
+const KEY_LIGHT_BACK_OFFSET := 620.0
+const KEY_LIGHT_ENERGY := 1.45
+const AMBIENT_LIGHT_ENERGY := 0.72
+
 var _net                       # Net (Node)
 var _world: World
 var _fog: Fog
@@ -46,6 +54,7 @@ var _hitstop_until := 0.0      # wall-clock ms; Engine.time_scale dips until the
 var _last_hitstop := 0.0       # throttle hit-stop so swarms don't strobe
 var _boss_present_was := false # tracks boss presence for the combat-music layer
 var _trail_frame := 0          # throttles projectile trail dots
+var _key_light: DirectionalLight3D
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -82,6 +91,7 @@ func _ready() -> void:
 	e.background_color = Color8(0x0b, 0x0e, 0x14)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color.WHITE
+	e.ambient_light_energy = AMBIENT_LIGHT_ENERGY
 	env.environment = e
 	add_child(env)
 
@@ -89,6 +99,7 @@ func _ready() -> void:
 	_cam.fov = 55
 	_cam.far = 8000
 	add_child(_cam)
+	_setup_scene_lighting()
 
 	# Net first — modules bind to it.
 	_net = preload("res://scripts/Net.gd").new()
@@ -213,6 +224,20 @@ func _ready() -> void:
 		login.submitted.connect(func(n):
 			player_name = n
 			_net.start(server_url, n))
+
+func _setup_scene_lighting() -> void:
+	_key_light = DirectionalLight3D.new()
+	_key_light.name = "KeyLight"
+	_key_light.light_energy = KEY_LIGHT_ENERGY
+	_key_light.light_color = Color(1.0, 0.94, 0.84)
+	_key_light.shadow_enabled = false
+	add_child(_key_light)
+
+func _update_scene_lighting(cx: float, cy: float) -> void:
+	if _key_light == null:
+		return
+	_key_light.position = Vector3(cx + KEY_LIGHT_RIGHT_OFFSET, KEY_LIGHT_HEIGHT, cy + KEY_LIGHT_BACK_OFFSET)
+	_key_light.look_at(Vector3(cx, 35.0, cy), Vector3.UP)
 
 func _apply_ui_scale() -> void:
 	# ~1280px logical reference; clamp so it never shrinks below 1x or balloons.

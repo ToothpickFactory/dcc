@@ -30,9 +30,25 @@ const JAILOR_NAME := "Iron Jailor"
 const JAILOR_MODEL_PATH := "res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb"
 const JAILOR_MODEL_SCALE := 504.0
 const JAILOR_LIGHT_ENERGY := 2.2
+const BRIAR_REVENANT_NAME := "Briar Revenant"
+const BRIAR_REVENANT_MODEL_PATH := "res://assets/Bosses/BriarRevenant/Briar Revenant-3d-animated.glb"
+const PRIMAL_CONFLUX_NAME := "Primal Conflux"
+const PRIMAL_CONFLUX_MODEL_PATH := "res://assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb"
+const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
+const GHOUL_MODEL_SCALE := 116.0
+const GHOUL_LIGHT_ENERGY := 1.5
+const ORC_MODEL_PATH := "res://assets/Enemies/Orc/Orc-3d-animated.glb"
+const ORC_MODEL_SCALE := 124.0
+const ORC_LIGHT_ENERGY := 1.55
+const SKELETON_MODEL_PATH := "res://assets/Enemies/Skeleton/Skeleton-3d-animated.glb"
+const SKELETON_MODEL_SCALE := 112.0
+const SKELETON_LIGHT_ENERGY := 1.45
 const TROLL_MODEL_PATH := "res://assets/Enemies/Troll/Troll-3d-animated.glb"
 const TROLL_MODEL_SCALE := 132.0
 const TROLL_LIGHT_ENERGY := 1.6
+const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
+const ZOMBIE_MODEL_SCALE := 118.0
+const ZOMBIE_LIGHT_ENERGY := 1.5
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Orc", "Skeleton", "Zombie", "Troll"]
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
@@ -166,28 +182,82 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
-	if kind == "monster" and _enemy_root().ends_with("/Troll"):
-		return {
-			"label": "Troll",
-			"path": TROLL_MODEL_PATH,
-			"scale": TROLL_MODEL_SCALE,
-			"light_energy": TROLL_LIGHT_ENERGY,
-			"light_range": 320.0,
-			"light_y": 120.0,
-			"contrast": 1.25,
-			"saturation": 1.25,
-		}
-	if kind == "boss" and _entity_name == JAILOR_NAME:
-		return {
-			"label": JAILOR_NAME,
-			"path": JAILOR_MODEL_PATH,
-			"scale": JAILOR_MODEL_SCALE,
-			"light_energy": JAILOR_LIGHT_ENERGY,
-			"light_range": 520.0,
-			"light_y": 180.0,
-			"contrast": 1.45,
-			"saturation": 1.45,
-		}
+	if kind == "monster":
+		var root := _enemy_root()
+		if root.ends_with("/Ghoul"):
+			return {
+				"label": "Ghoul",
+				"path": GHOUL_MODEL_PATH,
+				"scale": GHOUL_MODEL_SCALE,
+				"light_energy": GHOUL_LIGHT_ENERGY,
+				"light_range": 290.0,
+				"light_y": 106.0,
+				"contrast": 1.25,
+				"saturation": 1.2,
+			}
+		if root.ends_with("/Orc"):
+			return {
+				"label": "Orc",
+				"path": ORC_MODEL_PATH,
+				"scale": ORC_MODEL_SCALE,
+				"light_energy": ORC_LIGHT_ENERGY,
+				"light_range": 300.0,
+				"light_y": 112.0,
+				"contrast": 1.25,
+				"saturation": 1.25,
+			}
+		if root.ends_with("/Skeleton"):
+			return {
+				"label": "Skeleton",
+				"path": SKELETON_MODEL_PATH,
+				"scale": SKELETON_MODEL_SCALE,
+				"light_energy": SKELETON_LIGHT_ENERGY,
+				"light_range": 280.0,
+				"light_y": 104.0,
+				"contrast": 1.25,
+				"saturation": 1.15,
+			}
+		if root.ends_with("/Troll"):
+			return {
+				"label": "Troll",
+				"path": TROLL_MODEL_PATH,
+				"scale": TROLL_MODEL_SCALE,
+				"light_energy": TROLL_LIGHT_ENERGY,
+				"light_range": 320.0,
+				"light_y": 120.0,
+				"contrast": 1.25,
+				"saturation": 1.25,
+			}
+		if root.ends_with("/Zombie"):
+			return {
+				"label": "Zombie",
+				"path": ZOMBIE_MODEL_PATH,
+				"scale": ZOMBIE_MODEL_SCALE,
+				"light_energy": ZOMBIE_LIGHT_ENERGY,
+				"light_range": 290.0,
+				"light_y": 108.0,
+				"contrast": 1.25,
+				"saturation": 1.2,
+			}
+	if kind == "boss":
+		var boss_model_path := ""
+		if _entity_name == JAILOR_NAME:
+			boss_model_path = JAILOR_MODEL_PATH
+		elif _entity_name == BRIAR_REVENANT_NAME:
+			boss_model_path = BRIAR_REVENANT_MODEL_PATH
+		elif _entity_name == PRIMAL_CONFLUX_NAME:
+			boss_model_path = PRIMAL_CONFLUX_MODEL_PATH
+		if boss_model_path != "":
+			return {
+				"label": _entity_name,
+				"path": boss_model_path,
+				"scale": JAILOR_MODEL_SCALE,
+				"light_energy": JAILOR_LIGHT_ENERGY,
+				"light_range": 520.0,
+				"light_y": 180.0,
+				"contrast": 1.45,
+				"saturation": 1.45,
+			}
 	return {}
 
 func _ensure_model_for_entity() -> void:

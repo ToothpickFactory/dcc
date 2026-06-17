@@ -78,4 +78,11 @@ export const BOSS_PROJ_SPREAD = 0.2; // radians between bolts in a volley
 export const BOSS_PROJ_RADIUS = 30; // collision radius vs players
 export const FIRST_BOSS_NAME = "Iron Jailor";
 export const BOSS_NAME = "Slime Guardian";
+export const BRIAR_REVENANT_BOSS_NAME = "Briar Revenant";
+export const PRIMAL_CONFLUX_BOSS_NAME = "Primal Conflux";
+export const BOSS_NAMES = [BRIAR_REVENANT_BOSS_NAME, PRIMAL_CONFLUX_BOSS_NAME, BOSS_NAME] as const;
+export function bossNameForDepth(depth: number): string {
+  if (depth <= 1) return FIRST_BOSS_NAME;
+  return BOSS_NAMES[(depth - 2) % BOSS_NAMES.length];
+}
 export const BOSS_BOLT_SPRITE = 99; // EntityDTO.sprite marker so the client styles boss bolts
