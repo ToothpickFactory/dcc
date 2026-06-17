@@ -15,5 +15,6 @@ const DASH_SPEED := 760.0      # px/s during the dash burst
 const DASH_MS := 180.0         # dash duration
 const DASH_CD := 1400.0        # cooldown between dashes
 const SLOW_FACTOR := 0.5        # movement multiplier while slowed (frost) — mirror src/shared/constants.ts
-const PROTOCOL_VERSION := 15  # v15: ally hp/class on wire, loot owner-priority, buy vendor; v14 was attr points + respec
+const WALKABLE_DELTA := 24      # max ground-height step (px) between adjacent open cells (heightfield 2.5D) — mirror src/shared/constants.ts
+const PROTOCOL_VERSION := 16  # v16: heightfield 2.5D ground layer; v15 was ally hp/class + loot owner + buy vendor
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"

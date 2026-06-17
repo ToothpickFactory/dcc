@@ -16,7 +16,7 @@ var _wall_mat: StandardMaterial3D
 var _fog: Node  # set by Fog.attach(); themed tiles route into the fog shader when present
 
 func build(geometry: Dictionary) -> void:
-	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]))
+	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")))
 	_build_ground()
 	_build_walls()
 

@@ -5,8 +5,63 @@ class_name Geo
 ## Verified against the TS behaviour by godot/test/geo_test.gd.
 
 ## Decode the base64 collision grid from `floor.geometry` (server world-do.ts encodeSolid).
-static func decode(b64: String, gw: int, gh: int, cell: float) -> Dictionary:
-	return {"w": gw, "h": gh, "cell": cell, "solid": Marshalls.base64_to_raw(b64)}
+## `ground_b64` (optional) is the heightfield 2.5D layer (encodeGround: Int16 LE, 2 bytes/cell);
+## decoded into a PackedInt32Array of per-cell px heights (empty = flat, e.g. a v15 server).
+static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: String = "") -> Dictionary:
+	var grid := {"w": gw, "h": gh, "cell": cell, "solid": Marshalls.base64_to_raw(b64)}
+	var ground := PackedInt32Array()
+	if ground_b64 != "":
+		var raw := Marshalls.base64_to_raw(ground_b64)
+		var n := gw * gh
+		if raw.size() >= n * 2:
+			ground.resize(n)
+			for i in n:
+				ground[i] = raw.decode_s16(i * 2) # little-endian signed 16-bit, mirrors encodeGround
+	grid["ground"] = ground
+	return grid
+
+## Nearest-cell ground height (px). INTEGER-indexed — bit-identical to TS heightAt() (collision.ts).
+## This is the canonical sampler the v2 step-up gate uses. Returns 0 when there is no height layer.
+static func ground_step(grid: Dictionary, x: float, y: float) -> int:
+	var ground: PackedInt32Array = grid.get("ground", PackedInt32Array())
+	if ground.is_empty():
+		return 0
+	var cell: float = grid["cell"]
+	var w: int = grid["w"]
+	var h: int = grid["h"]
+	var cx := int(floor(x / cell))
+	var cy := int(floor(y / cell))
+	if cx < 0: cx = 0
+	elif cx >= w: cx = w - 1
+	if cy < 0: cy = 0
+	elif cy >= h: cy = h - 1
+	return ground[cy * w + cx]
+
+## Bilinear ground height (px) for SMOOTH rendering (mesh displacement, entity/camera seating).
+## RENDER-ONLY — never feed this into the collision/step gate (that uses ground_step). Samples by
+## cell CENTRES, so a position at a cell centre returns that cell's exact height.
+static func ground_height(grid: Dictionary, x: float, y: float) -> float:
+	var ground: PackedInt32Array = grid.get("ground", PackedInt32Array())
+	if ground.is_empty():
+		return 0.0
+	var cell: float = grid["cell"]
+	var w: int = grid["w"]
+	var h: int = grid["h"]
+	var gx := x / cell - 0.5
+	var gy := y / cell - 0.5
+	var x0 := int(floor(gx))
+	var y0 := int(floor(gy))
+	var fx := gx - float(x0)
+	var fy := gy - float(y0)
+	var x1 := clampi(x0 + 1, 0, w - 1)
+	var y1 := clampi(y0 + 1, 0, h - 1)
+	x0 = clampi(x0, 0, w - 1)
+	y0 = clampi(y0, 0, h - 1)
+	var h00 := float(ground[y0 * w + x0])
+	var h10 := float(ground[y0 * w + x1])
+	var h01 := float(ground[y1 * w + x0])
+	var h11 := float(ground[y1 * w + x1])
+	return lerpf(lerpf(h00, h10, fx), lerpf(h01, h11, fx), fy)
 
 ## True if (x,y) is outside the grid or inside a solid cell. (procgen/collision.ts: blocked)
 static func blocked(grid: Dictionary, x: float, y: float) -> bool:

@@ -65,3 +65,42 @@ func test_line_of_sight_clear_between_open_cells() -> void:
 	var g := _grid()
 	# (1,1) open -> (2,1) open, adjacent, no wall between -> visible
 	assert_bool(Geo.line_of_sight(g, 1.5 * CELL, 1.5 * CELL, 2.5 * CELL, 1.5 * CELL)).is_true()
+
+# ---- heightfield 2.5D: ground layer wire round-trip + samplers ----
+# 4x3 Int16 ground (row-major y*4+x), incl. negatives + Int16 extremes, encoded by the SERVER's
+# exact encodeGround (Int16 little-endian, 2 bytes/cell -> btoa). Verifies the signed wire contract
+# AND that ground_step (nearest-cell, the v2 gate sampler) is bit-identical to TS heightAt.
+const GROUND_B64 := "AAAQAPD/ZAAyAAAAnP8YAPn/yAAAgP9/"
+const GROUND_VALS := [0, 16, -16, 100, 50, 0, -100, 24, -7, 200, -32768, 32767]
+
+func _hgrid() -> Dictionary:
+	return Geo.decode(FIXTURE_B64, GW, GH, CELL, GROUND_B64)
+
+func test_ground_decode_signed_roundtrip() -> void:
+	var g := _hgrid()
+	var ground: PackedInt32Array = g["ground"]
+	assert_int(ground.size()).is_equal(12)
+	for i in GROUND_VALS.size():
+		assert_int(ground[i]).is_equal(GROUND_VALS[i]) # signed 16-bit survives the wire
+
+func test_ground_step_nearest_cell_matches_values() -> void:
+	var g := _hgrid()
+	# ground_step at any point in a cell == that cell's stored height (the v2 gate sampler)
+	for cy in GH:
+		for cx in GW:
+			var v: int = GROUND_VALS[cy * GW + cx]
+			assert_int(Geo.ground_step(g, (cx + 0.5) * CELL, (cy + 0.5) * CELL)).is_equal(v)
+
+func test_ground_height_at_cell_centre_equals_value() -> void:
+	var g := _hgrid()
+	# bilinear render sampler returns the exact cell value at a cell centre
+	assert_float(Geo.ground_height(g, 0.5 * CELL, 0.5 * CELL)).is_equal_approx(0.0, 0.01)
+	assert_float(Geo.ground_height(g, 3.5 * CELL, 0.5 * CELL)).is_equal_approx(100.0, 0.01)
+	assert_float(Geo.ground_height(g, 2.5 * CELL, 1.5 * CELL)).is_equal_approx(-100.0, 0.01)
+	# midpoint between (0,0)=0 and (1,0)=16 is the average
+	assert_float(Geo.ground_height(g, 1.0 * CELL, 0.5 * CELL)).is_equal_approx(8.0, 0.01)
+
+func test_ground_absent_is_flat() -> void:
+	var g := Geo.decode(FIXTURE_B64, GW, GH, CELL) # no ground arg (v15-style)
+	assert_int(Geo.ground_step(g, 0.5 * CELL, 0.5 * CELL)).is_equal(0)
+	assert_float(Geo.ground_height(g, 0.5 * CELL, 0.5 * CELL)).is_equal_approx(0.0, 0.01)
