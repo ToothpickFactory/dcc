@@ -574,12 +574,17 @@ func _ensure_model_for_entity() -> void:
 	print("[DCC] %s model active" % label)
 	_play_model_anim("idle")
 
+static var _failed_models := {}  # paths that failed once — don't retry (avoids per-frame load spam)
+
 func _load_model_scene(model_path: String, label: String) -> PackedScene:
+	if _failed_models.has(model_path):
+		return null
 	var imported := load(model_path)
 	if imported is PackedScene:
 		return imported
 
 	if not FileAccess.file_exists(model_path):
+		_failed_models[model_path] = true
 		return null
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()

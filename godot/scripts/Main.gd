@@ -75,7 +75,8 @@ func _ready() -> void:
 	if OS.get_environment("DCC_SMOKE") != "":
 		get_tree().create_timer(7.0).timeout.connect(func(): get_tree().quit())
 	if OS.get_environment("DCC_SHOT") != "":
-		get_tree().create_timer(4.5).timeout.connect(_grab_shot)
+		# ignore_time_scale=true so a hit-stop (Engine.time_scale dip) can't dilate the capture timer.
+		get_tree().create_timer(4.5, true, false, true).timeout.connect(_grab_shot)
 	if OS.get_environment("DCC_RESET") != "":
 		get_tree().create_timer(2.5).timeout.connect(_reset_run)
 	var open_ui := OS.get_environment("DCC_OPENUI")  # "inv" | "skills" — dev screenshot hook
@@ -683,8 +684,10 @@ func _update_decor_visibility(x: float, y: float) -> void:
 	_set_static_sprite_visibility(_decor.stairs_sprite, qx, qy, vision_sq)
 	for sprite in _decor.decoration_sprites:
 		_set_static_sprite_visibility(sprite, qx, qy, vision_sq)
+	for a in _decor.atmo_sprites:  # torch glow-pools / flames / decals — fog-culled like decor
+		_set_static_sprite_visibility(a, qx, qy, vision_sq)
 
-func _set_static_sprite_visibility(sprite: Sprite3D, x: float, y: float, vision_sq: float) -> void:
+func _set_static_sprite_visibility(sprite: Node3D, x: float, y: float, vision_sq: float) -> void:
 	if sprite == null or not is_instance_valid(sprite):
 		return
 	if sprite.has_meta("dcc_alive") and not bool(sprite.get_meta("dcc_alive")):

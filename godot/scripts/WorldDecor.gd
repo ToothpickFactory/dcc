@@ -24,6 +24,18 @@ const DECO_SIZE := 58.0       # render.ts setDecorations: 58 * decoration.scale
 const DECO_Y := 24.0          # render.ts: sprite.position.set(x, 24, y)
 const STAIRS_Y := 30.0        # render.ts setStairs: position.set(x, 30, y)
 const STAIRS_FALLBACK := Color(0x5d / 255.0, 1.0, 0x9b / 255.0)  # 0x5dff9b
+# Atmosphere: warm torch light-pools on the floor + a flame at the wall, and dark grime decals.
+# Fake "lighting" via additive glow quads (the fog/wall materials are unshaded, so real point
+# lights wouldn't touch them). Placed deterministically from the grid; fog-culled like decorations.
+const GLOW_Y := 5.0            # glow pool height above the floor (additive; above decals)
+const DECAL_Y := 2.0           # grime decal height above the floor (avoids z-fight with ground)
+const TORCH_GLOW_SIZE := 460.0 # warm pool diameter (px) — lights ~a corridor
+const TORCH_FLAME_Y := 70.0    # flame billboard height on the wall
+const DECAL_SIZE := 160.0      # grime splotch diameter
+const MAX_TORCHES := 44        # per-floor caps (sprite/perf budget)
+const MAX_DECALS := 48
+const TORCH_THRESH := 0.16     # fraction of wall-edges that get a torch
+const TORCH_COLOR := Color(1.6, 1.0, 0.5)  # overbright warm pool (additive) so it reads strongly
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"]
@@ -47,6 +59,13 @@ var world: World
 
 var decoration_sprites: Array[Sprite3D] = []
 var stairs_sprite: Sprite3D
+# Atmosphere props (torch glow pools + flame billboards + floor decals). Fog-culled by Main like
+# decorations, but NOT destructible props (skipped by set_live_props). Glow pools flicker.
+var atmo_sprites: Array[Node3D] = []
+var _glow_quads: Array[Node3D] = []  # subset of atmo_sprites that flicker
+var _flicker := 0.0
+static var _glow_tex: Texture2D
+static var _decal_tex: Texture2D
 
 # theme -> { "floor": AtlasTexture, "wall": AtlasTexture }
 var _tile_cache: Dictionary = {}
@@ -61,6 +80,16 @@ var _stairs_base := Color.WHITE  # base tint (white for art, green for the fallb
 
 
 func _process(dt: float) -> void:
+	# Torch flicker: gently wobble each glow pool's brightness so torches feel alive.
+	if not _glow_quads.is_empty():
+		_flicker += dt
+		for i in _glow_quads.size():
+			var q := _glow_quads[i]
+			if not is_instance_valid(q) or not q.visible:
+				continue
+			var phase := float(i) * 1.7
+			var f := 0.78 + 0.22 * sin(_flicker * 7.0 + phase) * (0.6 + 0.4 * sin(_flicker * 17.0 + phase))
+			(q as GeometryInstance3D).transparency = clampf(1.0 - f, 0.0, 0.6)
 	# Pulse + shimmer the stairs marker so the exit reads as a glowing portal.
 	if stairs_sprite == null or not stairs_sprite.visible:
 		return
@@ -129,6 +158,9 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		add_child(sprite)
 		decoration_sprites.append(sprite)
 
+	# 5) Atmosphere: torch light-pools along walls + grime decals on the floor.
+	_place_atmosphere()
+
 func set_live_props(ents: Array) -> void:
 	if ents.is_empty():
 		return  # no state yet — leave sprites in their initial visible state
@@ -155,6 +187,11 @@ func clear() -> void:
 		if is_instance_valid(sprite):
 			sprite.queue_free()
 	decoration_sprites.clear()
+	for a in atmo_sprites:
+		if is_instance_valid(a):
+			a.queue_free()
+	atmo_sprites.clear()
+	_glow_quads.clear()
 	if is_instance_valid(stairs_sprite):
 		stairs_sprite.queue_free()
 	stairs_sprite = null
@@ -184,6 +221,118 @@ func _make_billboard(tex: Texture2D, wx: float, wy: float, wz: float, size_px: f
 	sprite.position = Vector3(wx, wy, wz)
 	sprite.set_meta("dcc_world", Vector2(wx, wz))
 	return sprite
+
+
+# --- atmosphere: torch light-pools + grime decals --------------------------
+
+## Place torches along walls (a warm flat glow pool on the floor + a flame billboard on the wall)
+## and grime decals on open floor. Deterministic from the grid (stable per floor) + count-capped.
+func _place_atmosphere() -> void:
+	if world == null or world.grid.is_empty():
+		return
+	var grid: Dictionary = world.grid
+	var w: int = grid["w"]
+	var h: int = grid["h"]
+	var cell: float = grid["cell"]
+	var solid: PackedByteArray = grid["solid"]
+	var torches := 0
+	var decals := 0
+	# Step by 1 logical block (2 fine cells) so we don't over-sample the 2x grid.
+	for cy in range(1, h - 1, 2):
+		for cx in range(1, w - 1, 2):
+			var i := cy * w + cx
+			if solid[i] == 1:
+				# Wall: maybe a torch if it borders open floor (pick the open side for the pool).
+				if torches >= MAX_TORCHES or _hash01(cx, cy) > TORCH_THRESH:
+					continue
+				var ox := 0
+				var oy := 0
+				if cx + 1 < w and solid[i + 1] == 0: ox = 1
+				elif cx - 1 >= 0 and solid[i - 1] == 0: ox = -1
+				elif cy + 1 < h and solid[i + w] == 0: oy = 1
+				elif cy - 1 >= 0 and solid[i - w] == 0: oy = -1
+				else: continue
+				var fx := (cx + 0.5 + float(ox) * 0.7) * cell
+				var fz := (cy + 0.5 + float(oy) * 0.7) * cell
+				var pool := _floor_quad(_glow_texture(), fx, GLOW_Y, fz, TORCH_GLOW_SIZE, TORCH_COLOR, true)
+				atmo_sprites.append(pool)
+				_glow_quads.append(pool)
+				var flame := _make_billboard(_glow_texture(), fx, TORCH_FLAME_Y, fz, 46.0)
+				flame.modulate = Color(1.0, 0.74, 0.4)
+				add_child(flame)
+				atmo_sprites.append(flame)
+				torches += 1
+			else:
+				# Open floor: maybe a grime decal.
+				if decals >= MAX_DECALS or _hash01(cx + 911, cy + 53) > 0.05:
+					continue
+				var dx := (cx + 0.5) * cell
+				var dz := (cy + 0.5) * cell
+				var decal := _floor_quad(_decal_texture(), dx, DECAL_Y, dz, DECAL_SIZE * (0.8 + _hash01(cx, cy + 7) * 0.8), Color(1, 1, 1, 0.5), false)
+				decal.rotate_y(_hash01(cx + 3, cy) * TAU)
+				atmo_sprites.append(decal)
+				decals += 1
+
+## A flat quad lying on the floor (facing up) at (wx,wy,wz). additive=true for light pools,
+## false (alpha-blended) for decals. Carries dcc_world meta so Main fog-culls it.
+func _floor_quad(tex: Texture2D, wx: float, wy: float, wz: float, size: float, color: Color, additive: bool) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(size, size)
+	mi.mesh = q
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = tex
+	m.albedo_color = color
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if additive else BaseMaterial3D.BLEND_MODE_MIX
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	q.material = m
+	mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)  # lie flat, facing up
+	mi.position = Vector3(wx, wy, wz)
+	mi.set_meta("dcc_world", Vector2(wx, wz))
+	add_child(mi)
+	return mi
+
+## Warm radial glow texture (white; tinted by modulate). Soft falloff to transparent edges.
+static func _glow_texture() -> Texture2D:
+	if _glow_tex != null:
+		return _glow_tex
+	var n := 64
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := (n - 1) * 0.5
+	for y in n:
+		for x in n:
+			var r := Vector2(x - c, y - c).length() / c
+			var a := clampf(1.0 - r, 0.0, 1.0)
+			a = a * a  # soft quadratic falloff
+			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, a))
+	_glow_tex = ImageTexture.create_from_image(img)
+	return _glow_tex
+
+## Dark grime splotch (soft-edged, irregular) for floor decals.
+static func _decal_texture() -> Texture2D:
+	if _decal_tex != null:
+		return _decal_tex
+	var n := 48
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := (n - 1) * 0.5
+	for y in n:
+		for x in n:
+			var r := Vector2(x - c, y - c).length() / c
+			# irregular edge via a cheap hash wobble on the radius
+			var wob := 0.18 * sin(float(x) * 1.7) * cos(float(y) * 1.3)
+			var a := clampf(1.0 - (r + wob) * 1.15, 0.0, 1.0)
+			a = pow(a, 1.4) * 0.55
+			img.set_pixel(x, y, Color(0.0, 0.0, 0.0, a))
+	_decal_tex = ImageTexture.create_from_image(img)
+	return _decal_tex
+
+## Deterministic 0..1 hash for stable placement.
+func _hash01(x: int, y: int) -> float:
+	var v := float(int(sin(float(x) * 127.1 + float(y) * 311.7) * 43758.5453) % 10000) / 10000.0
+	return absf(v)
 
 
 ## Load (and cache) the floor + wall AtlasTextures for a theme.
