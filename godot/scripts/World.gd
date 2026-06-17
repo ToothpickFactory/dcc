@@ -118,7 +118,10 @@ func _build_walls() -> void:
 	for v in solid:
 		count += v
 	var box := BoxMesh.new()
-	box.size = Vector3(cell, WALL_H, cell)
+	# Slightly fatter than a cell so adjacent wall boxes OVERLAP instead of sharing a coplanar
+	# face — coplanar faces z-fight and cause the "tearing" seams between wall pieces. The 1px
+	# overlap is invisible (interior faces are occluded) but breaks the depth tie.
+	box.size = Vector3(cell + 1.0, WALL_H, cell + 1.0)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color8(0x39, 0x44, 0x5e)
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

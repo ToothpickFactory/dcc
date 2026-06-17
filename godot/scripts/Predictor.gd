@@ -8,11 +8,39 @@ var x := 0.0
 var y := 0.0
 var _inited := false
 var _grid: Dictionary = {}
+var _props: Array = []          # [{x,y,r}, ...] live props the server collides with (so we match it)
 var _dash_until := 0.0          # ms wall-clock; predicted dash burst active until then
 var _dash_dir := Vector2.ZERO
 
 func set_grid(g: Dictionary) -> void:
 	_grid = g
+
+# Live destructible props (server blocks on these via propBlocking). Without this the client
+# predicts straight through them and the server snaps you back — the rubber-band / "stuck" bug.
+func set_props(props: Array) -> void:
+	_props = props
+
+# Walls AND props, mirroring the server's canOccupyWorld (sim/collision.ts).
+func _occupy(nx: float, ny: float, radius: float) -> bool:
+	if not Geo.can_occupy(_grid, nx, ny, radius):
+		return false
+	for p in _props:
+		var rr: float = radius + float(p.r)
+		var ddx: float = nx - float(p.x)
+		var ddy: float = ny - float(p.y)
+		if ddx * ddx + ddy * ddy < rr * rr:
+			return false
+	return true
+
+# Axis-separated swept move against walls + props (mirrors server moveWithWorldCollisions).
+func _move(px: float, py: float, dx: float, dy: float, radius: float) -> Vector2:
+	var ox := px
+	var oy := py
+	if _occupy(ox + dx, oy, radius):
+		ox += dx
+	if _occupy(ox, oy + dy, radius):
+		oy += dy
+	return Vector2(ox, oy)
 
 # Begin a predicted dash burst (Main calls this when it sends a dash).
 func dash(dir: Vector2) -> void:
@@ -32,7 +60,7 @@ func update(self_dto: Dictionary, mv: Vector2, dt: float) -> void:
 		var ddx := _dash_dir.x * DccConst.DASH_SPEED * dt
 		var ddy := _dash_dir.y * DccConst.DASH_SPEED * dt
 		if not _grid.is_empty():
-			var dp := Geo.move_with_collisions(_grid, Vector2(x, y), ddx, ddy, DccConst.PLAYER_RADIUS)
+			var dp := _move(x, y, ddx, ddy, DccConst.PLAYER_RADIUS)
 			x = dp.x
 			y = dp.y
 		else:
@@ -50,7 +78,7 @@ func update(self_dto: Dictionary, mv: Vector2, dt: float) -> void:
 		var dx := (mv.x / l) * speed * dt
 		var dy := (mv.y / l) * speed * dt
 		if not _grid.is_empty():
-			var p := Geo.move_with_collisions(_grid, Vector2(x, y), dx, dy, DccConst.PLAYER_RADIUS)
+			var p := _move(x, y, dx, dy, DccConst.PLAYER_RADIUS)
 			x = p.x
 			y = p.y
 		else:

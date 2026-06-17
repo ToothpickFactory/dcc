@@ -545,6 +545,13 @@ func _ensure_model_for_entity() -> void:
 	var model_path := str(profile.get("path", ""))
 	var label := str(profile.get("label", "3D model"))
 	var scene := _load_model_scene(model_path, label)
+	# A missing per-class model (asset not synced yet) must NOT drop the hero to the flat 2D
+	# atlas — degrade to the default 3D hero model so the avatar still reads as a 3D character.
+	if scene == null and is_self and kind == "player" and model_path != HERO_MODEL_PATH:
+		push_warning("%s model missing (%s) — falling back to default hero model" % [label, model_path])
+		model_path = HERO_MODEL_PATH
+		label = "Hero"
+		scene = _load_model_scene(model_path, label)
 	if scene == null:
 		push_warning("%s model failed to load: %s" % [label, model_path])
 		return

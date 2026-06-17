@@ -113,7 +113,11 @@ func _ready() -> void:
 
 	_cam = Camera3D.new()
 	_cam.fov = cam_fov
-	_cam.far = 8000
+	# Tight near/far for depth precision: the camera never gets within ~500px of geometry, and
+	# nothing relevant is past ~4000px (vision is ~1000). The old 0.05..8000 range wasted almost
+	# all the depth buffer up close, which amplified wall z-fighting/tearing.
+	_cam.near = 40.0
+	_cam.far = 4000
 	add_child(_cam)
 	_setup_scene_lighting()
 
@@ -466,6 +470,13 @@ func _process(dt: float) -> void:
 	var mv: Vector2 = _inp.move_vec()
 	if OS.get_environment("DCC_AUTOMOVE") != "":
 		mv = Vector2(1, 0)  # diagnostic: simulate holding right to test the move pipeline
+	# Feed live props to the predictor so it collides exactly like the server (no rubber-band /
+	# wedging-in-place against an invisible-to-the-client decoration). radius = max(12, 24*scale).
+	var props: Array = []
+	for e in _net.ents:
+		if typeof(e) == TYPE_DICTIONARY and str(e.get("kind", "")) == "prop":
+			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": maxf(12.0, 24.0 * float(e.get("scale", 1.0)))})
+	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
 	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y)
 
@@ -663,9 +674,15 @@ func _update_decor_visibility(x: float, y: float) -> void:
 		return
 	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
 	_decor.set_live_props(_net.ents)
-	_set_static_sprite_visibility(_decor.stairs_sprite, x, y, vision_sq)
+	# Quantize the sight center to the player's CELL CENTER so the LoS result is stable while
+	# you move within a tile — otherwise the ray grazes wall corners as the smoothed camera
+	# drifts and props strobe on/off every frame. (Walls already recompute only per-cell.)
+	var cell: float = _world.grid["cell"]
+	var qx: float = (floor(x / cell) + 0.5) * cell
+	var qy: float = (floor(y / cell) + 0.5) * cell
+	_set_static_sprite_visibility(_decor.stairs_sprite, qx, qy, vision_sq)
 	for sprite in _decor.decoration_sprites:
-		_set_static_sprite_visibility(sprite, x, y, vision_sq)
+		_set_static_sprite_visibility(sprite, qx, qy, vision_sq)
 
 func _set_static_sprite_visibility(sprite: Sprite3D, x: float, y: float, vision_sq: float) -> void:
 	if sprite == null or not is_instance_valid(sprite):
@@ -680,7 +697,10 @@ func _set_static_sprite_visibility(sprite: Sprite3D, x: float, y: float, vision_
 			world_pos = meta_pos
 	var dx := world_pos.x - x
 	var dy := world_pos.y - y
-	sprite.visible = dx * dx + dy * dy <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y)
+	var dsq := dx * dx + dy * dy
+	# Always show close objects (you should see a prop you can bump into); LoS-gate the rest.
+	const NEAR_SQ := 340.0 * 340.0
+	sprite.visible = dsq <= NEAR_SQ or (dsq <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y))
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventKey and e.pressed and not e.echo:
