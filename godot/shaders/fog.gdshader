@@ -66,12 +66,9 @@ float dcc_los_soft(vec2 from, vec2 to) {
 	}
 	vec2 perp = vec2(-dir.y, dir.x) / dlen;   // unit, perpendicular to the view ray
 	float r = u_cell * u_fog_soft;            // penumbra half-width in px
-	float s = dcc_los(from, to);
-	s += dcc_los(from, to + perp * r);
-	s += dcc_los(from, to - perp * r);
-	s += dcc_los(from, to + perp * (r * 0.5));
-	s += dcc_los(from, to - perp * (r * 0.5));
-	return s * 0.2; // 5 samples -> smooth gradient across the shadow boundary
+	// 3 samples (center + both edges) — enough for a soft penumbra at ~half the cost of 5.
+	float s = dcc_los(from, to) + dcc_los(from, to + perp * r) + dcc_los(from, to - perp * r);
+	return s * (1.0 / 3.0);
 }
 
 void vertex() {
@@ -86,18 +83,26 @@ void fragment() {
 		ALBEDO = u_albedo.rgb;
 	}
 	vec2 world_xz = v_world.xz;
-	float vis_flag;
+	float vis_flag = 0.0;
 	float dist;
 	if (u_is_wall) {
 		// Walls: whole-tile visibility from the per-cell mask so a shown wall reveals
 		// fully and never flickers as you move within an adjacent tile.
 		vec2 dcc_cell = floor(world_xz / u_cell);
-		vis_flag = texture(u_wall_vis, (dcc_cell + 0.5) / u_grid_size).r;
 		dist = distance((dcc_cell + 0.5) * u_cell, u_player);
+		if (dist <= u_vision) {
+			vis_flag = texture(u_wall_vis, (dcc_cell + 0.5) / u_grid_size).r;
+		}
 	} else {
-		// Ground: soft per-pixel line-of-sight (gradual penumbra at shadow edges).
-		vis_flag = dcc_los_soft(u_player, world_xz);
+		// Ground: soft per-pixel line-of-sight (gradual penumbra at shadow edges). Beyond the
+		// vision radius the pixel is fully fogged anyway (vis_flag stays 0 -> BG), so we GATE the
+		// costly LoS march behind the radius check — otherwise every far ground pixel marches up
+		// to 48 cells just to end up black (the cost that hurt FPS after the vision-radius bump).
+		// NOTE: GDScript shaders forbid `return` in fragment(), hence the guard instead of early-out.
 		dist = distance(world_xz, u_player);
+		if (dist <= u_vision) {
+			vis_flag = dcc_los_soft(u_player, world_xz);
+		}
 	}
 	float fall = 1.0 - smoothstep(u_vision * 0.6, u_vision, dist);
 	float lit = vis_flag * fall;

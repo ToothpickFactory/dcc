@@ -657,7 +657,7 @@ func _process(dt: float) -> void:
 		_dbg_accum += dt
 		if _dbg_accum >= 1.0:
 			_dbg_accum = 0.0
-			print("[DBG] cam.current=", _cam.current, " cam=", _cam.position.round(),
+			print("[DBG] fps=", Engine.get_frames_per_second(), " cam.current=", _cam.current, " cam=", _cam.position.round(),
 				" pred=(", roundi(_pred.x), ",", roundi(_pred.y), ") floor=", not _world.grid.is_empty(),
 				" ents=", _net.ents.size(), " status=", _net.self_dto.get("status", "?"),
 				" self=(", _net.self_dto.get("x", "?"), ",", _net.self_dto.get("y", "?"), ")")

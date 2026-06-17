@@ -42,6 +42,23 @@ func _move(px: float, py: float, dx: float, dy: float, radius: float) -> Vector2
 		oy += dy
 	return Vector2(ox, oy)
 
+# Reconcile the predicted position toward the authoritative one. FRAME-RATE INDEPENDENT
+# (exp smoothing) — a fixed per-frame blend chases the 20Hz server staircase too tightly at
+# high refresh rates, which reads as chunky/juddery movement. Big errors (respawn / floor
+# change / teleport) snap; everything else eases gently so prediction stays smooth.
+func _reconcile(self_dto: Dictionary, dt: float) -> void:
+	var sx := float(self_dto.get("x", x))
+	var sy := float(self_dto.get("y", y))
+	var ex := sx - x
+	var ey := sy - y
+	if ex * ex + ey * ey > 120.0 * 120.0:
+		x = sx
+		y = sy
+		return
+	var k := 1.0 - exp(-8.0 * dt)  # ~0.13/frame at 60fps, ~0.06 at 120fps — consistent per second
+	x += ex * k
+	y += ey * k
+
 # Begin a predicted dash burst (Main calls this when it sends a dash).
 func dash(dir: Vector2) -> void:
 	if dir.length() > 0.001:
@@ -66,8 +83,7 @@ func update(self_dto: Dictionary, mv: Vector2, dt: float) -> void:
 		else:
 			x += ddx
 			y += ddy
-		x += (float(self_dto.get("x", x)) - x) * 0.15
-		y += (float(self_dto.get("y", y)) - y) * 0.15
+		_reconcile(self_dto, dt)
 		return
 	var l := mv.length()
 	if l > 0.0:
@@ -84,5 +100,4 @@ func update(self_dto: Dictionary, mv: Vector2, dt: float) -> void:
 		else:
 			x += dx
 			y += dy
-	x += (float(self_dto.get("x", x)) - x) * 0.15
-	y += (float(self_dto.get("y", y)) - y) * 0.15
+	_reconcile(self_dto, dt)

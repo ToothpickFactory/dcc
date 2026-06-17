@@ -4,7 +4,7 @@
 import type { MonsterKind } from "./types";
 
 export const TICK_MS = 50; // server simulation step (20 Hz)
-export const INPUT_HZ = 10; // client -> server input rate (scale gate; see ROADMAP.md)
+export const INPUT_HZ = 30; // client -> server input rate (higher = server tracks input closely = smoother movement)
 export const INPUT_MS = 1000 / INPUT_HZ;
 
 export const WORLD = { w: 2400, h: 2400 };
