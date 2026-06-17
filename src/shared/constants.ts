@@ -83,6 +83,12 @@ export const CRIT_MULT = 1.5; // a critical strike deals +50% (see DerivedStats.
 export const THREAT_DECAY = 0.92; // per-tick threat multiplier
 export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost) is active
 
+// Heightfield 2.5D terrain: the max ground-height step (px) between two adjacent open cells.
+// Procgen's slope-relaxation enforces this so terrain reads as walkable ramps (never cliffs),
+// AND it is the threshold the v2 step-up movement gate uses. One constant, both sides — mirror
+// into godot/scripts/DccConst.gd. (Visual-only today; gates collision only in v2.)
+export const WALKABLE_DELTA = 24;
+
 // Dodge/dash (Champions-of-Norrath-style evade): a short high-speed burst with brief
 // invulnerability, on a cooldown. The defensive tool every class shares.
 export const DASH_SPEED = 760; // px/s during the dash burst (~3.3x base move)

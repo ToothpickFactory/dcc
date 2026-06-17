@@ -1612,6 +1612,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         dashReadyAt: p.dashReadyAt,
         status: p.status,
         reached: p.reached,
+        slowed: p.slowUntil > this.now, // mirror movement.ts SLOW_FACTOR gate so the predictor matches
         lifetimeXp: this.lb.get(p.id)?.xp ?? 0,
         bestFloor: this.lb.get(p.id)?.floor ?? 0,
         kills: this.lb.get(p.id)?.kills ?? 0,
@@ -1645,6 +1646,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         gh: this.floor.collision.h,
         cell: this.floor.collision.cell,
         solid: encodeSolid(this.floor.collision.solid),
+        ground: encodeGround(this.floor.collision.ground),
         entrance: this.floor.entrance,
         stairs: this.floor.stairs,
         decorations: this.floor.decorations,
@@ -1722,5 +1724,16 @@ function isRunPhase(s: string): s is RunPhase {
 function encodeSolid(solid: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < solid.length; i++) bin += String.fromCharCode(solid[i]);
+  return btoa(bin);
+}
+
+// Per-cell ground height (heightfield 2.5D), 2 bytes/cell little-endian. Int16 -> unsigned 16-bit
+// so btoa sees 0..255 bytes; Godot's Geo.decode re-signs via PackedByteArray.decode_s16 (LE).
+function encodeGround(ground: Int16Array): string {
+  let bin = "";
+  for (let i = 0; i < ground.length; i++) {
+    const v = ground[i]! & 0xffff;
+    bin += String.fromCharCode(v & 0xff, (v >>> 8) & 0xff);
+  }
   return btoa(bin);
 }

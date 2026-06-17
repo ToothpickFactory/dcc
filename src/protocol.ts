@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, CcKind, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 15; // was 14 (attr points + respec) - ally hp/class on wire, loot owner, buy vendor
+export const PROTOCOL_VERSION = 16; // was 15 - heightfield 2.5D ground layer on FloorGeometry
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -106,6 +106,7 @@ export interface SelfDTO {
   shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  slowed?: boolean; // a slow (frost) is active — client prediction must apply SLOW_FACTOR to match the sim
   dashReadyAt?: number; // tick when the dodge/dash is off cooldown (HUD cue)
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
   bestFloor?: number; // deepest floor ever reached (all-time)
@@ -131,6 +132,7 @@ export interface FloorGeometry {
   gh: number; // grid height in cells
   cell: number; // cell size px
   solid: string; // base64 of the gw*gh Uint8Array, row-major y*gw+x (1 = wall)
+  ground?: string; // base64 of the gw*gh Int16Array (2 bytes/cell, little-endian) — per-cell px height (heightfield 2.5D). Absent = flat.
   entrance: { x: number; y: number };
   stairs: { x: number; y: number; r: number };
   decorations: { x: number; y: number; variant: number; scale: number }[];
