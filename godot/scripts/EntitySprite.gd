@@ -270,6 +270,7 @@ func _model_profile_for_entity() -> Dictionary:
 	if kind == "player":
 		var model_path := HERO_MODEL_PATH
 		var label := "Kevin"
+		var rotation_fix := Vector3.ZERO
 		match _chosen_class:
 			"warrior":
 				model_path = BARBARIAN_MODEL_PATH
@@ -277,6 +278,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"mage":
 				model_path = WIZARD_MODEL_PATH
 				label = "Wizard"
+				rotation_fix = Vector3(-90.0, 0.0, 0.0)
 			"priest":
 				model_path = CLERIC_MODEL_PATH
 				label = "Cleric"
@@ -286,7 +288,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"rogue":
 				model_path = ROGUE_MODEL_PATH
 				label = "Rogue"
-		return {
+		var profile := {
 			"label": label,
 			"path": model_path,
 			"scale": HERO_MODEL_SCALE,
@@ -296,6 +298,9 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
+		if rotation_fix != Vector3.ZERO:
+			profile["rotation_degrees"] = rotation_fix
+		return profile
 	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
 			"label": "Fireball",
@@ -452,6 +457,9 @@ func _ensure_model_for_entity() -> void:
 		return
 	_model_root = inst
 	_model_root.scale = Vector3.ONE * float(profile.get("scale", 1.0))
+	var rot_deg: Variant = profile.get("rotation_degrees", null)
+	if rot_deg is Vector3:
+		_model_root.rotation_degrees = rot_deg
 	add_child(_model_root)
 	_model_anim = _find_animation_player(_model_root)
 	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))
