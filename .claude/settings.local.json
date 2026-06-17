@@ -4,7 +4,8 @@
       "Bash(npx tsc *)",
       "PowerShell(& \"C:\\\\Users\\\\Dallas\\\\Downloads\\\\Godot_v4.6.3-stable_win64.exe\\\\Godot_v4.6.3-stable_win64.exe\" --headless --path \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\" --export-release \"Windows Desktop\" \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\\\\build\\\\windows\\\\DCC.exe\")",
       "Bash(\"C:\\\\Users\\\\Dallas\\\\AppData\\\\Local\\\\Programs\\\\Godot\\\\Godot_v4.4.1-stable_win64.exe\" --headless --export-release \"Windows Desktop\")",
-      "PowerShell(& \"C:\\\\Users\\\\Dallas\\\\Downloads\\\\Godot_v4.6.3-stable_win64.exe\\\\Godot_v4.6.3-stable_win64.exe\" --headless --path \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\" --export-release \"Windows Desktop\" \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\\\\build\\\\windows\\\\DCC.exe\" 2>&1)"
+      "PowerShell(& \"C:\\\\Users\\\\Dallas\\\\Downloads\\\\Godot_v4.6.3-stable_win64.exe\\\\Godot_v4.6.3-stable_win64.exe\" --headless --path \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\" --export-release \"Windows Desktop\" \"C:\\\\Users\\\\Dallas\\\\Project\\\\dcc\\\\godot\\\\build\\\\windows\\\\DCC.exe\" 2>&1)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

@@ -584,7 +584,7 @@ func _ensure_model_for_entity() -> void:
 	_add_model_light(profile)
 	texture = null
 	modulate.a = 0.0
-	print("[DCC] %s model active" % label)
+	print("[DCC] %s model active — inst.rotation_degrees=%v  inst.basis=%v" % [label, (inst as Node3D).rotation_degrees, (inst as Node3D).basis])
 	_play_model_anim("idle")
 
 static var _failed_models := {}  # paths that failed once — don't retry (avoids per-frame load spam)
