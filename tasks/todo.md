@@ -45,4 +45,23 @@ primary client (web kept protocol-compatible, no new web UI this batch).
   buy deducts gold + adds item. Screenshot the vendor + an ally nameplate if feasible.
 
 ## Review
-(filled after)
+All four shipped in one protocol bump (14 → 15), committed `dede11c`.
+- Ally bars: `klass` added to the player EntityDTO (hp/maxHp were already broadcast); EntitySprite floats
+  a Label3D nameplate + 2 Sprite3D HP-bar quads above other players (billboard + no_depth_test).
+- Loot etiquette: killer id threaded dropLoot/rollDrops from combat.ts; takeLoot denies non-owners during
+  LOOT_OWNER_MS (8s); bag DTO carries owner/ownerUntil; Godot dims + locks others' bags.
+- Stat delta: `_delta_node` in InventoryUI (mirrors compatibleSlots) on carried/loot/shop tiles.
+- Vendor: PlayerState.shop (transient), generated on markReached; buyItem/reroll handlers gate on reached
+  + validate gold/carry before charging; `shop` ServerMsg; SHOP section in the inventory (waiting room).
+
+Verified: tsc (server+shared+client) clean; full npm test green; Godot --import parse-clean; live
+(isolated wrangler) — protocol 15, two connections each see the other's hp/maxHp on the wire, and a
+friendly-fire kill produces a corpse bag carrying owner+ownerUntil (loot etiquette).
+
+Not live-verified (impractical without reaching the boss-gated waiting room): the vendor buy/reroll UX and
+the take-deny path — both are straightforward server logic (tsc-clean, mirror sellItem's validated pattern)
+with the `shop` message round-trip wired on both ends.
+
+## Out of scope / follow-ups
+Web client got protocol compatibility only (no vendor/ally-bar UI this batch). Round-robin loot (chose a
+simple owner window). Party-size scaling, downed/revive remain the big co-op items.
