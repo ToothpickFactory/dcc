@@ -7,7 +7,6 @@ const CELL = 80; // px per grid cell
 const BASE_GRID = 38; // floor-1 grid size (cells)
 const GROW_PER_DEPTH = 6; // levels grow with depth (huge later floors)
 const MAX_GRID = 96; // cap so generation/render stays cheap (~7700px across)
-const PLAYER_TRAVEL = 230; // px/s — mirrors PLAYER_SPEED; used to size the floor timer
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -84,14 +83,9 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
     theme,
     w: gw * cell,
     h: gh * cell,
-    // Floor 1 gets a generous 5 min to learn. Later floors scale the timer with
-    // BOTH the journey to the stairs and the sheer size of the floor (a huge open
-    // arena still needs time to cross + clear camps), so the floor minimum grows
-    // with the grid rather than sitting at a flat 90s.
-    durationMs:
-      depth <= 1
-        ? 300000
-        : Math.max(Math.round(((gw * cell) / PLAYER_TRAVEL) * 1000 * 5), Math.ceil((pathCells * cell * 1.7 * 1000) / PLAYER_TRAVEL)),
+    // TEMP: flat 10-minute timer on every floor (was: 5 min on floor 1, then scaled by
+    // floor size / path length). Revert to the scaled formula when tuning difficulty.
+    durationMs: 600000,
     collision,
     entrance,
     stairs,
