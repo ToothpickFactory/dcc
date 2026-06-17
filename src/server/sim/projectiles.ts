@@ -2,6 +2,12 @@ import {
   AGGRO_HEAL_RADIUS,
   AGGRO_PER_HEAL,
   BOSS_RADIUS,
+  COMBO_FINISHER_CONE_MULT,
+  COMBO_FINISHER_DMG_MULT,
+  COMBO_FINISHER_KNOCK_MULT,
+  COMBO_FINISHER_STEP,
+  COMBO_LIGHT_CD_MULT,
+  COMBO_WINDOW_MS,
   FIREBALL_PROJECTILE_SPRITE,
   ICE_PROJECTILE_SPRITE,
   MONSTER_KINDS,
@@ -28,7 +34,13 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   // Gear/attributes scale the cast: haste lowers cooldown, power raises damage,
   // intellect raises healing. The bloodlust group buff shortens cooldowns further.
   const hasteFactor = caster.bloodlustUntil > ctx.now ? 0.6 : 1;
-  caster.cds[idx] = ctx.now + ab.cd * caster.derived.cdMult * hasteFactor;
+  // Melee combo: light swings chain at a reduced cooldown; the heavy finisher (and every
+  // non-melee ability) uses the full cooldown as recovery.
+  const isMelee = !ab.projectile && !ab.taunt && ab.groupBuff !== "haste" && ab.dmg > 0;
+  if (isMelee && ctx.now > caster.comboExpireAt) caster.comboStep = 0; // chain lapsed
+  const isFinisher = isMelee && caster.comboStep >= COMBO_FINISHER_STEP;
+  const cdBase = ab.cd * caster.derived.cdMult * hasteFactor;
+  caster.cds[idx] = ctx.now + (isMelee && !isFinisher ? cdBase * COMBO_LIGHT_CD_MULT : cdBase);
   caster.aim = aim;
   const dmg = ab.dmg < 0 ? ab.dmg * caster.derived.healPower : ab.dmg * caster.derived.spellPower;
   ctx.pushFx({ e: "cast", x: caster.x, y: caster.y, ability: idx });
@@ -81,19 +93,28 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     return true;
   }
 
-  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The
-  // cone widens with evolutions (blast blade / whirlwind).
-  const cone = ab.cone ?? Math.PI / 3;
+  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The cone
+  // widens with evolutions (blast blade / whirlwind). The combo finisher hits harder +
+  // wider + shoves more, then resets the chain (rhythm + weight).
+  const baseCone = ab.cone ?? Math.PI / 3;
+  const cone = isFinisher ? baseCone * COMBO_FINISHER_CONE_MULT : baseCone;
+  const meleeDmg = isFinisher ? dmg * COMBO_FINISHER_DMG_MULT : dmg;
+  const knockMult = isFinisher ? COMBO_FINISHER_KNOCK_MULT : 1;
   for (const m of ctx.monsters) {
     if (m.dead) continue;
-    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
+    if (inCone(caster, m, aim, ab.range, cone)) applyDamage(ctx, m, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, m), knockMult);
   }
   if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, aim, ab.range, cone)) {
-    applyDamage(ctx, ctx.boss, dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
+    applyDamage(ctx, ctx.boss, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss), knockMult);
   }
   for (const p of ctx.players.values()) {
     if (p.id === caster.id || p.status !== "alive" || p.reached) continue;
-    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
+    if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, p), knockMult);
+  }
+  // Advance the chain (wrap after the finisher); keep it alive for COMBO_WINDOW_MS.
+  if (isMelee) {
+    caster.comboStep = isFinisher ? 0 : caster.comboStep + 1;
+    caster.comboExpireAt = ctx.now + COMBO_WINDOW_MS;
   }
   return true;
 }

@@ -83,6 +83,15 @@ export const KNOCK_SPEED = 560; // px/s knockback burst on a player hit
 export const KNOCK_MS = 170; // knockback impulse duration (decays out)
 export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, ranged: 1.1, healer: 1.0, brute: 0.4 };
 
+// Melee combo: chained swings build to a heavy finisher. Light swings chain fast; the
+// finisher hits harder + wider + shoves more, then a recovery resets the chain — rhythm + weight.
+export const COMBO_WINDOW_MS = 850; // keep the chain alive if you swing again within this
+export const COMBO_FINISHER_STEP = 2; // steps 0,1 = light; step 2 = heavy finisher (then reset)
+export const COMBO_LIGHT_CD_MULT = 0.5; // light swings come out at half the base cooldown (chainable)
+export const COMBO_FINISHER_DMG_MULT = 1.7; // finisher damage bonus
+export const COMBO_FINISHER_CONE_MULT = 1.5; // finisher arc is wider
+export const COMBO_FINISHER_KNOCK_MULT = 2.2; // finisher shoves harder
+
 // Directional heal (ported): a heal projectile mends the first ally it hits, and
 // casting it draws aggro from nearby foes — so support play carries risk.
 export const AGGRO_HEAL_RADIUS = 760;

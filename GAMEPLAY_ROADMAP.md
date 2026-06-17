@@ -20,8 +20,9 @@ aim, slot abilities, slot-1 auto-cast).
 - ✅ **Hit feel** — flash, screenshake, hit-stop on kills, gamepad rumble, projectile trails (earlier juice pass).
 - 🔜 **Hard crowd control** (M, server) — stuns / roots / freezes so a mage/rogue/warrior play
   differently. Today the only CC is a 50% slow + taunt.
-- ⬜ **Melee combo loop** (M, server) — chained light/heavy swings with commit windows, instead of a
-  single instant cone, so melee has rhythm and weight.
+- ✅ **Melee combo loop** — light swings chain at half-cooldown into a heavy finisher (1.7× dmg, wider
+  cone, 2.2× knockback) with a full-cooldown recovery; the chain resets after the finisher or if you
+  pause >850ms. Felt via the faster→pause rhythm + scaled damage numbers + bigger knockback.
 - ✅ **Target-assist on all slots** — casts snap toward the nearest enemy within a ±32° aim cone
   (≤560px), so fast swarms aren't pure precision-mouse.
 

@@ -36,6 +36,9 @@ export interface PlayerState {
   dashDirY: number;
   dashReadyAt: number; // dash off cooldown at this tick
   dashIframeUntil: number; // invulnerable (i-frames) while now < this
+  // ---- Melee combo (light → light → heavy finisher) ----
+  comboStep: number; // current swing in the chain (resets after the finisher / on lapse)
+  comboExpireAt: number; // chain resets to step 0 if you don't swing again by this tick
   potionReadyAt: number; // transient: earliest tick a consumable can next be used (not persisted)
   seen: Set<number>; // floor-grid cell indices revealed (drives the exploration axis)
   base: Attributes; // innate attributes (before gear)

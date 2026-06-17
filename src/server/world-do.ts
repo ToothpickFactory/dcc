@@ -787,6 +787,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       dashDirY: 0,
       dashReadyAt: 0,
       dashIframeUntil: 0,
+      comboStep: 0,
+      comboExpireAt: 0,
       potionReadyAt: 0,
       seen: new Set(),
       base,
