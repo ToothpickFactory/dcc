@@ -23,7 +23,7 @@ function player(id: string, x: number, y: number, over: Partial<PlayerState> = {
   const derived = deriveStats(100, 230, zeroAttrs());
   return {
     id, name: id, x, y, aim: 0, mvx: 0, mvy: 0, hp: 100, status: "alive", reached: false, gold: 0,
-    cds: {}, lastSeq: 0, abilities: [], charXp: 0, chosenClass: null, talents: {}, talentPoints: 0, attrPoints: 0,
+    cds: {}, lastSeq: 0, abilities: [], charXp: 0, chosenClass: null, talents: {}, talentPoints: 0, attrPoints: 0, shop: [],
     threatMult: 1, shield: 0, shieldUntil: 0, bloodlustUntil: 0, slowUntil: 0, potionReadyAt: 0,
     seen: new Set(), base: zeroAttrs(), inv: { equipped: {}, bagEquip: [null, null, null, null], carried: [] },
     derived, ws: {} as WebSocket, linkdead: false, ...over,

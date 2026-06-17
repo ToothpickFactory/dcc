@@ -4,24 +4,32 @@ import {
   BOSS_MAX_HP,
   BOSS_RADIUS,
   bossNameForDepth,
+  BUY_MARKUP,
   DASH_CD,
   DASH_IFRAME_MS,
   DASH_MS,
   FLOOR_DMG_SCALE,
   FLOOR_HP_SCALE,
   LOOT_BAG_TTL,
+  LOOT_OWNER_MS,
   LOOT_REACH,
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
   PLAYER_SPEED,
+  POTION_PRICE,
+  SHOP_GEAR_COUNT,
+  SHOP_POTION_COUNT,
   TICK_MS,
+  VENDOR_REROLL_BASE,
+  VENDOR_REROLL_STEP,
 } from "../shared/constants";
 import type { Ability, Klass, MonsterKind, Rarity } from "../shared/types";
 import {
   ATTR_KEYS,
   addItem,
   aggregateAttrs,
+  carriedFree,
   carryCapacity,
   deriveStats,
   emptyInventory,
@@ -212,10 +220,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
   // Spawn a loot bag holding fresh-id copies of the given items. A corpse-linked
   // bag may be empty; opening it still counts as checking/looting the body.
-  dropLoot(x: number, y: number, items: Item[], corpseId?: string): void {
+  dropLoot(x: number, y: number, items: Item[], corpseId?: string, ownerId?: string): void {
     if (items.length === 0 && !corpseId) return;
     const copies = items.map((it) => ({ ...it, id: `i_${(++this.itemSeq).toString(36)}` }));
-    this.lootBags.push({ id: `bag_${(++this.lootBagSeq).toString(36)}`, x, y, items: copies, corpseId, expiresAt: Date.now() + LOOT_BAG_TTL });
+    // Loot etiquette: the player who earned the kill (ownerId) gets first dibs for a short window.
+    const owner = ownerId && this.players.has(ownerId) ? ownerId : undefined;
+    this.lootBags.push({
+      id: `bag_${(++this.lootBagSeq).toString(36)}`,
+      x,
+      y,
+      items: copies,
+      corpseId,
+      expiresAt: Date.now() + LOOT_BAG_TTL,
+      owner,
+      ownerUntil: owner ? Date.now() + LOOT_OWNER_MS : undefined,
+    });
   }
 
   corpseLootExists(corpseId: string): boolean {
@@ -226,7 +245,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // gear (per-kind odds — trash rarely, elites often), and when it does it's a
   // FRESH item rolled on the floor's rarity curve (not a copy of the monster's own
   // stat gear). Potions are a separate, frequent roll so healing stays available.
-  rollDrops(m: MonsterState): void {
+  rollDrops(m: MonsterState, ownerId?: string): void {
     const drops: Item[] = [];
     if (this.gearRng() < (GEAR_DROP_CHANCE[m.kind] ?? 0.12)) {
       drops.push(generateItem(this.floor.depth, rollGearRarity(this.floor.depth, this.gearRng), this.gearRng));
@@ -234,7 +253,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (this.gearRng() < POTION_DROP_CHANCE) {
       drops.push(generatePotion(this.floor.depth, this.gearRng));
     }
-    this.dropLoot(m.x, m.y, drops, m.id);
+    this.dropLoot(m.x, m.y, drops, m.id, ownerId);
   }
 
   rollPropDrops(p: PropState): void {
@@ -513,6 +532,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.status = "alive";
       p.reached = false;
       p.gold = 0; // fresh run = fresh character: gold wiped with gear
+      p.shop = []; // clear any waiting-room vendor stock
       p.cds = {};
       p.mvx = 0;
       p.mvy = 0;
@@ -575,6 +595,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     p.mvy = 0;
     for (const m of this.monsters) m.threat.delete(p.id);
     if (this.boss) this.boss.threat.delete(p.id);
+    this.generateShop(p); // stock the waiting-room vendor for this visit
+    this.sendShop(p);
   }
 
   // Timer expired: living players who didn't reach the stairs die (lethal timer,
@@ -837,6 +859,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       comboStep: 0,
       comboExpireAt: 0,
       potionReadyAt: 0,
+      shop: [],
       seen: new Set(),
       base,
       inv,
@@ -927,6 +950,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.spendAttr(player, String(msg.attr));
     } else if (msg.t === "respec") {
       this.respec(player);
+    } else if (msg.t === "buyItem") {
+      this.buyItem(player, String(msg.id));
+    } else if (msg.t === "reroll") {
+      this.reroll(player);
     }
   }
 
@@ -1167,6 +1194,62 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.sendInv(p);
   }
 
+  // ---- Waiting-room vendor (gold sink: sell-trash -> buy-upgrade) -----------
+  private rerollCost(): number {
+    return VENDOR_REROLL_BASE + this.floor.depth * VENDOR_REROLL_STEP;
+  }
+
+  // Stock the vendor for a waiting-room visit: a couple of potions + rotating gear, priced in gold.
+  private generateShop(p: PlayerState): void {
+    const shop: { item: Item; price: number }[] = [];
+    for (let i = 0; i < SHOP_POTION_COUNT; i++) {
+      shop.push({ item: this.tagShopItem(generatePotion(this.floor.depth, this.gearRng)), price: POTION_PRICE });
+    }
+    for (let i = 0; i < SHOP_GEAR_COUNT; i++) {
+      const it = this.tagShopItem(generateItem(this.floor.depth, rollGearRarity(this.floor.depth, this.gearRng), this.gearRng));
+      shop.push({ item: it, price: sellValue(it) * BUY_MARKUP });
+    }
+    p.shop = shop;
+  }
+
+  // A stable, unique id so a `buyItem` message can reference a specific stock entry.
+  private tagShopItem(it: Item): Item {
+    return { ...it, id: `shop_${(++this.itemSeq).toString(36)}` };
+  }
+
+  private sendShop(p: PlayerState): void {
+    if (p.linkdead) return;
+    this.send(p.ws, { t: "shop", items: p.shop, rerollCost: this.rerollCost() });
+  }
+
+  // Buy a shop item: waiting-room only; validate gold + carry space BEFORE taking gold.
+  private buyItem(p: PlayerState, id: string): void {
+    if (p.status !== "alive" || !p.reached) return;
+    const idx = p.shop.findIndex((e) => e.item.id === id);
+    if (idx < 0) return;
+    const entry = p.shop[idx];
+    if (p.gold < entry.price) return;
+    if (carriedFree(p.inv) <= 0) return; // bag full — don't charge for an item that won't fit
+    if (!addItem(p.inv, { ...entry.item, id: `i_${(++this.itemSeq).toString(36)}` })) return;
+    p.gold -= entry.price;
+    p.shop.splice(idx, 1); // sold out of this stock
+    this.persistPlayer(p);
+    this.sendInv(p);
+    this.sendShop(p);
+  }
+
+  // Reroll the vendor's rotating stock for gold (waiting-room only).
+  private reroll(p: PlayerState): void {
+    if (p.status !== "alive" || !p.reached) return;
+    const cost = this.rerollCost();
+    if (p.gold < cost) return;
+    p.gold -= cost;
+    this.generateShop(p);
+    this.persistPlayer(p);
+    this.sendInv(p);
+    this.sendShop(p);
+  }
+
   private bagInReach(p: PlayerState, bagId: string): LootBagState | null {
     const bag = this.lootBags.find((b) => b.id === bagId);
     if (!bag || Math.hypot(bag.x - p.x, bag.y - p.y) > LOOT_REACH) return null;
@@ -1184,6 +1267,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private takeLoot(p: PlayerState, bagId: string, itemId?: string): void {
     const bag = this.bagInReach(p, bagId);
     if (!bag) return;
+    // Loot etiquette: during the owner-priority window, only the kill earner may take.
+    if (bag.owner && bag.owner !== p.id && Date.now() < (bag.ownerUntil ?? 0)) return;
     let changed = false;
     if (itemId) {
       const idx = bag.items.findIndex((i) => i.id === itemId);
@@ -1483,6 +1568,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         maxHp: Math.round(p.derived.maxHp),
         name: p.name,
         cls: this.profiles.classOf(p.id),
+        klass: p.chosenClass ?? undefined, // ally nameplate class icon
       });
     }
     for (const m of this.monsters) {
@@ -1505,8 +1591,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         cc: bcc,
       });
     }
+    const wallNow = Date.now(); // loot-bag times are wall-clock (like expiresAt), not the logical tick
     for (const b of this.lootBags) {
-      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items) });
+      const owned = b.owner && wallNow < (b.ownerUntil ?? 0); // priority window still live
+      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items), owner: owned ? b.owner : undefined, ownerUntil: owned ? b.ownerUntil : undefined });
     }
     for (const prop of this.props) {
       if (prop.hp <= 0) continue;

@@ -86,6 +86,12 @@ var _carry_count: Label
 var _gold_label: Label
 var _carry_hint: Label
 var _loot_grid: GridContainer
+# Waiting-room vendor (buy potions + rotating gear; reroll for gold).
+var _shop_items: Array = []
+var _shop_reroll_cost := 0
+var _shop_section: Control
+var _shop_grid: GridContainer
+var _shop_reroll_btn: Button
 
 func _ready() -> void:
 	layer = 25
@@ -150,6 +156,51 @@ func on_bag(msg: Dictionary) -> void:
 		_sfx_play("ui_open")
 	_loot_root.visible = true
 	_render_loot()
+
+# Feed the raw net 'shop' message: {items:[{item,price}], rerollCost}. Vendor stock for the
+# waiting room (refreshed on entry + after each buy/reroll).
+func on_shop(msg: Dictionary) -> void:
+	_shop_items = msg.get("items", [])
+	_shop_reroll_cost = int(msg.get("rerollCost", 0))
+	if is_open() and _has_inv:
+		_render_shop()
+
+# The vendor section: a buyable tile per stock entry (price corner; buy on tap) + a reroll button.
+# Shown only in the waiting room. Reuses _item_tile so the stat-delta vs equipped shows here too.
+func _render_shop() -> void:
+	if _shop_grid == null:
+		return
+	var show_shop := _reached and not _shop_items.is_empty()
+	var header := _shop_section.get_parent() as Control # the HBox header row
+	if header != null:
+		header.visible = show_shop
+	_shop_grid.visible = show_shop
+	_clear(_shop_grid)
+	if not show_shop:
+		return
+	var gold := int(_inv.get("gold", 0))
+	_shop_reroll_btn.text = "\U0001f3b2 Reroll (\U01fa99%d)" % _shop_reroll_cost
+	_shop_reroll_btn.disabled = gold < _shop_reroll_cost
+	for entry in _shop_items:
+		if not (entry is Dictionary):
+			continue
+		var it: Dictionary = entry.get("item", {})
+		var price := int(entry.get("price", 0))
+		var item_id := str(it.get("id", ""))
+		var tile := _item_tile(it, "")
+		var body := _tile_body(tile)
+		var afford := gold >= price
+		var pl := _corner_label("\U01fa99%d" % price, GOLD if afford else DROP_COLOR, true)
+		pl.tooltip_text = "Buy for %d gold" % price
+		body.add_child(pl)
+		if afford:
+			tile.gui_input.connect(func(ev: InputEvent):
+				if _is_tap(ev):
+					_send({"t": "buyItem", "id": item_id})
+					_consume(ev))
+		else:
+			tile.modulate = Color(1, 1, 1, 0.55)
+		_shop_grid.add_child(tile)
 
 # Toggle the sell affordance (selling is a waiting-room action). Re-renders if open.
 func set_reached(b: bool) -> void:
@@ -294,6 +345,8 @@ func _render(msg: Dictionary) -> void:
 			body.add_child(sell)
 		_carry_grid.add_child(tile)
 
+	_render_shop()
+
 func _render_stats(msg: Dictionary) -> void:
 	_clear(_stat_panel)
 	var a: Dictionary = msg.get("attrs", {})
@@ -401,6 +454,12 @@ func _item_tile(it: Dictionary, slot_label: String) -> PanelContainer:
 	var st := _stat_str(it)
 	if st != "":
 		vb.add_child(_centered(st, 9, TEXT_SUB))
+	# Equip-vs-candidate delta: only for loose candidates (carried/loot/shop, slot_label=="") —
+	# equipped tiles already show their own stats. A glance at green/red ± vs what you wear.
+	if slot_label == "":
+		var delta := _delta_node(it)
+		if delta != null:
+			vb.add_child(delta)
 	return tile
 
 func _ability_tile(a: Dictionary, is_auto: bool) -> PanelContainer:
@@ -589,6 +648,20 @@ func _build_inventory_panel() -> void:
 	col.add_child(_carry_hint)
 	col.add_child(_hint("Tap a carried item to equip · tap an equipped item to remove · \U01f5d1 to drop on the floor."))
 
+	# Vendor (waiting room only): a SHOP header with a reroll button, then a grid of buyable stock.
+	var shop_head := HBoxContainer.new()
+	shop_head.add_theme_constant_override("separation", 8)
+	_shop_section = _section("\U0001f6cd Vendor")
+	_shop_section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_shop_reroll_btn = Button.new()
+	_shop_reroll_btn.add_theme_font_size_override("font_size", 11)
+	_shop_reroll_btn.pressed.connect(func(): _send({"t": "reroll"}))
+	shop_head.add_child(_shop_section)
+	shop_head.add_child(_shop_reroll_btn)
+	col.add_child(shop_head)
+	_shop_grid = _grid()
+	col.add_child(_shop_grid)
+
 func _build_loot_panel() -> void:
 	_loot_root = _backdrop()
 	_loot_root.gui_input.connect(func(ev: InputEvent): if _is_backdrop_tap(ev, _loot_root): close_loot())
@@ -703,6 +776,53 @@ func _close_button() -> Button:
 # =====================================================================
 # Helpers
 # =====================================================================
+
+# Mirror of items.ts compatibleSlots: which equipped slot(s) a candidate competes with.
+func _equip_slots_for(item_slot: String) -> Array:
+	match item_slot:
+		"helmet", "chest", "legs", "gloves", "amulet": return [item_slot]
+		"weapon": return ["mainHand", "offHand"]
+		"ring": return ["ring1", "ring2"]
+		_: return [] # bag / consumable — not equip-comparable
+	return []
+
+# A row of green/red ± per attribute vs the item currently equipped in the candidate's slot,
+# so judging an upgrade is a glance, not manual math. null if the item isn't equip-comparable
+# or matches exactly. For 2-slot types (weapon/ring) it compares against the first worn one.
+func _delta_node(it: Dictionary) -> Control:
+	var eslots := _equip_slots_for(str(it.get("slot", "")))
+	if eslots.is_empty():
+		return null
+	var equipped: Dictionary = _inv.get("equipped", {})
+	var cur: Dictionary = {}
+	for es in eslots:
+		var e: Variant = equipped.get(es)
+		if e is Dictionary:
+			cur = e
+			break
+	var cand: Dictionary = it.get("attrs", {})
+	var worn: Dictionary = cur.get("attrs", {})
+	var keys := {}
+	for k in cand.keys(): keys[k] = true
+	for k in worn.keys(): keys[k] = true
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4)
+	var any := false
+	for k in keys.keys():
+		var d := int(cand.get(k, 0)) - int(worn.get(k, 0))
+		if d == 0:
+			continue
+		any = true
+		var l := Label.new()
+		l.text = "%s%d%s" % ["+" if d > 0 else "", d, ATTR_ABBR.get(str(k), str(k))]
+		l.add_theme_font_size_override("font_size", 9)
+		l.add_theme_color_override("font_color", Color8(0x5e, 0xe0, 0x8a) if d > 0 else Color8(0xe0, 0x7a, 0x7a))
+		row.add_child(l)
+	if not any:
+		row.queue_free()
+		return null
+	return row
 
 func _stat_str(it: Dictionary) -> String:
 	var parts: Array = []

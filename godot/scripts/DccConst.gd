@@ -13,5 +13,5 @@ const INPUT_MS := 100          # client -> server input cadence
 const DASH_SPEED := 760.0      # px/s during the dash burst
 const DASH_MS := 180.0         # dash duration
 const DASH_CD := 1400.0        # cooldown between dashes
-const PROTOCOL_VERSION := 14  # v14: attribute points + respec; v13 was projectile render kind + hard CC
+const PROTOCOL_VERSION := 15  # v15: ally hp/class on wire, loot owner-priority, buy vendor; v14 was attr points + respec
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"
