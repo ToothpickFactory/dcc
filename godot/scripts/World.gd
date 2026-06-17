@@ -134,7 +134,7 @@ func _build_walls() -> void:
 		for cx in w:
 			if solid[cy * w + cx] != 1:
 				continue
-			mm.set_instance_transform(i, Transform3D(Basis(), Vector3((cx + 0.5) * cell, WALL_H * 0.5, (cy + 0.5) * cell)))
+			mm.set_instance_transform(i, Transform3D(Basis(), Vector3((cx + 0.5) * cell, WALL_H * 0.5 + 2.0, (cy + 0.5) * cell)))
 			i += 1
 	_walls = MultiMeshInstance3D.new()
 	_walls.multimesh = mm

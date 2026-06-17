@@ -376,7 +376,6 @@ func _model_profile_for_entity() -> Dictionary:
 			"mage":
 				model_path = WIZARD_MODEL_PATH
 				label = "Wizard"
-				rotation_fix = Vector3(-90.0, 0.0, 0.0)
 			"priest":
 				model_path = CLERIC_MODEL_PATH
 				label = "Cleric"
@@ -390,6 +389,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"label": label,
 			"path": model_path,
 			"scale": HERO_MODEL_SCALE,
+			"model_y": 60.0,
 			"light_energy": HERO_LIGHT_ENERGY,
 			"light_range": 260.0,
 			"light_y": 95.0,
@@ -442,6 +442,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Ghoul",
 				"path": GHOUL_MODEL_PATH,
 				"scale": GHOUL_MODEL_SCALE,
+				"model_y": 64.0,
 				"light_energy": GHOUL_LIGHT_ENERGY,
 				"light_range": 290.0,
 				"light_y": 106.0,
@@ -453,6 +454,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Infernax",
 				"path": INFERNAX_MODEL_PATH,
 				"scale": INFERNAX_MODEL_SCALE,
+				"model_y": 67.0,
 				"light_energy": INFERNAX_LIGHT_ENERGY,
 				"light_range": 310.0,
 				"light_y": 112.0,
@@ -464,6 +466,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Orc",
 				"path": ORC_MODEL_PATH,
 				"scale": ORC_MODEL_SCALE,
+				"model_y": 68.0,
 				"light_energy": ORC_LIGHT_ENERGY,
 				"light_range": 300.0,
 				"light_y": 112.0,
@@ -475,6 +478,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Skeleton",
 				"path": SKELETON_MODEL_PATH,
 				"scale": SKELETON_MODEL_SCALE,
+				"model_y": 62.0,
 				"light_energy": SKELETON_LIGHT_ENERGY,
 				"light_range": 280.0,
 				"light_y": 104.0,
@@ -486,6 +490,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Troll",
 				"path": TROLL_MODEL_PATH,
 				"scale": TROLL_MODEL_SCALE,
+				"model_y": 73.0,
 				"light_energy": TROLL_LIGHT_ENERGY,
 				"light_range": 320.0,
 				"light_y": 120.0,
@@ -497,6 +502,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Wraith",
 				"path": WRAITH_MODEL_PATH,
 				"scale": WRAITH_MODEL_SCALE,
+				"model_y": 65.0,
 				"light_energy": WRAITH_LIGHT_ENERGY,
 				"light_range": 310.0,
 				"light_y": 116.0,
@@ -508,6 +514,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": "Zombie",
 				"path": ZOMBIE_MODEL_PATH,
 				"scale": ZOMBIE_MODEL_SCALE,
+				"model_y": 65.0,
 				"light_energy": ZOMBIE_LIGHT_ENERGY,
 				"light_range": 290.0,
 				"light_y": 108.0,
@@ -527,6 +534,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"label": _entity_name,
 				"path": boss_model_path,
 				"scale": JAILOR_MODEL_SCALE,
+				"model_y": 200.0,
 				"light_energy": JAILOR_LIGHT_ENERGY,
 				"light_range": 520.0,
 				"light_y": 180.0,
@@ -553,11 +561,16 @@ func _ensure_model_for_entity() -> void:
 		inst.queue_free()
 		push_warning("%s model root is not Node3D: %s" % [label, model_path])
 		return
-	_model_root = inst
-	_model_root.scale = Vector3.ONE * float(profile.get("scale", 1.0))
+	# Wrap inst in a plain Node3D so update_visual can set rotation.y (facing) on the
+	# wrapper without hitting Euler gimbal lock when the static fix uses ±90° around X.
+	var wrapper := Node3D.new()
+	wrapper.scale = Vector3.ONE * float(profile.get("scale", 1.0))
 	var rot_deg: Variant = profile.get("rotation_degrees", null)
 	if rot_deg is Vector3:
-		_model_root.rotation_degrees = rot_deg
+		(inst as Node3D).rotation_degrees = rot_deg
+	wrapper.position.y = float(profile.get("model_y", 0.0))
+	wrapper.add_child(inst)
+	_model_root = wrapper
 	add_child(_model_root)
 	_model_anim = _find_animation_player(_model_root)
 	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))

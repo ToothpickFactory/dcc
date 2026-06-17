@@ -21,7 +21,7 @@ const FLOOR_TILE_INDEX := 0   # render.ts: loadTileMaterials -> tileFromSheet(sh
 const WALL_TILE_INDEX := 8    # render.ts: loadTileMaterials -> tileFromSheet(sheet, 8)
 const PROP_COUNT := 16        # render.ts: loadPropTextures -> 16 sliced cells
 const DECO_SIZE := 58.0       # render.ts setDecorations: 58 * decoration.scale
-const DECO_Y := 24.0          # render.ts: sprite.position.set(x, 24, y)
+const DECO_Y := 32.0          # raised from 24 so sprite bottom (32-29=3) clears the floor plane at Y=0
 const STAIRS_Y := 30.0        # render.ts setStairs: position.set(x, 30, y)
 const STAIRS_FALLBACK := Color(0x5d / 255.0, 1.0, 0x9b / 255.0)  # 0x5dff9b
 
@@ -161,6 +161,7 @@ func _make_billboard(tex: Texture2D, wx: float, wy: float, wz: float, size_px: f
 	sprite.shaded = false
 	sprite.transparent = true
 	sprite.no_depth_test = false
+	sprite.render_priority = 1  # draw above the floor plane to prevent z-fighting
 	# Sprite3D world height = texture_height_px * pixel_size. Normalise by the actual
 	# tile height so the rendered world size == size_px, regardless of source art
 	# resolution — matching render.ts where `size` is the sprite's world scale.
