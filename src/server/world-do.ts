@@ -10,9 +10,11 @@ import {
   DASH_MS,
   FLOOR_DMG_SCALE,
   FLOOR_HP_SCALE,
+  HOTBAR_SIZE,
   LOOT_BAG_TTL,
   LOOT_OWNER_MS,
   LOOT_REACH,
+  MAX_ABILITY_SLOTS,
   MAX_FLOORS,
   MONSTER_KINDS,
   PLAYER_MAX_HP,
@@ -48,7 +50,7 @@ import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
-import { DEFAULT_ABILITIES, potionHotbarSlot, starterAbilities } from "../shared/abilities";
+import { addAbilityToKit, potionHotbarSlot, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
 import { CLASS_KIT, CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent, pointsForLevel, talentSpent } from "../shared/talents";
@@ -71,7 +73,6 @@ import { EmaProfileTracker, type ProfileTracker } from "./loot/profile";
 
 const PERSIST_EVERY = Math.round(1000 / TICK_MS); // ~1 Hz heartbeat (every 20 ticks)
 const FIRST_SEED = 0xdcc;
-const MAX_ABILITY_SLOTS = 6; // base kit (4) + up to 2 granted; bounded under permadeath
 
 // Per-kind chance that a monster drops a (fresh, floor-appropriate) gear item on
 // death — trash rarely, elites/brutes often — so the floor isn't buried in loot.
@@ -1465,32 +1466,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       });
   }
 
-  // Bounded slots under permadeath: the 4-ability starting kit (0-3) is never
-  // overwritten; grants fill the two extra slots, then replace the weakest extra
-  // (preferring same-category) so power can't grow unbounded.
+  // Add a newly-unlocked ability to the kit. Unlocked abilities are KEPT (you
+  // pick which sit in your hotbar — the first HOTBAR_SIZE slots — from the
+  // character screen). The kit grows to MAX_ABILITY_SLOTS; only then does a new
+  // grant replace the weakest BENCHED ability (never the hotbar, talents, or the
+  // potion slot), so the active hotbar power stays bounded but nothing you've
+  // arranged is lost out from under you.
   private slotLoot(p: PlayerState, ability: Ability): void {
-    const BASE = DEFAULT_ABILITIES.length;
-    if (p.abilities.length < MAX_ABILITY_SLOTS) {
-      p.abilities.push(ability);
-      return;
-    }
-    // Random LOOT grants never evict a talent-chosen ability; a talent grant may
-    // replace any extra (talents take priority over loot).
-    const incomingIsTalent = ability.fromTalent === true;
-    let target = -1;
-    let worst = Infinity;
-    for (let i = BASE; i < p.abilities.length; i++) {
-      const a = p.abilities[i];
-      if (a.usesItem) continue; // never evict a hotbar consumable slot
-      if (!incomingIsTalent && a.fromTalent) continue; // protect chosen talents from loot
-      const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
-      if (score < worst) {
-        worst = score;
-        target = i;
-      }
-    }
-    if (target < 0) return; // every extra slot is a protected talent — keep the chosen kit
-    p.abilities[target] = ability;
+    addAbilityToKit(p.abilities, ability, MAX_ABILITY_SLOTS, HOTBAR_SIZE);
   }
 
   // Slot-1 AUTO-CAST: the first action ability auto-swings/throws at the nearest

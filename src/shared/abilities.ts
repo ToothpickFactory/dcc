@@ -23,3 +23,31 @@ export const HOTBAR_POTION_ID = "potion";
 export function potionHotbarSlot(): Ability {
   return { id: HOTBAR_POTION_ID, category: "support", cd: 6000, range: 0, dmg: 0, projectile: false, usesItem: "consumable", name: "Healing Potion", icon: "🧪", color: "#5dff9b" };
 }
+
+// Add a newly-unlocked ability to a kit (mutates in place). Unlocked abilities are
+// KEPT so the player can choose which sit in their hotbar (the first `hotbarSize`
+// slots). The kit grows to `max`; only then does a new grant replace the WEAKEST
+// BENCHED ability (index >= hotbarSize) — never the hotbar, a hotbar consumable
+// slot, or a talent-granted ability (unless the incoming one is itself a talent).
+// Pure + deterministic so it's unit-testable without the Durable Object.
+export function addAbilityToKit(abilities: Ability[], ability: Ability, max: number, hotbarSize: number): void {
+  if (abilities.length < max) {
+    abilities.push(ability);
+    return;
+  }
+  const incomingIsTalent = ability.fromTalent === true;
+  let target = -1;
+  let worst = Infinity;
+  for (let i = hotbarSize; i < abilities.length; i++) {
+    const a = abilities[i];
+    if (a.usesItem) continue; // never evict a hotbar consumable slot
+    if (!incomingIsTalent && a.fromTalent) continue; // protect chosen talents from random loot
+    const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
+    if (score < worst) {
+      worst = score;
+      target = i;
+    }
+  }
+  if (target < 0) return; // every bench slot is protected — keep the kit as-is
+  abilities[target] = ability;
+}

@@ -19,12 +19,13 @@
     "test:loot": "node --experimental-strip-types src/server/loot/heuristic.test.ts",
     "test:flavor": "node --experimental-strip-types src/server/loot/flavor.test.ts",
     "test:items": "node --experimental-strip-types src/shared/items.test.ts",
-    "test": "npm run test:profile && npm run test:procgen && npm run test:loot && npm run test:flavor && npm run test:items && npm run test:skills && npm run test:talents && npm run test:projectiles",
+    "test": "npm run test:profile && npm run test:procgen && npm run test:loot && npm run test:flavor && npm run test:items && npm run test:skills && npm run test:talents && npm run test:projectiles && npm run test:abilities",
     "bot": "node --experimental-strip-types test/bot.ts",
     "cf-typegen": "wrangler types",
     "test:skills": "node --experimental-strip-types src/shared/skills.test.ts",
     "test:talents": "node --experimental-strip-types src/shared/talents.test.ts",
-    "test:projectiles": "esbuild src/server/sim/projectiles.test.ts --bundle --platform=node --format=esm --outfile=.tmp/proj.test.mjs && node .tmp/proj.test.mjs"
+    "test:projectiles": "esbuild src/server/sim/projectiles.test.ts --bundle --platform=node --format=esm --outfile=.tmp/proj.test.mjs && node .tmp/proj.test.mjs",
+    "test:abilities": "esbuild src/shared/abilities.test.ts --bundle --platform=node --format=esm --outfile=.tmp/abil.test.mjs && node .tmp/abil.test.mjs"
   },
   "dependencies": {
     "three": "^0.169.0"
