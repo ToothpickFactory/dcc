@@ -6,6 +6,7 @@ extends Node
 
 signal welcomed(you)
 signal protocol_mismatch(server_v, client_v)
+signal loot_received(grant)
 signal floor_received(geometry, info)
 signal inv_received(msg)
 signal bag_received(msg)
@@ -88,6 +89,8 @@ func _handle(m: Dictionary) -> void:
 			inv_received.emit(m)
 		"bag":
 			bag_received.emit(m)
+		"loot":
+			loot_received.emit(m.get("grant", {}))
 		_:
 			pass
 

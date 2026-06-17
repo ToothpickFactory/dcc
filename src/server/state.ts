@@ -139,4 +139,6 @@ export interface WorldCtx {
   rollDrops(m: MonsterState): void; // on monster death: chance-gated, floor-appropriate drops (gear + potions)
   // Award ability + character XP to a player for a hit/kill with action slot `idx`.
   gainXp(playerId: string, idx: number, killed: boolean, kind?: MonsterKind | "boss"): void;
+  // Co-op: split a kill's character-XP share to living allies near (x,y).
+  shareKillXp(x: number, y: number, killerId: string, kind?: MonsterKind | "boss"): void;
 }

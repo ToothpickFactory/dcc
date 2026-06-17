@@ -237,18 +237,39 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     const amount = killed ? (kind ? MONSTER_XP[kind] : PVP_KILL_XP) : HIT_XP;
     ab.xp = (ab.xp ?? 0) + amount;
     this.bumpLb(p, amount, killed); // all-time leaderboard score (every hit + kill)
-    if (killed) {
-      const before = charLevelOf(p.charXp);
-      p.charXp += amount;
-      const after = charLevelOf(p.charXp);
-      if (after > before) {
-        // 1 talent point per level gained. Until a class is chosen, the client
-        // shows the class picker (a pending point means "choose your class").
-        p.talentPoints += after - before;
-        recomputePlayer(p); // new character level -> more max HP
-        p.hp = p.derived.maxHp; // top off on level-up
-        this.persistPlayer(p);
-      }
+    if (killed) this.grantCharXp(p, amount);
+  }
+
+  // Add character XP + handle the level-up (talent point, more HP). Shared by the
+  // killer (gainXp) and nearby allies (shareKillXp).
+  private grantCharXp(p: PlayerState, amount: number): void {
+    const before = charLevelOf(p.charXp);
+    p.charXp += amount;
+    const after = charLevelOf(p.charXp);
+    if (after > before) {
+      // 1 talent point per level gained. Until a class is chosen, the client
+      // shows the class picker (a pending point means "choose your class").
+      p.talentPoints += after - before;
+      recomputePlayer(p); // new character level -> more max HP
+      p.hp = p.derived.maxHp; // top off on level-up
+      this.persistPlayer(p);
+    }
+  }
+
+  // Co-op shared XP: living allies near a kill get a CHARACTER-XP share (50%), so a
+  // tank/healer who didn't land the killing blow still levels with the party. Ability
+  // XP stays with whoever used the ability (the killer, via gainXp).
+  shareKillXp(x: number, y: number, killerId: string, kind?: MonsterKind | "boss"): void {
+    const amount = kind ? MONSTER_XP[kind] : PVP_KILL_XP;
+    const share = Math.max(1, Math.round(amount * 0.5));
+    const R2 = 600 * 600;
+    for (const p of this.players.values()) {
+      if (p.id === killerId || p.status !== "alive" || p.reached) continue;
+      const dx = p.x - x;
+      const dy = p.y - y;
+      if (dx * dx + dy * dy > R2) continue;
+      this.grantCharXp(p, share);
+      this.bumpLb(p, share, false);
     }
   }
 
@@ -1134,8 +1155,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         // (frozen wherever they dropped) must not block the others.
         if (p.status !== "alive" || p.linkdead) continue;
         // Latch: the instant you touch the stairs you're "done" — safe in the
-        // waiting room. You don't have to stay on the tile.
-        if (!p.reached && this.atStairs(p)) this.markReached(p);
+        // waiting room. You don't have to stay on the tile. BUT the boss gates the
+        // exit — the stairs only open once the floor's guardian is dead (CoN act beat).
+        if (!p.reached && this.atStairs(p) && (!this.boss || this.boss.dead)) this.markReached(p);
         living++;
         if (!p.reached) allReached = false;
       }
@@ -1351,7 +1373,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       });
     }
     for (const b of this.lootBags) {
-      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length });
+      ents.push({ id: b.id, kind: "lootbag", x: r(b.x), y: r(b.y), n: b.items.length, rarity: bestRarity(b.items) });
     }
     for (const pr of this.projectiles) {
       ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), sprite: pr.ability });
@@ -1463,6 +1485,21 @@ function r2(v: number) {
 function clampUnit(v: number) {
   const n = Number(v) || 0;
   return n < -1 ? -1 : n > 1 ? 1 : n;
+}
+
+// Best (highest) rarity among a loot bag's items — drives the ground glow on the client.
+const RARITY_RANK: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+function bestRarity(items: Item[]): string {
+  let best = "common";
+  let bestRank = -1;
+  for (const it of items) {
+    const rank = RARITY_RANK[it.rarity] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = it.rarity;
+    }
+  }
+  return best;
 }
 
 const RUN_PHASES: readonly RunPhase[] = ["lobby", "running", "ended", "cooldown"];

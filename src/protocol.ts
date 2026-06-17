@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 11; // was 10 — added the `addHotbarItem` client message (consumables on the hotbar)
+export const PROTOCOL_VERSION = 12; // was 11 (addHotbarItem) — added lootbag `rarity` on EntityDTO (ground rarity beams)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -64,6 +64,7 @@ export interface EntityDTO {
   cls?: PlayerClass; // players only
   sprite?: number; // atlas frame id (kind-specific)
   n?: number; // item count (loot bags)
+  rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
 }
 
 export interface SelfDTO {

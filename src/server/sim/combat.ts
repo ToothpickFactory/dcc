@@ -107,6 +107,7 @@ export function applyDamage(
         ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });
         awardAssists(ctx, target.threat, sourceId);
         ctx.gainXp(sourceId, ability, true, "boss");
+        ctx.shareKillXp(target.x, target.y, sourceId, "boss"); // co-op: the whole party shares the boss
       }
     }
     return;
@@ -147,6 +148,7 @@ export function applyDamage(
       ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });
       awardAssists(ctx, target.threat, sourceId);
       ctx.gainXp(sourceId, ability, true, target.kind);
+      ctx.shareKillXp(target.x, target.y, sourceId, target.kind); // co-op: nearby allies share XP
     }
   }
 }

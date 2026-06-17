@@ -22,18 +22,16 @@ aim, slot abilities, slot-1 auto-cast).
   differently. Today the only CC is a 50% slow + taunt.
 - ⬜ **Melee combo loop** (M, server) — chained light/heavy swings with commit windows, instead of a
   single instant cone, so melee has rhythm and weight.
-- ⬜ **Target-assist on all slots** (S) — slot-1 auto-aims at the nearest enemy; extend a light
-  aim-assist to the other slots so fast swarms aren't pure precision-mouse.
+- ✅ **Target-assist on all slots** — casts snap toward the nearest enemy within a ±32° aim cone
+  (≤560px), so fast swarms aren't pure precision-mouse.
 
 ## 2. Character systems & builds
 The systems are surprisingly deep already (5 WoW classes, talent trees w/ spec forks, the trinity,
 ability evolution, gear stats) — but largely **invisible/unfelt**.
 
-- 🔜 **Talent-point / class-pick HUD nudge** (S, client) — players gain a talent point at level-up and
-  never know to press K. A pulsing "Talent point — press K" badge (and a loud first-time "Choose your
-  class") exposes the whole build system. *Highest-value, near-free.*
-- 🔜 **Show chosen class + role in the HUD** (S, client) — the status line shows the *emergent* playstyle
-  label, not your picked Warrior/Mage + trinity role. Data already on SelfDTO.
+- ✅ **Talent-point / class-pick HUD nudge** — a prioritized "Choose your class / Talent point ready /
+  skill ready — press K" badge + toast surfaces the build system at level-up.
+- ✅ **Show chosen class + role in the HUD** — status line shows e.g. "⚔️ Warrior · DPS" once a class is picked.
 - ⬜ **Per-level attribute points** (M, server) — pour points into STR/AGI/INT/STA/CRIT each level. Today
   base attrs are zero forever and all stat identity is RNG gear; this is the missing CoN tactile growth.
 - ⬜ **Respec** (M, server) — free in the waiting room (or gold). Permadeath already punishes mistakes;
@@ -47,8 +45,8 @@ ability evolution, gear stats) — but largely **invisible/unfelt**.
 - ✅ **Attack telegraphs** (see §1).
 - ✅ **Floor-depth stat scaling** — enemy HP +12%/floor, damage +8%/floor (boss too), so descending is
   genuinely deadlier, not just more crowded.
-- 🔜 **Lead-the-target ranged shots** (S, server) — deeper floors predict your movement instead of always
-  aiming at your current position, sharpening the dodge curve cheaply.
+- ✅ **Lead-the-target ranged shots** — monster/boss bolts predict your movement, scaling with depth
+  (floor 1 ≈ aim-at-current, capped ~0.35s lead deep), sharpening the dodge curve.
 - ⬜ **Boss multi-phase mechanics** (M, server) — phase transitions at 66% / 33% HP (radial bolt ring,
   summon adds, brief enrage) so the floor climax is a real encounter, not a bigger grunt.
 - ⬜ **Elite / champion packs + affixes** (L, server) — tag some camp monsters elite with rolled affixes
@@ -61,10 +59,10 @@ ability evolution, gear stats) — but largely **invisible/unfelt**.
 Two parallel loot systems (playstyle-tailored **ability grants** + equippable **gear**). Gear is generic;
 the headline ability grant currently arrives **silently** on the native client.
 
-- 🔜 **Loot-grant celebration** (S, client) — the Godot client drops the `t:"loot"` message; add a
-  rarity-colored toast + pop + sfx so a boss legendary actually *lands*. *Cheap, high-impact.*
-- 🔜 **Ground rarity beams** (S, server+client) — tint loot bags by best-item rarity + a soft light beam,
-  so you can spot a legendary across the room (CoN's signature loot-shower payoff).
+- ✅ **Loot-grant celebration** — the `t:"loot"` grant now fires a rarity-colored toast + sfx (+ a screen
+  pop for epic/legendary).
+- ✅ **Ground rarity beams** — loot bags glow/shimmer by best-item rarity (overbright for the high tiers),
+  so you can spot a legendary across the room.
 - ⬜ **Rolled affixes** (M, server) — named prefixes/suffixes ("Vicious … of the Bear") so two same-rarity
   drops differ; the loot lottery that makes "is this better?" meaningful.
 - ⬜ **Economy: a buy vendor** (M, server) — gold is sell-only today (a dead-end number). A waiting-room
@@ -80,10 +78,10 @@ Drop-in co-op is solid (shared world, reconnect, assists, boss hoard). The trini
 isn't *needed*; death is an instant dead-end.
 
 - ✅ **Depth scaling** (see §3) — half of "make the trinity matter."
-- 🔜 **Shared party XP** (S, server) — XP is killer-only today, punishing tanks/healers who rarely last-hit.
-  Split among nearby/threat-drawing allies so the party levels together.
-- 🔜 **Boss gates the stairs** (S, server) — the boss is skippable; gating turns each floor into a guaranteed
-  team fight + shared-loot beat.
+- ✅ **Shared party XP** — living allies within 600px of a kill get a 50% character-XP share, so tanks/
+  healers level with the party (ability XP still goes to the killer's used ability).
+- ✅ **Boss gates the stairs** — the exit stays shut until the floor's guardian is dead (with a client
+  "Defeat the boss to descend" hint); each floor is now a guaranteed team fight.
 - ⬜ **Downed / bleed-out + revive** (L, server) — *the* missing CoN pillar: a teammate's death becomes a
   recoverable crisis (stand over them / revive) instead of a spectator screen, and finally justifies healers/tanks.
 - ⬜ **Party-size enemy scaling** (M, server) — a 4-player camp should be tougher than a solo one.
@@ -96,10 +94,12 @@ isn't *needed*; death is an instant dead-end.
 ---
 
 ## Suggested next batches
-1. **Build payoff + loot pop** (all S, client-mostly): talent-point nudge, show class+role, loot-grant
-   celebration, ground rarity beams — surfaces deep systems that already exist, near-free.
-2. **Co-op cohesion** (S→L, server): shared XP + boss-gates-stairs (S) → downed/revive + party scaling (L).
-3. **Encounter depth** (M→L, server): boss phases → elite affixes → new archetypes.
-4. **Itemization depth** (M→L, server): rolled affixes → buy vendor → uniques/sets.
+**All S-tier items are now done ✅** (combat loop, build payoff + loot pop, shared XP, boss-gate,
+lead-target, rarity beams). The remaining M/L work, by theme:
+1. **Co-op cohesion** (L, server): downed/revive (the missing CoN pillar) + party-size scaling + ally HP bars.
+2. **Encounter depth** (M→L, server): boss multi-phase → elite affixes → new archetypes (charger/bomber/summoner).
+3. **Itemization depth** (M→L, server): rolled affixes → buy vendor (gold sink) → uniques/sets.
+4. **Build depth** (M, server): per-level attribute points → respec → deeper talent trees → class-flavored starting kits.
+5. **Combat depth** (M, server): hard CC (stun/root/freeze) → melee combo loop.
 
 _See the audit (gameplay-vs-CoN) for the detailed current-state findings behind each item._

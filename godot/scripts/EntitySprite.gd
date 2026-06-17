@@ -46,6 +46,17 @@ const COL_BOSS := Color8(0x9b, 0x30, 0xff)
 const COL_BOSSBOLT := Color8(0xc8, 0x50, 0xff)
 const COL_PROJ := Color8(0xff, 0xd3, 0x4d)
 const COL_LOOT := Color8(0xff, 0xcc, 0x44)
+# Loot-bag glow by best-item rarity (overbright for the high tiers so they beam).
+const LOOT_RARITY_COL := {
+	"common": Color(0.82, 0.78, 0.58),
+	"uncommon": Color(0.42, 1.35, 0.6),
+	"rare": Color(0.45, 0.78, 1.6),
+	"epic": Color(1.25, 0.6, 1.7),
+	"legendary": Color(1.9, 1.35, 0.45),
+}
+var _loot_rarity := "common"
+func set_loot_rarity(r: String) -> void:
+	_loot_rarity = r
 
 # ---- identity ----
 var ent_id := ""
@@ -499,6 +510,13 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 	# Non-animated kinds: flat-colored billboard (proj / lootbag / spectator etc.).
 	if kind != "player" and kind != "monster" and kind != "boss":
 		_set_fallback()
+		# Loot bags glow by rarity (overbright tint) + shimmer for uncommon+, so you can
+		# spot a legendary across the room — CoN's loot-shower legibility.
+		if kind == "lootbag":
+			var col: Color = LOOT_RARITY_COL.get(_loot_rarity, COL_LOOT)
+			if _loot_rarity != "common":
+				col = col * (0.85 + 0.25 * (0.5 + 0.5 * sin(now_ms * 0.006)))
+			modulate = col
 		_apply_size(sprite_px)
 		return
 

@@ -36,10 +36,12 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
+var _gate_hint: Label
+var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
-var _skill_ready_was := false
+var _skill_nudge_was := ""
 var _sfx: Sfx
 var _music: Music
 var _char_level := -1          # last seen character level (for level-up celebration)
@@ -149,6 +151,16 @@ func _ready() -> void:
 	_loot_prompt.visible = false
 	loot_layer.add_child(_loot_prompt)
 
+	# Boss-gate hint — the stairs stay shut until the floor's guardian is dead.
+	_gate_hint = Label.new()
+	_gate_hint.text = "⚔ Defeat the boss to descend"
+	_gate_hint.add_theme_font_size_override("font_size", 20)
+	_gate_hint.add_theme_color_override("font_color", Color(1.0, 0.55, 0.5))
+	_gate_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_gate_hint.position.y -= 140
+	_gate_hint.visible = false
+	loot_layer.add_child(_gate_hint)
+
 	# Run-over death summary: a centered card with your run stats + how to restart.
 	_runover_panel = PanelContainer.new()
 	_runover_panel.visible = false
@@ -217,6 +229,7 @@ func _ready() -> void:
 	_net.inv_received.connect(func(m): _inv.on_inv(m))
 	_net.bag_received.connect(func(m): _inv.on_bag(m))
 	_net.events_received.connect(_on_events)
+	_net.loot_received.connect(_on_loot)
 	_net.welcomed.connect(func(you): print("[DCC] welcome you=", you))
 
 	# Name screen before connecting (skipped headless / in diagnostic modes).
@@ -287,6 +300,28 @@ func _on_protocol_mismatch(server_v, client_v) -> void:
 	layer.layer = 40  # above everything
 	add_child(layer)
 	layer.add_child(banner)
+
+# A playstyle-tailored ability dropped — celebrate it (the server sends t:"loot"; this was
+# silently dropped before). Rarity-colored toast + a pop sfx so the reward lands.
+func _on_loot(grant) -> void:
+	if not (grant is Dictionary):
+		return
+	var ability: Dictionary = grant.get("ability", {})
+	var rarity := str(grant.get("rarity", "common"))
+	var icon := str(ability.get("icon", "✦")) if ability.get("icon", null) != null else "✦"
+	var nm := str(ability.get("name", "New ability"))
+	_hud.toast("%s  %s!  (%s)" % [icon, nm, rarity], _rarity_color(rarity))
+	_sfx.play("loot")
+	if rarity == "epic" or rarity == "legendary":
+		_shake = 0.6  # a little screen pop for the big ones
+
+func _rarity_color(r: String) -> Color:
+	match r:
+		"uncommon": return Color8(0x3f, 0xae, 0x5a)
+		"rare": return Color8(0x3a, 0x7b, 0xd5)
+		"epic": return Color8(0x9b, 0x59, 0xd0)
+		"legendary": return Color8(0xe7, 0xc1, 0x4d)
+		_: return Color8(0xcf, 0xd6, 0xe6)
 
 func _bag_present(id: String) -> bool:
 	for e in _net.ents:
@@ -377,6 +412,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), geometry.get("stairs", {}))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
+	var st: Dictionary = geometry.get("stairs", {})
+	_stairs = Vector2(float(st.get("x", 0.0)), float(st.get("y", 0.0)))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
 	_music.set_theme(str(info.get("theme", "fantasy")))
 	_hud.floor_title(int(info.get("depth", 1)), str(info.get("theme", "")))  # "Floor N · Theme" card
@@ -410,10 +447,13 @@ func _process(dt: float) -> void:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
-		for idx in _inp.take_casts():
-			_seq += 1
-			_net.send_cast(_seq, int(idx), aim)
-			_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+		var casts: Array = _inp.take_casts()
+		if not casts.is_empty():
+			var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
+			for idx in casts:
+				_seq += 1
+				_net.send_cast(_seq, int(idx), cast_aim)
+				_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
 		# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
 		if _inp.consume_dash():
 			var now_ms := float(Time.get_ticks_msec())
@@ -473,6 +513,8 @@ func _process(dt: float) -> void:
 	if boss_present != _boss_present_was:
 		_boss_present_was = boss_present
 		_music.set_combat(boss_present)
+	# Boss gates the stairs: hint when you're at the exit but the guardian still lives.
+	_gate_hint.visible = alive and boss_present and _stairs != Vector2.ZERO and Vector2(_pred.x, _pred.y).distance_to(_stairs) < 150.0
 
 	# Projectile trails: drop a fading dot behind in-vision projectiles (throttled).
 	_trail_frame += 1
@@ -527,14 +569,25 @@ func _process(dt: float) -> void:
 		var life := int(_net.self_dto.get("lifetimeXp", 0))
 		_runover_stats.text = "Reached Floor %d · Level %d\n%d kills · %d lifetime XP" % [floor_reached, lvl_now, kills, life]
 
-	# Skills: keep XP bars live while open; nudge + glow when an ability matures.
+	# Skills/build nudge: surface the highest-priority pending action behind the K screen —
+	# pick a class, spend a talent point, or evolve a matured ability (all live in SkillsUI).
 	if _skills.is_open():
 		_skills.sync_if_open()
-	var skill_ready: bool = alive and _skills.any_ready()
-	_skill_hint.visible = skill_ready and not _skills.is_open() and not _inv.is_open()
-	if skill_ready and not _skill_ready_was:
-		_hud.toast("✨ A skill is ready to evolve! Press K", Color8(0xff, 0xd3, 0x4d))
-	_skill_ready_was = skill_ready
+	var nudge := ""
+	if alive and not _skills.is_open():
+		var sd: Dictionary = _net.self_dto
+		if str(sd.get("chosenClass", "")) == "" and int(sd.get("talentPoints", 0)) > 0:
+			nudge = "✨ Choose your class — press K"
+		elif int(sd.get("talentPoints", 0)) > 0:
+			nudge = "✦ Talent point ready — press K"
+		elif _skills.any_ready():
+			nudge = "✨ A skill is ready to evolve — press K"
+	_skill_hint.visible = nudge != "" and not _inv.is_open()
+	if nudge != "":
+		_skill_hint.text = nudge
+	if nudge != "" and nudge != _skill_nudge_was:
+		_hud.toast(nudge, Color8(0xff, 0xd3, 0x4d))
+	_skill_nudge_was = nudge
 
 	# XP feel: float "+N XP" on kills (charXp accrues from kills) + level-up celebration.
 	if not _net.self_dto.is_empty():
@@ -616,3 +669,29 @@ func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
 		return Color.from_string(s, Color.WHITE)
 	return Color.WHITE
+
+# Light aim-assist: if an enemy sits within a cone of the player's aim (and in range),
+# snap the cast toward it — so fast swarms aren't pure precision-mouse. Picks the closest
+# enemy within ±~32° and ~560px; otherwise returns the raw aim untouched.
+func _assist_aim(aim: float) -> float:
+	var pp := Vector2(_pred.x, _pred.y)
+	var best_d := -1.0
+	var best_ang := aim
+	const CONE := 0.56
+	const RANGE := 560.0
+	for e in _net.ents:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var k := str(e.get("kind", ""))
+		if k != "monster" and k != "boss":
+			continue
+		var to := Vector2(float(e.get("x", 0.0)), float(e.get("y", 0.0))) - pp
+		var d := to.length()
+		if d < 1.0 or d > RANGE:
+			continue
+		if absf(wrapf(atan2(to.y, to.x) - aim, -PI, PI)) > CONE:
+			continue
+		if best_d < 0.0 or d < best_d:
+			best_d = d
+			best_ang = atan2(to.y, to.x)
+	return best_ang

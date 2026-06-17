@@ -17,6 +17,7 @@ import {
 import { moveWithCollisions } from "../../procgen/collision";
 import type { BossState, PlayerState, WorldCtx } from "../state";
 import { applyDamage } from "./combat";
+import { leadTarget } from "./monsters";
 
 let seq = 0;
 
@@ -79,7 +80,8 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
 // A spread of straight-line bolts aimed where the player is NOW — dodge by
 // stepping out of the line. Boss bolts only affect players (see projectiles.ts).
 function bossCast(ctx: WorldCtx, boss: BossState, target: PlayerState): void {
-  const ang = Math.atan2(target.y - boss.y, target.x - boss.x);
+  const lt = leadTarget(ctx, target);
+  const ang = Math.atan2(lt.y - boss.y, lt.x - boss.x);
   for (const off of [-BOSS_PROJ_SPREAD, 0, BOSS_PROJ_SPREAD]) {
     const a = ang + off;
     ctx.projectiles.push({

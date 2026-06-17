@@ -105,6 +105,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 
 		# Sprite id (for 98/99 bolt sentinels).
 		spr.set_sprite_id(int(d.get("sprite", 0)))
+		if k == "lootbag":
+			spr.set_loot_rarity(str(d.get("rarity", "common")))
 
 		# Facing delta = movement since the last displayed frame (render.ts dx/dy).
 		var prev: Variant = _last_pos.get(id)

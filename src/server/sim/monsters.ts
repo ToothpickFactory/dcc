@@ -106,9 +106,19 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
   }
 }
 
+// Aim point that LEADS a moving target — deeper floors predict further ahead (capped),
+// so ranged enemies threaten a running player as you descend. Floor 1 ≈ aim at current pos.
+export function leadTarget(ctx: WorldCtx, prey: PlayerState): { x: number; y: number } {
+  const lead = Math.min(0.35, ctx.floor.depth * 0.025);
+  const l = Math.hypot(prey.mvx, prey.mvy);
+  if (l < 0.1 || lead <= 0) return { x: prey.x, y: prey.y };
+  return { x: prey.x + (prey.mvx / l) * prey.derived.moveSpeed * lead, y: prey.y + (prey.mvy / l) * prey.derived.moveSpeed * lead };
+}
+
 // Straight-line monster bolt — dodgeable, affects players only (boss=true path).
 function shoot(ctx: WorldCtx, m: MonsterState, prey: PlayerState, projSpeed: number, projDmg: number): void {
-  const ang = Math.atan2(prey.y - m.y, prey.x - m.x);
+  const t = leadTarget(ctx, prey);
+  const ang = Math.atan2(t.y - m.y, t.x - m.x);
   ctx.projectiles.push({
     id: `mb_${(++seq).toString(36)}`,
     ownerId: m.id,

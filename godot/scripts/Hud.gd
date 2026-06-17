@@ -51,6 +51,16 @@ const COL_WAIT_SUB := Color8(0x8f, 0xb3, 0x9c)
 const SLOT_SIZE := 64
 const SLOT_GAP := 10
 
+# WoW class display (mirror src/shared/classes.ts CLASS_INFO/CLASS_ROLE) for the status line.
+const KLASS_INFO := {
+	"warrior": {"name": "Warrior", "icon": "⚔️"},
+	"mage": {"name": "Mage", "icon": "\U01f52e"},
+	"priest": {"name": "Priest", "icon": "✨"},
+	"rogue": {"name": "Rogue", "icon": "\U01f5e1️"},
+	"hunter": {"name": "Hunter", "icon": "\U01f3f9"},
+}
+const KLASS_ROLE := {"warrior": "DPS", "mage": "DPS", "priest": "Healer", "rogue": "DPS", "hunter": "DPS"}
+
 # ---- nodes ----
 var _status: RichTextLabel
 var _bar_wrap: CenterContainer
@@ -536,7 +546,12 @@ func _update_status(self_dto: Dictionary) -> void:
 	var status := str(self_dto.get("status", "alive"))
 	var hp := int(self_dto.get("hp", 0))
 	var max_hp := int(self_dto.get("maxHp", 0))
+	# Chosen WoW class + trinity role if picked; else the emergent playstyle label.
+	var chosen := str(self_dto.get("chosenClass", ""))
 	var cls := str(self_dto.get("cls", ""))
+	if KLASS_INFO.has(chosen):
+		var ki: Dictionary = KLASS_INFO[chosen]
+		cls = "%s %s · %s" % [ki["icon"], ki["name"], KLASS_ROLE.get(chosen, "DPS")]
 
 	# Countdown timer (skipped once the run has ended), mirroring hud.ts.
 	var timer := 0
