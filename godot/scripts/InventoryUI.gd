@@ -24,7 +24,7 @@ const SLOT_EMOJI := {
 const ITEM_EMOJI := {
 	"helmet": "⛑️", "chest": "\U01f6e1️", "legs": "\U01f456",
 	"gloves": "\U01f9e4", "weapon": "⚔️", "ring": "\U01f48d",
-	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U0001f9ea",
+	"amulet": "\U01f4ff", "bag": "\U01f392", "consumable": "\U01f9ea",
 }
 const ATTR_ABBR := {
 	"strength": "STR", "intellect": "INT", "stamina": "STA",
@@ -254,6 +254,27 @@ func _render(msg: Dictionary) -> void:
 		# Consumables drink (heal self); everything else equips on tap.
 		var tap_msg := {"t": "useItem", "item": item_id} if is_consumable else {"t": "equip", "item": item_id}
 		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send(tap_msg))
+		# Consumables: a "+bar" toggle to park a potion slot on the hotbar.
+		if is_consumable:
+			var sd: Variant = _net.get("self_dto")
+			var on_bar := false
+			if sd is Dictionary:
+				for a in (sd as Dictionary).get("abilities", []):
+					if a is Dictionary and a.get("usesItem", null) != null:
+						on_bar = true
+			var tobar := Label.new()
+			tobar.text = "✓bar" if on_bar else "+bar"
+			tobar.add_theme_font_size_override("font_size", 10)
+			tobar.add_theme_color_override("font_color", Color(0.36, 1.0, 0.6) if on_bar else Color(0.6, 0.9, 1.0))
+			tobar.mouse_filter = Control.MOUSE_FILTER_STOP
+			tobar.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+			tobar.position = Vector2(3, -18)
+			tobar.tooltip_text = "Remove the potion slot from your hotbar" if on_bar else "Add a potion slot to your hotbar (cast it to drink)"
+			tobar.gui_input.connect(func(ev: InputEvent):
+				if _is_tap(ev):
+					_send({"t": "addHotbarItem", "item": item_id})
+					_consume(ev))
+			body.add_child(tobar)
 		# Drop affordance (top-right).
 		var drop := _corner_label("\U01f5d1", DROP_COLOR, false)
 		drop.tooltip_text = "Drop on the floor"

@@ -34,6 +34,8 @@ export interface Ability {
   pellets?: number; // projectile abilities: fire N pellets in a spread (multishot)
   spread?: number; // total spread angle (radians) across pellets, or melee cone width
   cone?: number; // melee cone width (radians); default ~PI/3
+  // ---- hotbar consumable slot ----
+  usesItem?: "consumable"; // a hotbar slot that, when cast, uses a carried item (e.g. a potion) instead of a normal cast
   // ---- support / trinity behavior (RPG Phase 2) ----
   allyOnly?: boolean; // projectile only ever affects allies (heals/shields), never foes
   shield?: number; // ally-targeted absorb shield applied on hit (instead of/with healing)

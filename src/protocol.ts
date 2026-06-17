@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 10; // was 9 — added the `windup` event (enemy attack telegraphs)
+export const PROTOCOL_VERSION = 11; // was 10 — added the `addHotbarItem` client message (consumables on the hotbar)
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -25,6 +25,7 @@ export type ClientMsg =
   | { t: "sell"; item: string } // sell a carried item for gold (waiting room only)
   | { t: "drop"; item: string } // drop a carried item onto the floor
   | { t: "useItem"; item: string } // drink/use a carried consumable (e.g. a potion)
+  | { t: "addHotbarItem"; item: string } // toggle a carried consumable onto/off the action bar
   | { t: "openLoot"; bag: string } // request the contents of a nearby loot bag
   | { t: "takeLoot"; bag: string; item?: string } // take one item (or all if omitted)
   | { t: "swapAbility"; a: number; b: number } // reorder/swap two action-bar slots

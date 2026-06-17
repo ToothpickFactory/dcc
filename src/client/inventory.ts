@@ -127,6 +127,17 @@ export class InventoryUI {
         tile.classList.add("usable");
         tile.title = "Drink to heal";
         tile.addEventListener("click", () => this.net.send({ t: "useItem", item: it.id }));
+        // Add-to-hotbar toggle: a 🧪 slot you can cast from the action bar.
+        const onBar = (this.net.self?.abilities ?? []).some((a) => a.usesItem);
+        const bar = document.createElement("span");
+        bar.className = "tobar" + (onBar ? " on" : "");
+        bar.textContent = onBar ? "✓bar" : "+bar";
+        bar.title = onBar ? "Remove the potion slot from your hotbar" : "Add a potion slot to your hotbar (cast it to drink)";
+        bar.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.net.send({ t: "addHotbarItem", item: it.id });
+        });
+        tile.appendChild(bar);
       } else {
         tile.addEventListener("click", () => this.net.send({ t: "equip", item: it.id }));
       }
