@@ -61,6 +61,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
         slowMs: ab.slowMs ?? 0,
         ability: idx,
         sprite: projectileSpriteForAbility(ab),
+        proj: projectileRenderForAbility(ab),
         ttl: ab.range / speed,
         hitR: PROJECTILE_RADIUS,
         boss: false,
@@ -99,10 +100,18 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
 }
 
 function projectileSpriteForAbility(ab: Ability): number | undefined {
-  if (isIceOrRockProjectile(ab)) return ICE_PROJECTILE_SPRITE;
-  if (isPoisonProjectile(ab)) return POISON_PROJECTILE_SPRITE;
-  if (isFireballProjectile(ab)) return FIREBALL_PROJECTILE_SPRITE;
+  const render = projectileRenderForAbility(ab);
+  if (render === "ice") return ICE_PROJECTILE_SPRITE;
+  if (render === "poison") return POISON_PROJECTILE_SPRITE;
+  if (render === "fire") return FIREBALL_PROJECTILE_SPRITE;
   return undefined;
+}
+
+function projectileRenderForAbility(ab: Ability): "fire" | "ice" | "poison" | undefined {
+  if (isIceOrRockProjectile(ab)) return "ice";
+  if (isPoisonProjectile(ab)) return "poison";
+  if (isFireballProjectile(ab)) return "fire";
+  return ab.projectile ? "ice" : undefined;
 }
 
 function isIceOrRockProjectile(ab: Ability): boolean {

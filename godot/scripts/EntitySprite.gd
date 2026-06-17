@@ -98,6 +98,7 @@ var _model_root: Node3D
 var _model_anim: AnimationPlayer
 var _model_anim_name := ""
 var _model_profile: Dictionary = {}
+var _projectile_render := ""
 var _model_slash_index := 0
 var _dead_until := 0.0
 var _is_dead_body := false
@@ -240,7 +241,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
-	if kind == "proj" and _sprite_id == FIREBALL_PROJECTILE_SPRITE:
+	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
 			"label": "Fireball",
 			"path": FIREBALL_MODEL_PATH,
@@ -252,7 +253,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.25,
 			"saturation": 1.35,
 		}
-	if kind == "proj" and _sprite_id == ICE_PROJECTILE_SPRITE:
+	if kind == "proj" and (_projectile_render == "ice" or _sprite_id == ICE_PROJECTILE_SPRITE):
 		return {
 			"label": "Iceball",
 			"path": ICE_MODEL_PATH,
@@ -264,7 +265,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.25,
 			"saturation": 1.25,
 		}
-	if kind == "proj" and _sprite_id == POISON_PROJECTILE_SPRITE:
+	if kind == "proj" and (_projectile_render == "poison" or _sprite_id == POISON_PROJECTILE_SPRITE):
 		return {
 			"label": "Poisonball",
 			"path": POISON_MODEL_PATH,
@@ -850,6 +851,8 @@ func _fallback_color() -> Color:
 	if kind == "boss":
 		return COL_BOSS
 	if kind == "proj":
+		if _projectile_render != "":
+			return Color(1, 1, 1, 0)
 		# 98/99 bolt sentinels are NOT atlas frames — boss bolt gets its own purple.
 		return COL_BOSSBOLT if _sprite_id == BOSS_BOLT_SPRITE else COL_PROJ
 	if kind == "lootbag":
@@ -866,6 +869,12 @@ func set_sprite_id(v: int) -> void:
 	if _sprite_id == v:
 		return
 	_sprite_id = v
+	_ensure_model_for_entity()
+
+func set_projectile_render(v: String) -> void:
+	if _projectile_render == v:
+		return
+	_projectile_render = v
 	_ensure_model_for_entity()
 
 # Scale a 128px frame (or fallback quad) to roughly `sprite_px` world units tall/wide.

@@ -588,11 +588,14 @@ export class Renderer {
       } else if (e.kind === "proj") {
         color =
           e.sprite === BOSS_BOLT_SPRITE ? C.bossbolt :
+          e.proj === "fire" ? 0xff6a2a :
+          e.proj === "ice" ? 0x8fd8ff :
+          e.proj === "poison" ? 0x8cff4d :
           e.sprite === FIREBALL_PROJECTILE_SPRITE ? 0xff6a2a :
           e.sprite === ICE_PROJECTILE_SPRITE ? 0x8fd8ff :
           e.sprite === POISON_PROJECTILE_SPRITE ? 0x8cff4d :
           (ABILITY_COLORS[e.sprite ?? 0] ?? C.proj);
-        size = e.sprite === BOSS_BOLT_SPRITE ? 24 : e.sprite === FIREBALL_PROJECTILE_SPRITE || e.sprite === ICE_PROJECTILE_SPRITE || e.sprite === POISON_PROJECTILE_SPRITE ? 28 : 16;
+        size = e.sprite === BOSS_BOLT_SPRITE ? 24 : e.proj || e.sprite === FIREBALL_PROJECTILE_SPRITE || e.sprite === ICE_PROJECTILE_SPRITE || e.sprite === POISON_PROJECTILE_SPRITE ? 28 : 16;
       } else if (e.id === selfId) {
         color = C.self;
         size = 84;

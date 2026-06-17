@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 12; // was 11 (addHotbarItem) — added lootbag `rarity` on EntityDTO (ground rarity beams)
+export const PROTOCOL_VERSION = 13; // was 12 (lootbag rarity) — added projectile render kind on EntityDTO
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -63,6 +63,7 @@ export interface EntityDTO {
   name?: string; // players + named bosses
   cls?: PlayerClass; // players only
   sprite?: number; // atlas frame id (kind-specific)
+  proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
   n?: number; // item count (loot bags)
   rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
 }

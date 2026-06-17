@@ -95,6 +95,7 @@ function bossCast(ctx: WorldCtx, boss: BossState, target: PlayerState): void {
       dmg: BOSS_PROJ_DMG * boss.dmgMult,
       slowMs: 0,
       ability: BOSS_BOLT_SPRITE,
+      proj: "fire",
       ttl: BOSS_PROJ_LIFE,
       hitR: BOSS_PROJ_RADIUS,
       boss: true,

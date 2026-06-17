@@ -111,6 +111,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 
 		# Sprite id (for 98/99 bolt sentinels).
 		spr.set_sprite_id(int(d.get("sprite", 0)))
+		spr.set_projectile_render(str(d.get("proj", "")))
 		if k == "lootbag":
 			spr.set_loot_rarity(str(d.get("rarity", "common")))
 		spr.set_dead_body(bool(d.get("dead", false)), now_ms)

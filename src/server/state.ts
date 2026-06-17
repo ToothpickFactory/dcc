@@ -105,6 +105,7 @@ export interface ProjectileState {
   slowMs: number;
   ability: number;
   sprite?: number; // optional client render marker; ability remains the real caster slot
+  proj?: "fire" | "ice" | "poison"; // preferred client render asset
   ttl: number; // seconds remaining
   hitR: number; // projectile's own collision radius (px), added to the target's
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players

@@ -130,6 +130,7 @@ function shoot(ctx: WorldCtx, m: MonsterState, prey: PlayerState, projSpeed: num
     dmg: projDmg,
     slowMs: 0,
     ability: MONSTER_BOLT_SPRITE,
+    proj: "fire",
     ttl: 4,
     hitR: 7,
     boss: true,
