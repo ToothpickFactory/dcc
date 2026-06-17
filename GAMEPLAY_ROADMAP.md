@@ -36,14 +36,16 @@ ability evolution, gear stats) — but largely **invisible/unfelt**.
 - ✅ **Talent-point / class-pick HUD nudge** — a prioritized "Choose your class / Talent point ready /
   skill ready — press K" badge + toast surfaces the build system at level-up.
 - ✅ **Show chosen class + role in the HUD** — status line shows e.g. "⚔️ Warrior · DPS" once a class is picked.
-- ⬜ **Per-level attribute points** (M, server) — pour points into STR/AGI/INT/STA/CRIT each level. Today
-  base attrs are zero forever and all stat identity is RNG gear; this is the missing CoN tactile growth.
-- ⬜ **Respec** (M, server) — free in the waiting room (or gold). Permadeath already punishes mistakes;
-  a locked bad fork on top kills experimentation.
-- ⬜ **Deeper talent trees** (M, data) — ranked nodes (maxRank>1) + a couple more rows so builds keep
-  developing past ~level 6 (the data model already supports ranks).
-- ⬜ **Class-flavored starting kits** (M, server) — a Mage opening with a bolt, a Priest with mend, etc.,
-  instead of everyone starting sword+rocks — so class choice matters in the first 60 seconds.
+- ✅ **Per-level attribute points** — every character level grants 3 points to pour into any of the 7
+  attrs (STR/AGI/INT/STA/CRIT/Haste/Armor) on the K screen; spent points live in `base` and feed derived
+  stats. Base attrs are no longer zero-forever — tactile growth alongside gear.
+- ✅ **Respec** — free in the waiting room (a two-tap button on the K screen). Refunds ALL spent attribute
+  + talent points and strips talent-granted abilities from the bar, so a bad fork is never permanent.
+- ✅ **Deeper talent trees** — spec nodes are now `maxRank: 2` and each tree gained a row-3 "mastery"
+  passive (`requires: 6`, `maxRank: 3`), so builds keep developing to ~level 9+ (ranks scale the passive).
+- ✅ **Class-flavored starting kits** — picking a class swaps the generic sword+rocks opener for a class
+  kit (mage: arcane bolts, priest: mend+poke, rogue: blade+knives, hunter: thrown+volley), only if the
+  opener is untouched — so class identity reads immediately.
 
 ## 3. Enemies, AI & encounter design
 - ✅ **Attack telegraphs** (see §1).
@@ -103,7 +105,7 @@ lead-target, rarity beams). The remaining M/L work, by theme:
 1. **Co-op cohesion** (L, server): downed/revive (the missing CoN pillar) + party-size scaling + ally HP bars.
 2. **Encounter depth** (M→L, server): boss multi-phase → elite affixes → new archetypes (charger/bomber/summoner).
 3. **Itemization depth** (M→L, server): rolled affixes → buy vendor (gold sink) → uniques/sets.
-4. **Build depth** (M, server): per-level attribute points → respec → deeper talent trees → class-flavored starting kits.
+4. ~~**Build depth**: per-level attribute points → respec → deeper talent trees → class-flavored starting kits~~ — ✅ all done.
 5. ~~**Combat depth**: hard CC (stun/root/freeze) → melee combo loop~~ — ✅ both done.
 
 _See the audit (gameplay-vs-CoN) for the detailed current-state findings behind each item._

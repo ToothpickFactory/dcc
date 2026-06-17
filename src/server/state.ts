@@ -24,6 +24,7 @@ export interface PlayerState {
   chosenClass: Klass | null; // picked at the first level-up; drives main-stat scaling + talent tree
   talents: Record<string, number>; // talent node id -> rank spent
   talentPoints: number; // unspent talent points (1 granted per character level)
+  attrPoints: number; // unspent attribute points (ATTR_POINTS_PER_LEVEL granted per level; spent into `base`)
   // ---- Tank/support state (set by talents; read by the sim) ----
   threatMult: number; // multiplier on threat this player generates (tank talent raises it)
   shield: number; // current absorb shield (consumed before HP)

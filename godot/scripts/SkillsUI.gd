@@ -26,6 +26,9 @@ const TEXT_HINT := Color8(0x6b, 0x77, 0x90)
 const GOLD := Color8(0xe7, 0xc1, 0x4d)
 const READY_TEXT := Color8(0xff, 0xd3, 0x4d)
 
+# Mirror of items.ts ATTR_KEYS — the attributes a player can pour level-up points into.
+const ATTR_LIST := ["strength", "intellect", "stamina", "agility", "haste", "crit", "armor"]
+
 # ---- dependencies / state -------------------------------------------------
 var _net: Node = null
 var _sfx: Node = null   # optional Sfx node (play(name)); set by Main
@@ -35,8 +38,11 @@ var _key := ""
 var _root: Control
 var _char_box: VBoxContainer
 var _stats_box: VBoxContainer
+var _attr_box: VBoxContainer
 var _talent_box: VBoxContainer
 var _list: VBoxContainer
+var _reached := false        # in the waiting room (gates the Respec button)
+var _respec_armed := false   # two-tap confirm for Respec
 
 
 func _ready() -> void:
@@ -78,6 +84,15 @@ func close() -> void:
 	if _root.visible:
 		_sfx_play("ui_close")
 	_root.visible = false
+
+# Waiting-room flag (set by Main from self_dto.reached) — gates the free Respec button.
+func set_reached(b: bool) -> void:
+	if _reached == b:
+		return
+	_reached = b
+	_respec_armed = false
+	if is_open():
+		_render()
 
 # Any ability ready to evolve? Drives Main's "skill ready" glow + level-up toast.
 func any_ready() -> bool:
@@ -144,6 +159,9 @@ func _render() -> void:
 	_stats_box.add_child(_stat_row_node("Lifetime XP", str(int(self_dto.get("lifetimeXp", 0)))))
 	_stats_box.add_child(_stat_row_node("Best floor", str(int(self_dto.get("bestFloor", 0)))))
 	_stats_box.add_child(_stat_row_node("Kills", str(int(self_dto.get("kills", 0)))))
+
+	# Attribute-point spend panel + respec.
+	_render_attrs(self_dto)
 
 	# Class picker / talent tree.
 	_render_talents(self_dto)
@@ -423,6 +441,11 @@ func _build_panel() -> void:
 	_stats_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_child(_stats_box)
 
+	_attr_box = VBoxContainer.new()
+	_attr_box.add_theme_constant_override("separation", 4)
+	_attr_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_attr_box)
+
 	_talent_box = VBoxContainer.new()
 	_talent_box.add_theme_constant_override("separation", 5)
 	_talent_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -459,6 +482,8 @@ func _state_key() -> String:
 		if sd is Dictionary:
 			cx = int(sd.get("charXp", 0))
 			sig = JSON.stringify(sd.get("derived", {}))
+			# attribute/talent pools + class + waiting-room state drive the spend UI.
+			sig += "|ap%d|tp%d|%s|%s|r%s" % [int(sd.get("attrPoints", 0)), int(sd.get("talentPoints", 0)), str(sd.get("chosenClass", "")), JSON.stringify(sd.get("talents", {})), str(_reached)]
 		var inv: Variant = _net.get("last_inv")
 		if inv is Dictionary:
 			sig += JSON.stringify((inv as Dictionary).get("attrs", {}))
@@ -511,6 +536,59 @@ func _pct(x: float) -> String:
 	return "%d%%" % roundi(x * 100.0)
 
 
+func _cap(s: String) -> String:
+	if s == "":
+		return s
+	return s.substr(0, 1).to_upper() + s.substr(1)
+
+
+# Attribute-point spend panel: pour unspent points into STR/AGI/INT/STA/CRIT/HASTE/ARMOR,
+# plus a free Respec (waiting room only). Points feed straight into derived stats server-side.
+func _render_attrs(self_dto: Dictionary) -> void:
+	_clear(_attr_box)
+	var pts := int(self_dto.get("attrPoints", 0))
+	_attr_box.add_child(_talent_section("ATTRIBUTES — %d point%s" % [pts, ("" if pts == 1 else "s")]))
+	var attrs: Dictionary = {}
+	var inv: Variant = _net.get("last_inv")
+	if inv is Dictionary:
+		attrs = (inv as Dictionary).get("attrs", {})
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 4)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in ATTR_LIST:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.custom_minimum_size = Vector2(250, 0)
+		var lbl := Label.new()
+		lbl.text = "%s %d" % [_cap(k), int(attrs.get(k, 0))]
+		lbl.add_theme_color_override("font_color", TEXT_NAME)
+		lbl.add_theme_font_size_override("font_size", 13)
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var plus := Button.new()
+		plus.text = "+"
+		plus.custom_minimum_size = Vector2(28, 26)
+		plus.disabled = pts <= 0
+		plus.pressed.connect(func(): _send({"t": "spendAttr", "attr": k}))
+		row.add_child(lbl)
+		row.add_child(plus)
+		grid.add_child(row)
+	_attr_box.add_child(grid)
+	# Respec — free, but only in the waiting room (between floors). Two-tap to confirm.
+	if _reached:
+		var respec := Button.new()
+		respec.text = "↺ Confirm respec?" if _respec_armed else "↺ Respec (free)"
+		respec.pressed.connect(func():
+			if not _respec_armed:
+				_respec_armed = true
+				respec.text = "↺ Confirm respec?"
+				return
+			_respec_armed = false
+			_send({"t": "respec"}))
+		_attr_box.add_child(respec)
+
+
 # Class picker (before a class is chosen) or the point-buy talent tree.
 func _render_talents(self_dto: Dictionary) -> void:
 	_clear(_talent_box)
@@ -533,12 +611,15 @@ func _render_talents(self_dto: Dictionary) -> void:
 	for node in Talents.tree(klass):
 		var nid := str(node.get("id", ""))
 		var rank := int(talents.get(nid, 0))
+		var max_rank := int(node.get("maxRank", 1))
 		var can := Talents.can_spend(klass, talents, pts, nid)
 		var tag := ""
 		if rank > 0:
-			tag = "✓ learned"
+			tag = ("rank %d/%d" % [rank, max_rank]) if max_rank > 1 else "✓ learned"
 		elif int(node.get("requires", 0)) > 0:
 			tag = "needs %d spent" % int(node.get("requires", 0))
+		elif max_rank > 1:
+			tag = "0/%d" % max_rank
 		_talent_box.add_child(_choice_button("%s  %s" % [str(node.get("icon", "•")), str(node.get("name", nid))], str(node.get("desc", "")), tag, can, func(): _send({"t": "spendTalent", "node": nid}), rank > 0))
 
 

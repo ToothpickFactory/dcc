@@ -1,50 +1,36 @@
-# Hard crowd control — stuns / roots / freezes (M, server)
+# Build depth — attribute points · respec · deeper trees · class kits (M, server)
 
-Roadmap §1: give classes defining CC so a mage/rogue/warrior/hunter play differently.
-Today the only CC is a 50% slow + taunt.
+Roadmap §2: the RPG systems were deep but build growth stalled (base attrs zero forever,
+trees stop ~level 6, bad forks locked, every class opens sword+rocks). All four shipped.
 
-## Design
-Two primitives, three flavors, **enemy-only** (player abilities CC monsters/boss):
-- **root** — can't move (speed→0); can still swing/shoot if in range.
-- **stun** — can't move AND can't act; cancels any pending wind-up (interrupt).
-- **freeze** — a stun flavored as ice; leaves a short slow tail on thaw.
+## What shipped
+- **Per-level attribute points** (3/level, all 7 attrs). Reuses `base` as the spent store (already
+  persisted + folded by `recomputePlayer`); only new persisted state is one `attrPoints` counter.
+  New `spendAttr` handler + `ATTR_POINTS_PER_LEVEL` granted in `grantCharXp`'s level-up block.
+- **Respec** — free, waiting-room only. `respec` handler refunds `sum(base)` → attrPoints + base→0,
+  `talentSpent` → talentPoints + talents→{}, and strips `fromTalent` abilities from the bar.
+- **Deeper trees** — spec nodes `maxRank: 2` + a row-3 `requires: 6` `maxRank: 3` mastery passive per
+  class (5 new PASSIVES). Pure data; ranks already scaled in `talentPassives`. Web auto-inherits;
+  Godot `Talents.gd` mirror updated.
+- **Class kits** — `CLASS_KIT` in classes.ts; `applyClassKit` swaps the untouched sword+rocks opener
+  at `chooseClass` (guarded so a customized bar is never clobbered).
+- **Protocol 13 → 14**: `spendAttr`/`respec` ClientMsgs + `attrPoints` on SelfDTO. Godot DccConst → 14.
+- **Clients**: attribute-spend panel + respec button + "rank x/N" on the K screen (Godot SkillsUI.gd +
+  web skills.ts); `set_reached` gates the respec button.
 
-State: monsters + boss get `ccUntil` + `ccKind` (""|"stun"|"root"|"freeze").
-Stun/freeze > root priority (a root never downgrades an active stun).
+## Verification (all green)
+- `tsc --noEmit` (server+shared) and `-p tsconfig.client.json` clean.
+- Full `npm test` green incl. new cases: talents (maxRank-2 spend, row-3 gating/ranks) and a
+  progression integration test (attr point → +8 maxHp / +spellPower; mage kit swap + no-clobber guard;
+  respec refund math + talent-grant strip) driving the REAL recomputePlayer/CLASS_KIT/talentSpent.
+- Also fixed a pre-existing test breakage: teammate's destructible-decor merge made `stepProjectiles`
+  read `ctx.props`; added `props: []` to the test fixture.
+- Godot `--headless --import` parse-clean.
+- Live (isolated wrangler + WS probes): protocol 14 served → the new `attr_points` migration ran on the
+  EXISTING DB without crashing; `attrPoints` present on the wire; `spendAttr`/`respec` wired + guards
+  hold (0-point spendAttr no-ops, invalid attr rejected, respec-when-not-reached no-ops, no crash).
+  Live grind-to-level-up was blocked by maze pathfinding in the dumb bot — covered deterministically by
+  the integration test instead.
 
-## Class CC abilities (talent grants, row 1, requires 2)
-- warrior `shieldbash` — melee, wide cone, **stun**.
-- hunter  `concussive` — ranged bolt, **stun**.
-- rogue   `hamstring`  — melee, narrow cone, **root**.
-- mage    `frostnova`  — self-AoE (cone 2π), **freeze** + slow tail.
-
-## Tasks
-- [ ] types.ts: `CcKind`; Ability `stunMs?`/`rootMs?`/`freeze?`.
-- [ ] constants.ts: `FREEZE_SLOW_TAIL_MS`.
-- [ ] state.ts: Monster/Boss `ccUntil`+`ccKind`; Projectile `stunMs?/rootMs?/freeze?`.
-- [ ] combat.ts: `applyCc()` (enemy-only; sets timers, interrupts wind-up, emits fx).
-- [ ] projectiles.ts: thread CC onto projectiles + melee cone; exclude CC abils from combo.
-- [ ] monsters.ts: stun=skip AI, root=speed 0; reset on respawn.
-- [ ] boss.ts: stun=return, root=no chase (still melee/cast).
-- [ ] protocol.ts: v12→13; EntityDTO `cc?`; GameEvent `cc`.
-- [ ] world-do.ts: init fields on spawn; broadcast `cc`.
-- [ ] skills.ts + talents.ts: 4 abilities + 4 talent nodes.
-- [ ] Godot mirrors: DccConst v13; Talents.gd nodes; EntitySprite cc tint; SpriteLayer set_cc; Main cc fx pop.
-- [ ] tests: patch MonsterState literals; tsc; godot import; WS probe (stun freezes a monster).
-
-## Review
-Done + verified. Two primitives (`ccUntil`+`ccKind` on monsters & boss), three flavors:
-- **stun/freeze** → `continue`/`return` in the AI (no act, no move) + interrupt the pending wind-up.
-- **root** → `speed = 0` (one line; movement no-ops, attacks still resolve).
-- **freeze** = ice-flavored stun + a `FREEZE_SLOW_TAIL_MS` slow on thaw (monsters only — boss has no slow).
-`applyCc()` is the single funnel (enemy-only guard, stun/freeze > root priority, emits a `cc` fx).
-CC abilities are excluded from the melee combo so they stay deliberate cooldowns. Four talent-granted
-abilities, one CC type each spread across delivery: shieldbash (melee stun), concussive (ranged stun),
-hamstring (melee root), frostnova (AoE freeze). Protocol 12→13 (`EntityDTO.cc` + `cc` GameEvent).
-
-Verified: `tsc` clean; projectiles test +8 CC checks pass through the real castAbility/updateMonsters/
-applyCc/applyDamage code; talents+skills tests green; Godot `--import` parse-clean; live server reports
-protocol 13; wire probe shows monster/boss DTOs well-formed with `cc` correctly omitted when idle.
-
-Out of scope (future): enemy archetypes that CC the player (the inverse); diminishing returns on
-repeated CC; a priest CC (kept support-pure for now).
+## Out of scope (per plan)
+Gold-cost respec; moving class-pick to spawn; new attribute types; per-attr soft caps; gear rebalance.

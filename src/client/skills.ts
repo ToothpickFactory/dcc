@@ -3,6 +3,7 @@ import type { Ability } from "../shared/types";
 import { ABILITY_NODES, EVOLUTIONS, canEvolve, charLevelOf, charXpForNext, evolveCost } from "../shared/skills";
 import { CLASS_INFO, CLASS_MAIN_STAT, CLASS_ROLE, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent } from "../shared/talents";
+import { ATTR_KEYS } from "../shared/items";
 import { renderStatRows } from "./inventory";
 
 // The Skills screen (E): per-ability level + XP, and — when an ability has
@@ -44,7 +45,8 @@ export class SkillsUI {
     const a = s?.abilities ?? [];
     const ab = a.map((x) => `${x.id}:${x.tier ?? 0}:${x.xp ?? 0}`).join(",");
     const tal = `${s?.chosenClass ?? ""}|${s?.talentPoints ?? 0}|${JSON.stringify(s?.talents ?? {})}`;
-    return `${ab}|${s?.charXp ?? 0}|${JSON.stringify(s?.derived ?? {})}|${JSON.stringify(this.net.inv?.attrs ?? {})}|${tal}`;
+    const attr = `${s?.attrPoints ?? 0}|${s?.reached ? 1 : 0}`;
+    return `${ab}|${s?.charXp ?? 0}|${JSON.stringify(s?.derived ?? {})}|${JSON.stringify(this.net.inv?.attrs ?? {})}|${tal}|${attr}`;
   }
 
   // Does the player have a pending choice (pick a class, or unspent talent points)?
@@ -74,9 +76,56 @@ export class SkillsUI {
     // the character-screen renderer so the formulas live in one place.
     const attrs = this.net.inv?.attrs;
     this.charStats.innerHTML = attrs ? `<div class="skstats">${renderStatRows(attrs, self.derived)}</div>` : "";
+    this.charStats.appendChild(this.renderAttrSpend());
     this.renderTalents();
     this.list.innerHTML = "";
     a.forEach((ab, i) => this.list.appendChild(this.card(ab, i)));
+  }
+
+  // Spend-attribute panel: pour unspent points into STR/AGI/INT/STA/CRIT/HASTE/ARMOR, plus a
+  // free Respec (waiting room only). Points feed straight into derived stats server-side.
+  private renderAttrSpend(): HTMLElement {
+    const self = this.net.self!;
+    const attrs = this.net.inv?.attrs;
+    const pts = self.attrPoints ?? 0;
+    const wrap = document.createElement("div");
+    wrap.className = "attrSpend";
+    wrap.appendChild(section(`Attributes — <span class="pts">${pts} point${pts === 1 ? "" : "s"}</span>`));
+    if (attrs) {
+      const grid = document.createElement("div");
+      grid.className = "attrGrid";
+      for (const k of ATTR_KEYS) {
+        const row = document.createElement("div");
+        row.className = "attrRow";
+        const label = document.createElement("span");
+        label.className = "an";
+        label.textContent = `${cap(k)} ${attrs[k] ?? 0}`;
+        const plus = document.createElement("button");
+        plus.type = "button";
+        plus.className = "attrPlus";
+        plus.textContent = "+";
+        plus.disabled = pts <= 0;
+        plus.addEventListener("click", () => this.net.send({ t: "spendAttr", attr: k }));
+        row.appendChild(label);
+        row.appendChild(plus);
+        grid.appendChild(row);
+      }
+      wrap.appendChild(grid);
+    }
+    // Respec is free but only in the waiting room (between floors). Two-tap to confirm.
+    if (self.reached) {
+      const respec = document.createElement("button");
+      respec.type = "button";
+      respec.className = "respecBtn";
+      respec.textContent = "↺ Respec (free)";
+      let armed = false;
+      respec.addEventListener("click", () => {
+        if (!armed) { armed = true; respec.textContent = "↺ Confirm respec?"; return; }
+        this.net.send({ t: "respec" });
+      });
+      wrap.appendChild(respec);
+    }
+    return wrap;
   }
 
   // Class picker (before a class is chosen) or the point-buy talent tree.
@@ -116,15 +165,19 @@ export class SkillsUI {
     grid.className = "talGrid";
     for (const node of TALENT_TREES[cls]) {
       const rank = self.talents?.[node.id] ?? 0;
+      const maxRank = node.maxRank ?? 1;
       const can = canSpendTalent(cls, self.talents ?? {}, pts, node.id);
       const b = document.createElement("button");
       b.type = "button";
       b.className = "talbtn" + (rank > 0 ? " taken" : "");
       b.disabled = !can;
+      const tag = rank > 0
+        ? (maxRank > 1 ? `rank ${rank}/${maxRank}` : "✓ learned")
+        : node.requires ? `needs ${node.requires} spent` : (maxRank > 1 ? `0/${maxRank}` : "");
       b.innerHTML =
         `<span class="ico">${node.icon ?? "•"} <b>${esc(node.name)}</b></span>` +
         `<span class="ed">${esc(node.desc ?? "")}</span>` +
-        (rank > 0 ? `<span class="rk">✓ learned</span>` : node.requires ? `<span class="rk">needs ${node.requires} spent</span>` : "");
+        (tag ? `<span class="rk">${tag}</span>` : "");
       b.addEventListener("click", () => this.net.send({ t: "spendTalent", node: node.id }));
       grid.appendChild(b);
     }
@@ -178,4 +231,7 @@ function section(html: string): HTMLDivElement {
 }
 function esc(s: string): string {
   return s.replace(/[<>&]/g, (ch) => (ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : "&amp;"));
+}
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

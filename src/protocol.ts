@@ -8,9 +8,9 @@
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
 import type { Ability, AbilityFlavor, CcKind, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
-import type { Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
+import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 13; // was 12 (lootbag rarity) - added projectile render kind + hard CC
+export const PROTOCOL_VERSION = 14; // was 13 (projectile render kind + hard CC) - added attribute points + respec
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -32,6 +32,8 @@ export type ClientMsg =
   | { t: "evolve"; slot: number; to: string } // evolve a matured ability into a chosen branch
   | { t: "chooseClass"; cls: string } // pick a WoW class at the first level-up (one-time)
   | { t: "spendTalent"; node: string } // spend a talent point on a tree node
+  | { t: "spendAttr"; attr: AttrKey } // spend one attribute point into STR/AGI/INT/STA/CRIT/HASTE/ARMOR
+  | { t: "respec" } // refund all spent attribute + talent points (waiting room only)
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -88,6 +90,7 @@ export interface SelfDTO {
   chosenClass: Klass | null; // picked at the first level-up; null = picker pending
   talents: Record<string, number>; // talent node id -> rank
   talentPoints: number; // unspent talent points (a pending point w/ no class = "pick a class")
+  attrPoints: number; // unspent attribute points (drives the character-screen spend UI)
   shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)

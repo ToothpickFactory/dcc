@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import {
+  ATTR_POINTS_PER_LEVEL,
   BOSS_MAX_HP,
   BOSS_RADIUS,
   bossNameForDepth,
@@ -18,6 +19,7 @@ import {
 } from "../shared/constants";
 import type { Ability, Klass, MonsterKind, Rarity } from "../shared/types";
 import {
+  ATTR_KEYS,
   addItem,
   aggregateAttrs,
   carryCapacity,
@@ -30,6 +32,7 @@ import {
   unequip,
   unequipBag,
   zeroAttrs,
+  type AttrKey,
   type InvResult,
   type Item,
 } from "../shared/items";
@@ -39,8 +42,8 @@ import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/h
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
 import { DEFAULT_ABILITIES, potionHotbarSlot, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
-import { CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
-import { TALENT_TREES, canSpendTalent, pointsForLevel } from "../shared/talents";
+import { CLASS_KIT, CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
+import { TALENT_TREES, canSpendTalent, pointsForLevel, talentSpent } from "../shared/talents";
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
 import { generateFloor, rng } from "../procgen";
@@ -286,6 +289,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       // 1 talent point per level gained. Until a class is chosen, the client
       // shows the class picker (a pending point means "choose your class").
       p.talentPoints += after - before;
+      // Attribute points: pour into STR/AGI/INT/STA/CRIT/HASTE/ARMOR for tactile growth.
+      p.attrPoints += (after - before) * ATTR_POINTS_PER_LEVEL;
       recomputePlayer(p); // new character level -> more max HP
       p.hp = p.derived.maxHp; // top off on level-up
       this.persistPlayer(p);
@@ -486,6 +491,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           chosenClass: null, // fresh run = pick your class again
           talents: {},
           talentPoints: 0,
+          attrPoints: 0,
           lastSeen: Date.now(),
         });
       }
@@ -517,6 +523,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.chosenClass = null; // fresh run = re-pick class + re-spend talents
       p.talents = {};
       p.talentPoints = 0;
+      p.attrPoints = 0;
       p.threatMult = 1;
       p.shield = 0;
       p.shieldUntil = 0;
@@ -816,6 +823,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       chosenClass: rec?.chosenClass ?? null,
       talents: rec?.talents ?? {},
       talentPoints: rec?.talentPoints ?? 0,
+      attrPoints: rec?.attrPoints ?? 0,
       threatMult: 1,
       shield: 0,
       shieldUntil: 0,
@@ -915,6 +923,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.chooseClass(player, String(msg.cls));
     } else if (msg.t === "spendTalent") {
       this.spendTalent(player, String(msg.node));
+    } else if (msg.t === "spendAttr") {
+      this.spendAttr(player, String(msg.attr));
+    } else if (msg.t === "respec") {
+      this.respec(player);
     }
   }
 
@@ -950,9 +962,25 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (p.chosenClass) return; // class is permanent for the run
     if (!(KLASSES_SET.has(cls))) return;
     p.chosenClass = cls as Klass;
+    this.applyClassKit(p, cls as Klass); // give the class a flavored opener (mage bolts, priest mend, …)
     recomputePlayer(p); // pick up the class main stat
     this.persistPlayer(p);
     this.sendInv(p);
+  }
+
+  // Swap the generic sword+rocks opener for the chosen class's flavored kit — but ONLY if
+  // the base slots are still the untouched defaults, so we never clobber a player who already
+  // evolved/swapped their opener before picking a class. Extra slots (talent/loot) are kept.
+  private applyClassKit(p: PlayerState, cls: Klass): void {
+    const kit = CLASS_KIT[cls];
+    if (!kit) return;
+    const defaults = starterAbilities();
+    const untouched = defaults.every((d, i) => p.abilities[i]?.id === d.id);
+    if (!untouched) return;
+    kit.forEach((id, i) => {
+      const node = ABILITY_NODES[id];
+      if (node) p.abilities[i] = { ...node, tier: 0, xp: 0 };
+    });
   }
 
   // Spend one talent point on a node. Server-authoritative: validates the node is
@@ -970,6 +998,40 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (grant && !p.abilities.some((a) => a.id === grant.id)) this.slotLoot(p, { ...grant, tier: 0, xp: 0, fromTalent: true });
     }
     recomputePlayer(p); // passive bonuses (attrs / threat) take effect
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Spend one attribute point. Spent points live directly in `base` (already summed by
+  // recomputePlayer + persisted), so the +1 flows straight into derived stats. No class
+  // gate — any living character can grow. Validated server-side (anti-cheat).
+  private spendAttr(p: PlayerState, attr: string): void {
+    if (p.status !== "alive") return;
+    if (p.attrPoints <= 0) return;
+    if (!ATTR_KEYS.includes(attr as AttrKey)) return;
+    p.base[attr as AttrKey] += 1;
+    p.attrPoints -= 1;
+    recomputePlayer(p);
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Respec: refund ALL spent attribute + talent points (free, waiting room only — permadeath
+  // already punishes mistakes; a locked bad fork on top kills experimentation). Spent attr
+  // points are exactly sum(base) since base only ever grows via spendAttr. Talent-granted
+  // abilities are stripped from the bar (a respec'd warrior loses Shield Bash); the base/kit
+  // and looted abilities stay.
+  private respec(p: PlayerState): void {
+    if (p.status !== "alive" || !p.reached) return; // waiting room only
+    let attrSpent = 0;
+    for (const k of ATTR_KEYS) attrSpent += p.base[k];
+    p.attrPoints += attrSpent;
+    p.base = zeroAttrs();
+    p.talentPoints += talentSpent(p.talents);
+    p.talents = {};
+    p.abilities = p.abilities.filter((a) => a.fromTalent !== true);
+    p.cds = {}; // bar indices shifted — clear stale cooldowns
+    recomputePlayer(p);
     this.persistPlayer(p);
     this.sendInv(p);
   }
@@ -1266,6 +1328,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       chosenClass: p.chosenClass,
       talents: p.talents,
       talentPoints: p.talentPoints,
+      attrPoints: p.attrPoints,
       lastSeen: Date.now(),
     };
   }
@@ -1473,6 +1536,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         chosenClass: p.chosenClass,
         talents: p.talents,
         talentPoints: p.talentPoints,
+        attrPoints: p.attrPoints,
         shield: p.shieldUntil > this.now ? Math.round(p.shield) : 0,
         dashReadyAt: p.dashReadyAt,
         status: p.status,

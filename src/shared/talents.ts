@@ -38,52 +38,63 @@ export const PASSIVES: Record<string, { attrs?: Partial<Attributes>; threatMult?
   deadly: { attrs: { agility: 6, crit: 6 } }, // rogue burst
   swift: { attrs: { agility: 9 } }, // rogue/hunter
   marksman: { attrs: { agility: 6, crit: 5 } }, // hunter
+  // ---- Row-3 "mastery" passives (ranked; modest per-rank so they scale, not spike) ----
+  warmight: { attrs: { strength: 5 } }, // warrior
+  sorcery: { attrs: { intellect: 5 } }, // mage
+  zeal: { attrs: { intellect: 4, stamina: 4 } }, // priest
+  finesse: { attrs: { agility: 5 } }, // rogue
+  precision: { attrs: { agility: 4, crit: 3 } }, // hunter
 };
 
 export const TALENT_TREES: Record<Klass, TalentNode[]> = {
   warrior: [
     { id: "w_cleave", row: 0, grants: { ability: "cleaver" }, name: "Cleave", icon: "🔪", desc: "Unlock Iron Cleaver." },
-    { id: "w_tough", row: 0, choiceGroup: "w_spec", grants: { passive: "toughness" }, name: "Toughness", icon: "🛡️", desc: "Tank: +armor/stamina and 3× threat." },
-    { id: "w_blood", row: 0, choiceGroup: "w_spec", grants: { passive: "bloodthirst" }, name: "Bloodthirst", icon: "🩸", desc: "DPS: +strength and +crit." },
+    { id: "w_tough", row: 0, choiceGroup: "w_spec", maxRank: 2, grants: { passive: "toughness" }, name: "Toughness", icon: "🛡️", desc: "Tank: +armor/stamina and 3× threat. (2 ranks)" },
+    { id: "w_blood", row: 0, choiceGroup: "w_spec", maxRank: 2, grants: { passive: "bloodthirst" }, name: "Bloodthirst", icon: "🩸", desc: "DPS: +strength and +crit. (2 ranks)" },
     { id: "w_taunt", row: 1, requires: 2, grants: { ability: "taunt" }, name: "Taunt", icon: "🗯️", desc: "Unlock Taunt (hold aggro)." },
     { id: "w_shield", row: 1, requires: 2, grants: { ability: "shieldward" }, name: "Shield Ward", icon: "🛡️", desc: "Unlock an ally absorb shield." },
     { id: "w_bash", row: 1, requires: 2, grants: { ability: "shieldbash" }, name: "Shield Bash", icon: "🛡️", desc: "Unlock a stunning frontal bash." },
     { id: "w_whirl", row: 2, requires: 4, grants: { ability: "whirlwind" }, name: "Whirlwind", icon: "🌀", desc: "Capstone: spin to hit all around." },
+    { id: "w_master", row: 3, requires: 6, maxRank: 3, grants: { passive: "warmight" }, name: "Warmastery", icon: "⚔️", desc: "+strength per rank. (3 ranks)" },
   ],
   mage: [
     { id: "m_bolts", row: 0, grants: { ability: "sharprocks" }, name: "Arcane Bolts", icon: "🔷", desc: "Unlock sharper ranged bolts." },
-    { id: "m_pyro", row: 0, choiceGroup: "m_spec", grants: { passive: "pyromania" }, name: "Pyromania", icon: "🔥", desc: "+intellect and +crit." },
-    { id: "m_weave", row: 0, choiceGroup: "m_spec", grants: { passive: "spellweave" }, name: "Spellweave", icon: "🌌", desc: "+intellect (steady power)." },
+    { id: "m_pyro", row: 0, choiceGroup: "m_spec", maxRank: 2, grants: { passive: "pyromania" }, name: "Pyromania", icon: "🔥", desc: "+intellect and +crit. (2 ranks)" },
+    { id: "m_weave", row: 0, choiceGroup: "m_spec", maxRank: 2, grants: { passive: "spellweave" }, name: "Spellweave", icon: "🌌", desc: "+intellect (steady power). (2 ranks)" },
     { id: "m_multi", row: 1, requires: 2, grants: { ability: "multishot" }, name: "Arcane Missiles", icon: "🎯", desc: "Unlock a 3-bolt volley." },
     { id: "m_warp", row: 1, requires: 2, grants: { ability: "bloodlust" }, name: "Time Warp", icon: "🩸", desc: "Unlock a group haste burst." },
     { id: "m_frost", row: 1, requires: 2, grants: { ability: "frostnova" }, name: "Frost Nova", icon: "❄️", desc: "Unlock an AoE freeze burst." },
     { id: "m_scatter", row: 2, requires: 4, grants: { ability: "scattershot" }, name: "Arcane Barrage", icon: "✴️", desc: "Capstone: a cone of bolts." },
+    { id: "m_master", row: 3, requires: 6, maxRank: 3, grants: { passive: "sorcery" }, name: "Arcane Mastery", icon: "🔮", desc: "+intellect per rank. (3 ranks)" },
   ],
   priest: [
     { id: "p_mend", row: 0, grants: { ability: "mend" }, name: "Mend", icon: "✨", desc: "Unlock a healing bolt (allies only)." },
-    { id: "p_holy", row: 0, choiceGroup: "p_spec", grants: { passive: "holylight" }, name: "Holy Light", icon: "🌟", desc: "+intellect (stronger heals)." },
-    { id: "p_div", row: 0, choiceGroup: "p_spec", grants: { passive: "divinity" }, name: "Divinity", icon: "🕊️", desc: "+intellect and +stamina." },
+    { id: "p_holy", row: 0, choiceGroup: "p_spec", maxRank: 2, grants: { passive: "holylight" }, name: "Holy Light", icon: "🌟", desc: "+intellect (stronger heals). (2 ranks)" },
+    { id: "p_div", row: 0, choiceGroup: "p_spec", maxRank: 2, grants: { passive: "divinity" }, name: "Divinity", icon: "🕊️", desc: "+intellect and +stamina. (2 ranks)" },
     { id: "p_shield", row: 1, requires: 2, grants: { ability: "shieldward" }, name: "Power Word: Shield", icon: "🛡️", desc: "Unlock an ally absorb shield." },
     { id: "p_inspire", row: 1, requires: 2, grants: { ability: "bloodlust" }, name: "Inspire", icon: "🩸", desc: "Unlock a group haste burst." },
     { id: "p_wave", row: 2, requires: 4, grants: { ability: "wavemend" }, name: "Wave of Mending", icon: "🌊", desc: "Capstone: heal several allies." },
+    { id: "p_master", row: 3, requires: 6, maxRank: 3, grants: { passive: "zeal" }, name: "Zeal", icon: "🕊️", desc: "+intellect/stamina per rank. (3 ranks)" },
   ],
   rogue: [
     { id: "r_strike", row: 0, grants: { ability: "cleaver" }, name: "Quick Strikes", icon: "🔪", desc: "Unlock faster melee strikes." },
-    { id: "r_deadly", row: 0, choiceGroup: "r_spec", grants: { passive: "deadly" }, name: "Deadliness", icon: "☠️", desc: "+agility and +crit." },
-    { id: "r_swift", row: 0, choiceGroup: "r_spec", grants: { passive: "swift" }, name: "Swiftness", icon: "💨", desc: "+agility (speed + power)." },
+    { id: "r_deadly", row: 0, choiceGroup: "r_spec", maxRank: 2, grants: { passive: "deadly" }, name: "Deadliness", icon: "☠️", desc: "+agility and +crit. (2 ranks)" },
+    { id: "r_swift", row: 0, choiceGroup: "r_spec", maxRank: 2, grants: { passive: "swift" }, name: "Swiftness", icon: "💨", desc: "+agility (speed + power). (2 ranks)" },
     { id: "r_blast", row: 1, requires: 2, grants: { ability: "blastblade" }, name: "Blade Flurry", icon: "💥", desc: "Unlock a wide melee arc." },
     { id: "r_knives", row: 1, requires: 2, grants: { ability: "sharprocks" }, name: "Throwing Knives", icon: "🗿", desc: "Unlock thrown blades." },
     { id: "r_ham", row: 1, requires: 2, grants: { ability: "hamstring" }, name: "Hamstring", icon: "🪢", desc: "Unlock a crippling root." },
     { id: "r_fan", row: 2, requires: 4, grants: { ability: "whirlwind" }, name: "Fan of Knives", icon: "🌀", desc: "Capstone: strike all around." },
+    { id: "r_master", row: 3, requires: 6, maxRank: 3, grants: { passive: "finesse" }, name: "Finesse", icon: "🗡️", desc: "+agility per rank. (3 ranks)" },
   ],
   hunter: [
     { id: "h_aim", row: 0, grants: { ability: "sharprocks" }, name: "Steady Aim", icon: "🎯", desc: "Unlock sharper shots." },
-    { id: "h_mark", row: 0, choiceGroup: "h_spec", grants: { passive: "marksman" }, name: "Marksman", icon: "🏹", desc: "+agility and +crit." },
-    { id: "h_swift", row: 0, choiceGroup: "h_spec", grants: { passive: "swift" }, name: "Fleet", icon: "💨", desc: "+agility (speed + power)." },
+    { id: "h_mark", row: 0, choiceGroup: "h_spec", maxRank: 2, grants: { passive: "marksman" }, name: "Marksman", icon: "🏹", desc: "+agility and +crit. (2 ranks)" },
+    { id: "h_swift", row: 0, choiceGroup: "h_spec", maxRank: 2, grants: { passive: "swift" }, name: "Fleet", icon: "💨", desc: "+agility (speed + power). (2 ranks)" },
     { id: "h_multi", row: 1, requires: 2, grants: { ability: "multishot" }, name: "Multi-Shot", icon: "🎯", desc: "Unlock a 3-shot volley." },
     { id: "h_rapid", row: 1, requires: 2, grants: { ability: "bloodlust" }, name: "Rapid Fire", icon: "🩸", desc: "Unlock a group haste burst." },
     { id: "h_conc", row: 1, requires: 2, grants: { ability: "concussive" }, name: "Concussive Shot", icon: "💥", desc: "Unlock a stunning ranged shot." },
     { id: "h_scatter", row: 2, requires: 4, grants: { ability: "scattershot" }, name: "Volley", icon: "✴️", desc: "Capstone: a cone of shots." },
+    { id: "h_master", row: 3, requires: 6, maxRank: 3, grants: { passive: "precision" }, name: "Precision", icon: "🏹", desc: "+agility/crit per rank. (3 ranks)" },
   ],
 };
 

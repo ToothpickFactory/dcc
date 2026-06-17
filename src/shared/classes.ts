@@ -38,3 +38,14 @@ export const CLASS_INFO: Record<Klass, KlassInfo> = {
   rogue: { name: "Rogue", icon: "🗡️", armor: "Leather", blurb: "Agile melee assassin. Agility and crit turn fast strikes into bursts of damage." },
   hunter: { name: "Hunter", icon: "🏹", armor: "Mail", blurb: "Ranged marksman. Agility drives volleys of thrown shots from a safe distance." },
 };
+
+// Class-flavored STARTING KIT: the two-ability opener applied when a class is picked (at the
+// first level-up), replacing the generic sword+rocks so class identity reads immediately.
+// Each id references an ABILITY_NODES entry (skills.ts). Tunable; reuses existing nodes.
+export const CLASS_KIT: Record<Klass, [string, string]> = {
+  warrior: ["sword", "rocks"], // sturdy melee + a thrown opener (the baseline bruiser)
+  mage: ["sharprocks", "rocks"], // arcane bolts at range (ice-rendered) — no melee
+  priest: ["mend", "rocks"], // open able to heal an ally, plus a ranged poke
+  rogue: ["sword", "sharprocks"], // fast blade + thrown knives
+  hunter: ["rocks", "multishot"], // a thrown shot + a 3-pellet volley — ranged from the start
+};
