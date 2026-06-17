@@ -218,7 +218,10 @@ func _ready() -> void:
 	# (pixel_size kept 1 so a 128px frame is 128 world-units before scaling).
 	pixel_size = 1.0
 	double_sided = true
-	no_depth_test = false
+	# The LOCAL hero draws ON TOP of walls so it's never hidden by a tall wall between
+	# it and the 3/4 camera (the "can't see my character in a horizontal hall" problem).
+	# setup() runs before _ready(), so is_self is already known here.
+	no_depth_test = is_self
 
 # Called once right after instantiation by SpriteLayer.
 func setup(id: String, k: String, self_flag: bool) -> void:
@@ -503,6 +506,12 @@ func _brighten_model(node: Node, contrast: float, saturation: float) -> void:
 				var copy := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
 				copy.albedo_color = _contrast_color(copy.albedo_color, contrast, saturation)
 				copy.emission_enabled = false
+				# Local hero: render the model surfaces on top of walls so it's never
+				# occluded by a tall wall facing the camera. Back-face culling stays on,
+				# which keeps the see-through look clean (no inside-out artifacts).
+				if is_self:
+					copy.no_depth_test = true
+					copy.render_priority = 4
 				mesh_instance.set_surface_override_material(i, copy)
 	for child in node.get_children():
 		_brighten_model(child, contrast, saturation)
