@@ -1,3 +1,4 @@
+import { WALKABLE_DELTA } from "../shared/constants";
 import type { CollisionGrid } from "./types";
 
 export function blocked(grid: CollisionGrid, x: number, y: number): boolean {
@@ -44,6 +45,14 @@ export function heightAt(grid: CollisionGrid, x: number, y: number): number {
   return grid.ground[cy * grid.w + cx]!;
 }
 
+// Heightfield 2.5D step-up gate: a move between two points is allowed only if the NEAREST-CELL
+// ground heights differ by <= WALKABLE_DELTA. Pure integer math (heightAt) so GDScript's
+// Geo.can_step reproduces it bit-for-bit — no float drift, no rubber-band. A cliff face (delta >
+// cap, e.g. a plateau edge) acts like a wall; the procgen ramp keeps every region reachable.
+export function canStep(grid: CollisionGrid, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  return Math.abs(heightAt(grid, toX, toY) - heightAt(grid, fromX, fromY)) <= WALKABLE_DELTA;
+}
+
 export function moveWithCollisions(
   grid: CollisionGrid,
   position: { x: number; y: number },
@@ -52,10 +61,11 @@ export function moveWithCollisions(
   radius: number,
 ): void {
   const nx = position.x + dx;
-  if (canOccupy(grid, nx, position.y, radius)) position.x = nx;
+  if (canOccupy(grid, nx, position.y, radius) && canStep(grid, position.x, position.y, nx, position.y)) position.x = nx;
 
   const ny = position.y + dy;
-  if (canOccupy(grid, position.x, ny, radius)) position.y = ny;
+  // Y step measured from the POST-X position so a diagonal can't climb a cliff one axis at a time.
+  if (canOccupy(grid, position.x, ny, radius) && canStep(grid, position.x, position.y, position.x, ny)) position.y = ny;
 }
 
 export function randomWalkablePosition(

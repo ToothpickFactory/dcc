@@ -1,4 +1,4 @@
-import { canOccupy } from "../../procgen/collision";
+import { canOccupy, canStep } from "../../procgen/collision";
 import type { PropState, WorldCtx } from "../state";
 
 export function propBlocking(ctx: WorldCtx, x: number, y: number, radius: number, ignore?: PropState): PropState | null {
@@ -23,9 +23,11 @@ export function moveWithWorldCollisions(
   dy: number,
   radius: number,
 ): void {
+  const grid = ctx.floor.collision;
   const nx = position.x + dx;
-  if (canOccupyWorld(ctx, nx, position.y, radius)) position.x = nx;
+  if (canOccupyWorld(ctx, nx, position.y, radius) && canStep(grid, position.x, position.y, nx, position.y)) position.x = nx;
 
   const ny = position.y + dy;
-  if (canOccupyWorld(ctx, position.x, ny, radius)) position.y = ny;
+  // Y step measured from the POST-X position (mirrors procgen + the Godot predictor).
+  if (canOccupyWorld(ctx, position.x, ny, radius) && canStep(grid, position.x, position.y, position.x, ny)) position.y = ny;
 }

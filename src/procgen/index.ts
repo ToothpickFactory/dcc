@@ -363,6 +363,9 @@ const DAIS_RADIUS = 9; // fine cells
 const PIT_DEPTH = 64; // sunken depression
 const PIT_RADIUS = 9; // fine cells
 const LANDING_RADIUS = 5; // fine cells flattened around entrance + stairs (level spawn/exit)
+const PLATEAU_HEIGHT = 120; // px raised platform — far above WALKABLE_DELTA so its faces are sheer cliffs
+const PLATEAU_R = 3; // plateau disc radius (fine cells)
+const PLATEAU_MAX = 3; // upper bound on plateaus per floor (many candidates fail to find room)
 
 // Fill grid.ground (fine grid) with a natural, walkable height field: FBM base + landmark daises +
 // a few sunken pits, with entrance/stairs flattened and a slope-relaxation pass capping every open
@@ -412,6 +415,12 @@ function buildHeightField(
   // 4) Slope relaxation: cap every open 4-neighbour delta. Pinned (landing) cells stay fixed; their
   //    neighbours ramp toward them. Internal cap is tighter so the final Int16 rounding stays <= cap.
   relaxSlopes(hf, solid, pinned, w, h, WALKABLE_DELTA - 2);
+
+  // 4b) Plateaus: raise a few far regions into tactical platforms with sheer (impassable) cliff
+  //     faces + ONE walkable ramp. These intentionally break the slope cap (the v2 step-up gate
+  //     blocks the cliff faces); each is kept only if a height-aware flood proves every open cell is
+  //     still reachable, so a plateau can never sever the floor.
+  addPlateaus(hf, solid, w, h, start, farthest, hrng);
 
   // 5) Quantize to Int16 px.
   for (let i = 0; i < w * h; i++) {
@@ -553,6 +562,142 @@ function relaxSlopes(hf: Float64Array, solid: Uint8Array, pinned: Uint8Array, w:
     }
     if (!changed) break;
   }
+}
+
+// Place up to a few plateaus (raised platforms with cliff faces + one ramp). Each is applied, then
+// VERIFIED: a height-aware flood from `start` must still reach every open cell, or the plateau is
+// rolled back. This makes tactical cliffs impossible to mis-generate into a soft-lock.
+function addPlateaus(
+  hf: Float64Array,
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  start: { x: number; y: number },
+  farthest: { x: number; y: number },
+  hrng: () => number,
+): void {
+  const base0 = Float64Array.from(hf); // relaxed base snapshot — the height a ramp descends to
+  const rampStep = WALKABLE_DELTA - 2; // descend a touch under the cap so post-round ramp edges stay walkable
+  const totalOpen = countOpen(solid, w, h);
+  const dirs = [
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0, y: 1 },
+    { x: 0, y: -1 },
+  ];
+  const want = 1 + Math.floor(hrng() * PLATEAU_MAX);
+  const margin = PLATEAU_R + 8 + LANDING_RADIUS;
+  const spacing = 2 * (PLATEAU_R + 8);
+  const cands = openCells(solid, w, h).filter(
+    (p) => manhattan(p.x, p.y, start.x, start.y) > margin && manhattan(p.x, p.y, farthest.x, farthest.y) > margin,
+  );
+  shuffle(cands, hrng);
+  const placed: { x: number; y: number }[] = [];
+  let made = 0;
+  for (const c of cands) {
+    if (made >= want) break;
+    if (placed.some((q) => Math.abs(q.x - c.x) < spacing && Math.abs(q.y - c.y) < spacing)) continue;
+    const order = dirs.slice();
+    shuffle(order, hrng);
+    for (const dir of order) {
+      const snapshot = Float64Array.from(hf);
+      if (!tryPlateau(hf, base0, solid, w, h, c.x, c.y, dir, rampStep)) continue;
+      // Keep only if every open cell is still reachable across walkable (<=rampStep) slopes.
+      if (heightReachCount(hf, solid, w, h, start.x, start.y, rampStep) === totalOpen) {
+        placed.push(c);
+        made++;
+        break;
+      }
+      hf.set(snapshot); // reverted — this plateau severed the floor
+    }
+  }
+}
+
+// Raise a disc to a flat top and carve one descending ramp out to the base. Plans the ramp first
+// (bailing if a wall interrupts before it merges with the base), then applies — so a failed attempt
+// leaves `hf` untouched. Returns true on success.
+function tryPlateau(
+  hf: Float64Array,
+  base0: Float64Array,
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  dir: { x: number; y: number },
+  rampStep: number,
+): boolean {
+  const R = PLATEAU_R;
+  if (!discAllOpen(solid, w, h, cx, cy, R)) return false;
+  const top = base0[cy * w + cx]! + PLATEAU_HEIGHT;
+  const perp = { x: -dir.y, y: dir.x };
+  const plan: { idx: number; h: number }[] = [];
+  let hPrev = top;
+  let merged = false;
+  for (let i = 1; i < 48; i++) {
+    const ox = cx + dir.x * (R + i);
+    const oy = cy + dir.y * (R + i);
+    if (ox < 1 || oy < 1 || ox >= w - 1 || oy >= h - 1 || solid[oy * w + ox] === 1) return false;
+    if (base0[oy * w + ox]! >= hPrev - rampStep) {
+      merged = true; // within one step of the base — the ramp has reached the floor
+      break;
+    }
+    const hh = hPrev - rampStep;
+    for (const pp of [0, 1, -1]) {
+      // width-3 ramp: the centre cell (required) + both perpendicular neighbours (optional)
+      const px = ox + perp.x * pp;
+      const py = oy + perp.y * pp;
+      if (px < 1 || py < 1 || px >= w - 1 || py >= h - 1 || solid[py * w + px] === 1) {
+        if (pp === 0) return false;
+        continue;
+      }
+      plan.push({ idx: py * w + px, h: hh });
+    }
+    hPrev = hh;
+  }
+  if (!merged) return false;
+  for (let yy = cy - R; yy <= cy + R; yy++) {
+    for (let xx = cx - R; xx <= cx + R; xx++) {
+      if (xx < 1 || yy < 1 || xx >= w - 1 || yy >= h - 1) continue;
+      const dx = xx - cx;
+      const dy = yy - cy;
+      if (dx * dx + dy * dy <= R * R && solid[yy * w + xx] === 0) hf[yy * w + xx] = top;
+    }
+  }
+  for (const c of plan) hf[c.idx] = c.h;
+  return true;
+}
+
+// Count open cells reachable from (sx,sy) crossing only open 4-neighbour edges whose height delta
+// is within `cap` — i.e. the walkable graph the step-up gate enforces.
+function heightReachCount(hf: Float64Array, solid: Uint8Array, w: number, h: number, sx: number, sy: number, cap: number): number {
+  const seen = new Uint8Array(w * h);
+  const s = sy * w + sx;
+  if (solid[s] !== 0) return 0;
+  seen[s] = 1;
+  const q = [s];
+  let head = 0;
+  let count = 1;
+  while (head < q.length) {
+    const i = q[head++]!;
+    const x = i % w;
+    const y = (i / w) | 0;
+    const nb = [x + 1 < w ? i + 1 : -1, x - 1 >= 0 ? i - 1 : -1, y + 1 < h ? i + w : -1, y - 1 >= 0 ? i - w : -1];
+    for (const j of nb) {
+      if (j < 0 || solid[j] !== 0 || seen[j]) continue;
+      if (Math.abs(hf[i]! - hf[j]!) > cap) continue;
+      seen[j] = 1;
+      count++;
+      q.push(j);
+    }
+  }
+  return count;
+}
+
+function countOpen(solid: Uint8Array, w: number, h: number): number {
+  let n = 0;
+  for (let i = 0; i < w * h; i++) if (solid[i] === 0) n++;
+  return n;
 }
 
 // ---- prefab set-pieces + connectivity repair -------------------------------

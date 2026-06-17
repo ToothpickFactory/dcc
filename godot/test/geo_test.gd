@@ -104,3 +104,20 @@ func test_ground_absent_is_flat() -> void:
 	var g := Geo.decode(FIXTURE_B64, GW, GH, CELL) # no ground arg (v15-style)
 	assert_int(Geo.ground_step(g, 0.5 * CELL, 0.5 * CELL)).is_equal(0)
 	assert_float(Geo.ground_height(g, 0.5 * CELL, 0.5 * CELL)).is_equal_approx(0.0, 0.01)
+
+# Step-up gate golden vector (the SAME fixture + point pairs are asserted in TS index.test.ts, so
+# canStep and Geo.can_step are proven bit-identical — the parity guard against cliff-edge rubber-band).
+func _c(cx: int) -> float:
+	return (float(cx) + 0.5) * CELL
+
+func test_can_step_gate_matches_golden() -> void:
+	var g := _hgrid()
+	# WALKABLE_DELTA = 24. heights: (0,0)=0 (1,0)=16 (2,0)=-16 (3,0)=100 / (1,1)=0 (3,1)=24
+	assert_bool(Geo.can_step(g, _c(0), _c(0), _c(1), _c(0))).is_true()   # |0-16|=16 <= 24
+	assert_bool(Geo.can_step(g, _c(1), _c(0), _c(2), _c(0))).is_false()  # |16-(-16)|=32 > 24
+	assert_bool(Geo.can_step(g, _c(1), _c(1), _c(3), _c(1))).is_true()   # |0-24|=24 == 24 (inclusive)
+	assert_bool(Geo.can_step(g, _c(3), _c(1), _c(3), _c(0))).is_false()  # |24-100|=76 > 24
+	assert_bool(Geo.can_step(g, _c(2), _c(2), _c(3), _c(2))).is_false()  # Int16 extremes -> huge
+	# absent height layer -> always walkable (flat)
+	var flat := Geo.decode(FIXTURE_B64, GW, GH, CELL)
+	assert_bool(Geo.can_step(flat, _c(0), _c(0), _c(3), _c(2))).is_true()

@@ -100,6 +100,12 @@ static func can_occupy(grid: Dictionary, x: float, y: float, radius: float) -> b
 				return false
 	return true
 
+## Heightfield 2.5D step-up gate: a move is allowed only if the NEAREST-CELL ground heights differ
+## by <= WALKABLE_DELTA. Integer math (ground_step) — bit-identical to TS canStep (collision.ts), so
+## server and client never disagree at a cliff edge (no rubber-band). Flat terrain -> always true.
+static func can_step(grid: Dictionary, fx: float, fy: float, tx: float, ty: float) -> bool:
+	return abs(ground_step(grid, tx, ty) - ground_step(grid, fx, fy)) <= DccConst.WALKABLE_DELTA
+
 ## Axis-separated swept move: X first, then Y. (collision.ts: moveWithCollisions)
 static func move_with_collisions(grid: Dictionary, pos: Vector2, dx: float, dy: float, radius: float) -> Vector2:
 	var out := pos

@@ -32,13 +32,16 @@ func _occupy(nx: float, ny: float, radius: float) -> bool:
 			return false
 	return true
 
-# Axis-separated swept move against walls + props (mirrors server moveWithWorldCollisions).
+# Axis-separated swept move against walls + props + the heightfield step-up gate (mirrors server
+# moveWithWorldCollisions). The step gate uses Geo.can_step (integer nearest-cell) so it agrees
+# with the server bit-for-bit and never rubber-bands at a cliff edge.
 func _move(px: float, py: float, dx: float, dy: float, radius: float) -> Vector2:
 	var ox := px
 	var oy := py
-	if _occupy(ox + dx, oy, radius):
+	if _occupy(ox + dx, oy, radius) and Geo.can_step(_grid, ox, oy, ox + dx, oy):
 		ox += dx
-	if _occupy(ox, oy + dy, radius):
+	# Y step measured from the POST-X position (mirrors the server) so a diagonal can't climb a cliff.
+	if _occupy(ox, oy + dy, radius) and Geo.can_step(_grid, ox, oy, ox, oy + dy):
 		oy += dy
 	return Vector2(ox, oy)
 

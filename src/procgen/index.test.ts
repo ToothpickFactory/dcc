@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
 import { PLAYER_RADIUS, WALKABLE_DELTA } from "../shared/constants.ts";
-import { canOccupy } from "./collision.ts";
+import { canOccupy, canStep } from "./collision.ts";
+import type { CollisionGrid } from "./types.ts";
 import { generateFloor } from "./index.ts";
+
+// Step-up gate golden vector — the SAME 4x3 ground fixture + point pairs asserted in
+// godot/test/geo_test.gd, so TS canStep and GDScript Geo.can_step are proven bit-identical
+// (the parity guard against cliff-edge rubber-band). WALKABLE_DELTA = 24.
+{
+  const CELL = 80;
+  const cc = (c: number) => (c + 0.5) * CELL;
+  const gold: CollisionGrid = {
+    w: 4,
+    h: 3,
+    cell: CELL,
+    solid: new Uint8Array(12),
+    ground: Int16Array.from([0, 16, -16, 100, 50, 0, -100, 24, -7, 200, -32768, 32767]),
+  };
+  assert.equal(canStep(gold, cc(0), cc(0), cc(1), cc(0)), true, "|0-16|=16 <= 24");
+  assert.equal(canStep(gold, cc(1), cc(0), cc(2), cc(0)), false, "|16-(-16)|=32 > 24");
+  assert.equal(canStep(gold, cc(1), cc(1), cc(3), cc(1)), true, "|0-24|=24 == 24 inclusive");
+  assert.equal(canStep(gold, cc(3), cc(1), cc(3), cc(0)), false, "|24-100|=76 > 24");
+  assert.equal(canStep(gold, cc(2), cc(2), cc(3), cc(2)), false, "Int16 extremes -> huge");
+}
 
 for (let seed = 1; seed <= 100; seed++) {
   const floor = generateFloor(seed, 1 + (seed % 20));
@@ -25,21 +46,11 @@ for (let seed = 1; seed <= 100; seed++) {
   const g = grid.ground;
   assert.equal(g.length, grid.solid.length, `seed ${seed} ground array wrong size`);
 
-  // (a) Global slope cap: every open 4-neighbour pair is within WALKABLE_DELTA. This IS the
-  //     invariant the v2 step-up gate trusts; if it holds, height never makes the floor an island.
-  let maxDelta = 0;
-  for (let y = 0; y < grid.h; y++) {
-    for (let x = 0; x < grid.w; x++) {
-      const i = y * grid.w + x;
-      if (grid.solid[i] !== 0) continue;
-      if (x + 1 < grid.w && grid.solid[i + 1] === 0) maxDelta = Math.max(maxDelta, Math.abs(g[i]! - g[i + 1]!));
-      if (y + 1 < grid.h && grid.solid[i + grid.w] === 0) maxDelta = Math.max(maxDelta, Math.abs(g[i]! - g[i + grid.w]!));
-    }
-  }
-  assert.ok(maxDelta <= WALKABLE_DELTA, `seed ${seed} open slope ${maxDelta}px exceeds WALKABLE_DELTA ${WALKABLE_DELTA}`);
-
-  // (b) Height-aware reachability: flooding only across walkable (<=cap) open edges still reaches
-  //     every open cell + the stairs. (Implied by (a) but asserts the gate's actual traversal.)
+  // (a) Height-aware reachability is THE connectivity guarantee: flooding only across walkable
+  //     (<=WALKABLE_DELTA) open edges must still reach EVERY open cell + the stairs. Gentle base
+  //     slopes are crossable; plateau cliff faces are not, but their ramp keeps the top reachable —
+  //     the procgen verify-and-rollback guarantees no plateau ever severs the floor. This is exactly
+  //     the walkable graph the v2 step-up gate enforces, so if this holds the gate can never trap.
   const hReach = heightFlood(grid.solid, g, grid.w, grid.h, startX, startY, WALKABLE_DELTA);
   for (let i = 0; i < grid.solid.length; i++) {
     if (grid.solid[i] === 0) assert.equal(hReach.has(i), true, `seed ${seed} tile unreachable across walkable slopes`);
