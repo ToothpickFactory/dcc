@@ -28,6 +28,7 @@ const HERO_MODEL_SCALE := 84.0
 const HERO_LIGHT_ENERGY := 1.35
 const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb"
 const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
+const PALADIN_MODEL_PATH := "res://assets/Heroes/Paladin/Paladin-3d-animated.glb"
 const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue-3d-animated.glb"
 const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
 const BOSS_ROOT := "res://assets/Bosses/Slime"
@@ -276,6 +277,9 @@ func _model_profile_for_entity() -> Dictionary:
 			"priest":
 				model_path = CLERIC_MODEL_PATH
 				label = "Cleric"
+			"hunter":
+				model_path = PALADIN_MODEL_PATH
+				label = "Paladin"
 			"rogue":
 				model_path = ROGUE_MODEL_PATH
 				label = "Rogue"
