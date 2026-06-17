@@ -13,5 +13,5 @@ const INPUT_MS := 100          # client -> server input cadence
 const DASH_SPEED := 760.0      # px/s during the dash burst
 const DASH_MS := 180.0         # dash duration
 const DASH_CD := 1400.0        # cooldown between dashes
-const PROTOCOL_VERSION := 10  # v10: + windup event (enemy attack telegraphs)
+const PROTOCOL_VERSION := 11  # v11: + addHotbarItem (consumables on the hotbar)
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"

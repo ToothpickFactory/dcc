@@ -38,7 +38,7 @@ import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
-import { DEFAULT_ABILITIES, starterAbilities } from "../shared/abilities";
+import { DEFAULT_ABILITIES, potionHotbarSlot, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
 import { CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent, pointsForLevel } from "../shared/talents";
@@ -816,7 +816,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (player.reached) return; // in the waiting room — no casting
       player.aim = Number(msg.aim) || 0;
       player.lastSeq = msg.seq | 0;
-      castAbility(this, player, msg.ability | 0, player.aim);
+      const slot = msg.ability | 0;
+      // A consumable hotbar slot drinks an item; everything else casts normally.
+      if (player.abilities[slot]?.usesItem) this.castConsumable(player, slot);
+      else castAbility(this, player, slot, player.aim);
     } else if (msg.t === "dash") {
       if (player.reached) return; // in the waiting room — no dashing
       player.lastSeq = msg.seq | 0;
@@ -831,6 +834,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.applyInv(player, () => unequipBag(player.inv, msg.index | 0));
     } else if (msg.t === "drop") {
       this.dropItem(player, String(msg.item));
+    } else if (msg.t === "addHotbarItem") {
+      this.addHotbarItem(player, String(msg.item));
     } else if (msg.t === "useItem") {
       this.useItem(player, String(msg.item));
     } else if (msg.t === "openLoot") {
@@ -955,22 +960,72 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.sendInv(p);
   }
 
-  // Drink/use a carried consumable (e.g. a potion). Server-authoritative: validates
-  // it's a consumable and off cooldown, applies the heal to SELF, removes the item.
+  // Drink/use a carried consumable (e.g. a potion) by id — the inventory "Drink"
+  // button / Q key. Server-authoritative; off the shared consumable cooldown.
   private useItem(p: PlayerState, itemId: string): void {
     if (p.status !== "alive" || p.reached) return; // not while dead or in the waiting room
     if (this.now < p.potionReadyAt) return; // shared consumable cooldown
-    const idx = findCarried(p.inv, itemId);
-    if (idx < 0) return;
-    const it = p.inv.carried[idx]!;
-    if (!it.consumable) return; // only consumables are drinkable
+    this.consumeFrom(p, findCarried(p.inv, itemId));
+  }
+
+  // Apply a carried consumable at index `idx` (heal self, remove it). Returns true
+  // if it actually consumed something. Shared by useItem + the hotbar potion slot.
+  private consumeFrom(p: PlayerState, idx: number): boolean {
+    if (idx < 0) return false;
+    const it = p.inv.carried[idx];
+    if (!it?.consumable) return false; // only consumables are drinkable
     const amount = it.consumable.heal ?? Math.round(p.derived.maxHp * (it.consumable.healPct ?? 0));
-    if (amount <= 0) return;
+    if (amount <= 0) return false;
     p.inv.carried.splice(idx, 1); // consume it
     p.potionReadyAt = this.now + POTION_CD;
     applyHeal(this, p, amount, p.id); // clamps to maxHp, pushes the heal fx
     this.persistPlayer(p);
     this.sendInv(p);
+    return true;
+  }
+
+  // Cast a hotbar consumable slot (a "potion" action): drink the first carried
+  // consumable, set the slot's cooldown so the HUD shows it. No-op if none/on cd.
+  private castConsumable(p: PlayerState, idx: number): void {
+    if (p.status !== "alive" || p.reached) return;
+    const ab = p.abilities[idx];
+    if (!ab?.usesItem) return;
+    if ((p.cds[idx] ?? 0) > this.now || this.now < p.potionReadyAt) return; // on cooldown
+    const c = p.inv.carried.findIndex((i) => i.consumable);
+    if (c < 0) return; // no consumables to use
+    if (this.consumeFrom(p, c)) p.cds[idx] = this.now + ab.cd * p.derived.cdMult;
+  }
+
+  // Toggle a carried consumable onto the action bar (or off, if already there).
+  // The hotbar slot draws from your consumable supply when cast.
+  private addHotbarItem(p: PlayerState, itemId: string): void {
+    if (p.status !== "alive") return;
+    const existing = p.abilities.findIndex((a) => a.usesItem);
+    if (existing >= 0) {
+      this.removeAbilitySlot(p, existing); // toggle off
+    } else {
+      const it = p.inv.carried[findCarried(p.inv, itemId)];
+      if (!it?.consumable) return; // must reference a carried consumable
+      if (p.abilities.length >= MAX_ABILITY_SLOTS) {
+        if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: "hotbar-full", ability: potionHotbarSlot(), rarity: "common", flavor: { name: "Hotbar full", flavor: "Swap out an ability first." } } });
+        return; // bar is full — surface a hint instead of silently dropping an ability
+      }
+      p.abilities.push(potionHotbarSlot());
+    }
+    this.persistPlayer(p);
+    this.sendInv(p);
+  }
+
+  // Remove the ability at `idx` and reindex the cooldown map.
+  private removeAbilitySlot(p: PlayerState, idx: number): void {
+    p.abilities.splice(idx, 1);
+    const cds: Record<number, number> = {};
+    for (const [k, v] of Object.entries(p.cds)) {
+      const i = Number(k);
+      if (i < idx) cds[i] = v;
+      else if (i > idx) cds[i - 1] = v;
+    }
+    p.cds = cds;
   }
 
   // Sell a CARRIED item for gold — a waiting-room action (you must be "reached").
@@ -1205,6 +1260,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     let worst = Infinity;
     for (let i = BASE; i < p.abilities.length; i++) {
       const a = p.abilities[i];
+      if (a.usesItem) continue; // never evict a hotbar consumable slot
       if (!incomingIsTalent && a.fromTalent) continue; // protect chosen talents from loot
       const score = Math.abs(a.dmg) + (a.category === ability.category ? -1000 : 0);
       if (score < worst) {
@@ -1222,6 +1278,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private autoCast(p: PlayerState): void {
     const ab = p.abilities[0];
     if (!ab) return;
+    if (ab.usesItem) return; // never auto-drink a consumable parked in the auto slot
     if ((p.cds[0] ?? 0) > this.now) return;
     if (ab.ammo !== undefined && ab.ammo <= 0) return;
     const target = this.nearestEnemy(p.x, p.y, ab.range);
@@ -1302,6 +1359,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     for (const p of this.players.values()) {
       if (p.linkdead) continue; // no live socket to send to
+      // Live consumable count on any hotbar potion slot so the HUD shows "N left".
+      const potions = p.inv.carried.reduce((n, it) => n + (it.consumable ? 1 : 0), 0);
+      for (const a of p.abilities) if (a.usesItem) a.ammo = potions;
       const self: SelfDTO = {
         x: r(p.x),
         y: r(p.y),
