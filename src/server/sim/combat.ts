@@ -37,6 +37,7 @@ export function applyDamage(
   slowMs = 0,
   ability = 0,
   hitRange = 0,
+  knockMult = 1,
 ): void {
   // Player attacks can critically strike (scaled by crit chance) and tanks
   // generate extra threat. Resolve both once, up front, for all target types.
@@ -127,8 +128,8 @@ export function applyDamage(
       const src = ctx.players.get(sourceId);
       const ang = src ? Math.atan2(target.y - src.y, target.x - src.x) : target.aim;
       const resist = KNOCK_RESIST[target.kind] ?? 1;
-      target.knockVx = Math.cos(ang) * KNOCK_SPEED * resist;
-      target.knockVy = Math.sin(ang) * KNOCK_SPEED * resist;
+      target.knockVx = Math.cos(ang) * KNOCK_SPEED * resist * knockMult;
+      target.knockVy = Math.sin(ang) * KNOCK_SPEED * resist * knockMult;
       target.knockUntil = ctx.now + KNOCK_MS;
       target.windupUntil = 0; // stagger cancels a pending swing
     }
