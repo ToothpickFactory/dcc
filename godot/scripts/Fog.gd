@@ -84,6 +84,18 @@ func set_ground_texture(tex: Texture2D) -> void:
 	_ground_mat.set_shader_parameter("u_tex", tex)
 	_ground_mat.set_shader_parameter("u_has_tex", true)
 
+## Per-theme palette: an albedo tint (color cast) + the fog/background color. Gives each
+## theme a distinct mood. Called by World.set_theme_palette when fog is attached.
+func set_palette(tint: Color, bg: Color) -> void:
+	var t := Vector3(tint.r, tint.g, tint.b)
+	var b := Vector3(bg.r, bg.g, bg.b)
+	if _ground_mat:
+		_ground_mat.set_shader_parameter("u_tint", t)
+		_ground_mat.set_shader_parameter("u_bg", b)
+	if _wall_mat:
+		_wall_mat.set_shader_parameter("u_tint", t)
+		_wall_mat.set_shader_parameter("u_bg", b)
+
 ## Themed wall tile -> fog shader. null = flat. Called by World.set_wall_texture.
 func set_wall_texture(tex: Texture2D) -> void:
 	if _wall_mat == null:

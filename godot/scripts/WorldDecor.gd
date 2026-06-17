@@ -28,6 +28,17 @@ const STAIRS_FALLBACK := Color(0x5d / 255.0, 1.0, 0x9b / 255.0)  # 0x5dff9b
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"]
 
+# Per-theme mood palette: `tint` casts the tile albedo, `bg` is the fog/background color the
+# unseen edges fade to. Gives each floor a distinct atmosphere instead of uniform grey.
+const THEME_PALETTE := {
+	"fantasy":   {"tint": Color(1.0, 0.97, 0.90),  "bg": Color(0.05, 0.06, 0.09)},
+	"cyberpunk": {"tint": Color(0.80, 0.95, 1.15),  "bg": Color(0.03, 0.05, 0.10)},
+	"forest":    {"tint": Color(0.85, 1.07, 0.85),  "bg": Color(0.03, 0.07, 0.045)},
+	"pirate":    {"tint": Color(1.12, 1.0, 0.82),   "bg": Color(0.05, 0.06, 0.06)},
+	"clockwork": {"tint": Color(1.14, 1.0, 0.76),   "bg": Color(0.07, 0.055, 0.035)},
+	"nightmare": {"tint": Color(1.05, 0.78, 1.06),  "bg": Color(0.07, 0.03, 0.08)},
+}
+
 @export var tiles_dir := "res://assets/Tiles"
 @export var props_dir := "res://assets/Props"
 
@@ -71,11 +82,13 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 		push_warning("WorldDecor: unknown theme '%s' — using flat fallback" % theme)
 		return
 
-	# 1) Ground + wall tiles (render.ts applyTileTheme).
+	# 1) Ground + wall tiles (render.ts applyTileTheme) + per-theme color/mood palette.
 	var tiles := _load_tiles(theme)
 	if world != null:
 		world.set_ground_texture(tiles.get("floor"))
 		world.set_wall_texture(tiles.get("wall"))
+		var pal: Dictionary = THEME_PALETTE.get(theme, {"tint": Color.WHITE, "bg": Color(0.043, 0.055, 0.078)})
+		world.set_theme_palette(pal["tint"], pal["bg"])
 
 	# 2) Prop sheet (render.ts applyPropTheme / loadPropTextures).
 	var props := _load_props(theme)
