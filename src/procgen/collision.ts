@@ -30,6 +30,20 @@ export function canOccupy(grid: CollisionGrid, x: number, y: number, radius: num
   return true;
 }
 
+// Nearest-cell ground height (px) at a world position. INTEGER-indexed (Math.floor) so it is
+// trivially reproducible in GDScript with zero float drift — this is the canonical sampler the
+// future v2 step-up gate reads. Any bilinear RENDER variant must stay separate from this.
+export function heightAt(grid: CollisionGrid, x: number, y: number): number {
+  if (!grid.ground) return 0;
+  let cx = Math.floor(x / grid.cell);
+  let cy = Math.floor(y / grid.cell);
+  if (cx < 0) cx = 0;
+  else if (cx >= grid.w) cx = grid.w - 1;
+  if (cy < 0) cy = 0;
+  else if (cy >= grid.h) cy = grid.h - 1;
+  return grid.ground[cy * grid.w + cx]!;
+}
+
 export function moveWithCollisions(
   grid: CollisionGrid,
   position: { x: number; y: number },

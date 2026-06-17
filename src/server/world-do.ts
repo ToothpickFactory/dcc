@@ -1612,6 +1612,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         dashReadyAt: p.dashReadyAt,
         status: p.status,
         reached: p.reached,
+        slowed: p.slowUntil > this.now, // mirror movement.ts SLOW_FACTOR gate so the predictor matches
         lifetimeXp: this.lb.get(p.id)?.xp ?? 0,
         bestFloor: this.lb.get(p.id)?.floor ?? 0,
         kills: this.lb.get(p.id)?.kills ?? 0,

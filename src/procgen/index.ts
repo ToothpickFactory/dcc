@@ -1,3 +1,4 @@
+import { WALKABLE_DELTA } from "../shared/constants";
 import type { MonsterKind, Theme } from "../shared/types";
 import type { CollisionGrid, FloorDescriptor } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
@@ -66,7 +67,13 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   // grid scales; all px positions scale by SCALE too (a fine block's centre is exactly
   // 2× the logical cell centre), so speed/vision/attack ranges (all in px) are untouched.
   const SCALE = 2;
-  const collision: CollisionGrid = { w: gw * SCALE, h: gh * SCALE, cell, solid: scaleGrid(solid, gw, gh, SCALE) };
+  const collision: CollisionGrid = {
+    w: gw * SCALE,
+    h: gh * SCALE,
+    cell,
+    solid: scaleGrid(solid, gw, gh, SCALE),
+    ground: new Int16Array(gw * SCALE * gh * SCALE), // 0 = flat; buildHeightField fills it below
+  };
   const sc = <T extends { x: number; y: number }>(p: T): T => ({ ...p, x: p.x * SCALE, y: p.y * SCALE });
 
   const entrance = sc(cellCenter(start.x, start.y, cell));
@@ -105,6 +112,21 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
   const decorations = [...prefabDecor, ...scatterDecor];
 
   const theme = THEMES[Math.floor(random() * THEMES.length)]!;
+
+  // Heightfield 2.5D: generate a deterministic per-cell ground height on the FINE grid. The seed is
+  // drawn HERE, as the very last random() call, so every existing layout draw above stays byte-
+  // identical (the procgen connectivity test proves it). Height is visual-only today; the slope
+  // relaxation keeps adjacent open cells within WALKABLE_DELTA so the v2 step-up gate can trust it.
+  const heightSeed = (random() * 0x100000000) >>> 0;
+  buildHeightField(
+    collision,
+    prefabAnchors.map((a) => ({ x: a.x * SCALE, y: a.y * SCALE, landmark: a.landmark })),
+    { x: start.x * SCALE, y: start.y * SCALE },
+    { x: farthest.x * SCALE, y: farthest.y * SCALE },
+    heightSeed,
+    isCave,
+    openness,
+  );
 
   return {
     index: depth,
@@ -324,6 +346,213 @@ function sampleOpenCenters(solid: Uint8Array, w: number, h: number, random: () =
   const open = openCells(solid, w, h).filter((p) => manhattan(p.x, p.y, start.x, start.y) > 6);
   shuffle(open, random);
   return open.slice(0, 4 + depth).map((p) => ({ x: p.x, y: p.y }));
+}
+
+// ---- heightfield 2.5D (deterministic ground elevation) ---------------------
+
+// Tuning (px / fine-cells). Amplitudes are kept modest so each feature's natural gradient is
+// already near WALKABLE_DELTA — the relaxation pass then only has to clean up overlaps, so it
+// converges fast and the cap is satisfiable everywhere (proven by the height-aware test).
+const HEIGHT_OCTAVES = 2;
+const CAVE_AMP = 46; // px FBM amplitude on cave floors (rolling slopes)
+const MAZE_AMP = 24; // px FBM amplitude on maze floors (near-flat corridors)
+const CAVE_PERIOD = 26; // fine cells per base noise octave (caves)
+const MAZE_PERIOD = 34; // fine cells per base noise octave (mazes)
+const DAIS_HEIGHT = 96; // raised platform under landmark prefabs
+const DAIS_RADIUS = 9; // fine cells
+const PIT_DEPTH = 64; // sunken depression
+const PIT_RADIUS = 9; // fine cells
+const LANDING_RADIUS = 5; // fine cells flattened around entrance + stairs (level spawn/exit)
+
+// Fill grid.ground (fine grid) with a natural, walkable height field: FBM base + landmark daises +
+// a few sunken pits, with entrance/stairs flattened and a slope-relaxation pass capping every open
+// 4-neighbour delta at WALKABLE_DELTA. Pure-deterministic from heightSeed; no main-stream draws.
+function buildHeightField(
+  grid: CollisionGrid,
+  anchors: { x: number; y: number; landmark: boolean }[],
+  start: { x: number; y: number },
+  farthest: { x: number; y: number },
+  heightSeed: number,
+  isCave: boolean,
+  openness: number,
+): void {
+  const { w, h, solid, ground } = grid;
+  const hrng = rng(heightSeed);
+  const amp = (isCave ? CAVE_AMP : MAZE_AMP) * (0.6 + openness * 0.6);
+  const period = isCave ? CAVE_PERIOD : MAZE_PERIOD;
+
+  // 1) FBM base over every cell (walls included — their bases sit on the same terrain).
+  const hf = new Float64Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      hf[y * w + x] = fbm(heightSeed, x, y, period, HEIGHT_OCTAVES) * amp;
+    }
+  }
+
+  // 2) Daises under landmark anchors (shrines/vaults get plinths) + a few sunken pits in open rooms.
+  for (const a of anchors) {
+    if (a.landmark) addBump(hf, w, h, a.x, a.y, DAIS_RADIUS, DAIS_HEIGHT);
+  }
+  const pitCount = 1 + Math.floor(hrng() * 3);
+  const farOpen = openCells(solid, w, h).filter((p) => manhattan(p.x, p.y, start.x, start.y) > LANDING_RADIUS + PIT_RADIUS);
+  shuffle(farOpen, hrng);
+  let pits = 0;
+  for (const p of farOpen) {
+    if (pits >= pitCount) break;
+    if (!discAllOpen(solid, w, h, p.x, p.y, PIT_RADIUS)) continue; // ring-protect: never pit near a wall
+    addBump(hf, w, h, p.x, p.y, PIT_RADIUS, -PIT_DEPTH);
+    pits++;
+  }
+
+  // 3) Flatten the entrance + stairs into level landings (pinned so relaxation ramps INTO them).
+  const pinned = new Uint8Array(w * h);
+  flattenLanding(hf, pinned, w, h, solid, start.x, start.y, LANDING_RADIUS);
+  flattenLanding(hf, pinned, w, h, solid, farthest.x, farthest.y, LANDING_RADIUS);
+
+  // 4) Slope relaxation: cap every open 4-neighbour delta. Pinned (landing) cells stay fixed; their
+  //    neighbours ramp toward them. Internal cap is tighter so the final Int16 rounding stays <= cap.
+  relaxSlopes(hf, solid, pinned, w, h, WALKABLE_DELTA - 2);
+
+  // 5) Quantize to Int16 px.
+  for (let i = 0; i < w * h; i++) {
+    ground[i] = Math.max(-32768, Math.min(32767, Math.round(hf[i]!)));
+  }
+}
+
+// Value-noise FBM in [-1,1]. Lattice corners hashed from (seed, ix, iy), smoothstep-interpolated,
+// octaves summed at halving amplitude/period. Fully integer-seeded → identical on any platform.
+function fbm(seed: number, x: number, y: number, basePeriod: number, octaves: number): number {
+  let sum = 0;
+  let ampO = 1;
+  let norm = 0;
+  let period = basePeriod;
+  for (let o = 0; o < octaves; o++) {
+    sum += ampO * (valueNoise(seed + o * 1013, x, y, period) * 2 - 1);
+    norm += ampO;
+    ampO *= 0.5;
+    period *= 0.5;
+  }
+  return norm > 0 ? sum / norm : 0;
+}
+
+function valueNoise(seed: number, x: number, y: number, period: number): number {
+  const gx = x / period;
+  const gy = y / period;
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const sx = smoothstep01(gx - x0);
+  const sy = smoothstep01(gy - y0);
+  const n00 = hash2(seed, x0, y0);
+  const n10 = hash2(seed, x0 + 1, y0);
+  const n01 = hash2(seed, x0, y0 + 1);
+  const n11 = hash2(seed, x0 + 1, y0 + 1);
+  return lerp(lerp(n00, n10, sx), lerp(n01, n11, sx), sy);
+}
+
+function hash2(seed: number, ix: number, iy: number): number {
+  let hh = (seed ^ Math.imul(ix, 374761393) ^ Math.imul(iy, 668265263)) | 0;
+  hh = Math.imul(hh ^ (hh >>> 13), 1274126177);
+  return ((hh ^ (hh >>> 16)) >>> 0) / 4294967296;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function smoothstep01(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+// Add a smooth radial bump (height>0 raises, <0 sinks) with a smoothstep falloff to the rim.
+function addBump(hf: Float64Array, w: number, h: number, cx: number, cy: number, radius: number, height: number): void {
+  const minX = Math.max(0, cx - radius);
+  const maxX = Math.min(w - 1, cx + radius);
+  const minY = Math.max(0, cy - radius);
+  const maxY = Math.min(h - 1, cy + radius);
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > radius) continue;
+      hf[y * w + x] += height * smoothstep01(1 - d / radius);
+    }
+  }
+}
+
+// Whole disc must be open floor — keeps pits inside rooms so they never pinch a corridor.
+function discAllOpen(solid: Uint8Array, w: number, h: number, cx: number, cy: number, radius: number): boolean {
+  for (let y = cy - radius; y <= cy + radius; y++) {
+    for (let x = cx - radius; x <= cx + radius; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) return false;
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > radius * radius) continue;
+      if (solid[y * w + x] === 1) return false;
+    }
+  }
+  return true;
+}
+
+// Flatten open cells within `radius` of (cx,cy) to the centre height, and pin them so the slope
+// relaxation treats them as fixed (its neighbours ramp toward the flat landing).
+function flattenLanding(hf: Float64Array, pinned: Uint8Array, w: number, h: number, solid: Uint8Array, cx: number, cy: number, radius: number): void {
+  const centerVal = hf[cy * w + cx]!;
+  const r2 = radius * radius;
+  for (let y = cy - radius; y <= cy + radius; y++) {
+    for (let x = cx - radius; x <= cx + radius; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = y * w + x;
+      if (solid[i] !== 0) continue;
+      hf[i] = centerVal;
+      pinned[i] = 1;
+    }
+  }
+}
+
+// Slope relaxation (Gauss-Seidel clamp): repeatedly clamp each free open cell into the band where
+// it sits within `cap` of every open neighbour, until no open 4-neighbour pair differs by more than
+// `cap`. Clamping is BOUNDED (a cell only ever moves to its neighbour-derived limits — it can never
+// overshoot) so this is unconditionally stable, unlike additive diffusion. Pinned (landing) cells
+// don't move but still constrain their neighbours. Direction alternates for faster convergence.
+function relaxSlopes(hf: Float64Array, solid: Uint8Array, pinned: Uint8Array, w: number, h: number, cap: number): void {
+  for (let pass = 0; pass < 400; pass++) {
+    let changed = false;
+    const forward = pass % 2 === 0;
+    const y0 = forward ? 1 : h - 2;
+    const yEnd = forward ? h - 1 : 0;
+    const yStep = forward ? 1 : -1;
+    const x0 = forward ? 1 : w - 2;
+    const xEnd = forward ? w - 1 : 0;
+    const xStep = forward ? 1 : -1;
+    for (let y = y0; y !== yEnd; y += yStep) {
+      for (let x = x0; x !== xEnd; x += xStep) {
+        const i = y * w + x;
+        if (solid[i] !== 0 || pinned[i]) continue;
+        let lo = -Infinity;
+        let hi = Infinity;
+        for (const nb of [i - 1, i + 1, i - w, i + w]) {
+          if (solid[nb] !== 0) continue;
+          const nh = hf[nb]!;
+          if (nh - cap > lo) lo = nh - cap; // hf[i] must be >= each neighbour - cap
+          if (nh + cap < hi) hi = nh + cap; // hf[i] must be <= each neighbour + cap
+        }
+        if (lo === -Infinity) continue; // no open neighbour
+        const cur = hf[i]!;
+        // Feasible band [lo,hi]: clamp into it. If infeasible (neighbours differ by >2*cap), sit at
+        // the midpoint — that pulls the (also-moving) neighbours together over subsequent passes.
+        const target = lo <= hi ? (cur < lo ? lo : cur > hi ? hi : cur) : (lo + hi) / 2;
+        if (Math.abs(target - cur) > 1e-4) {
+          hf[i] = target;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+  }
 }
 
 // ---- prefab set-pieces + connectivity repair -------------------------------

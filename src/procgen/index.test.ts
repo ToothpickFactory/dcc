@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { PLAYER_RADIUS } from "../shared/constants.ts";
+import { PLAYER_RADIUS, WALKABLE_DELTA } from "../shared/constants.ts";
 import { canOccupy } from "./collision.ts";
 import { generateFloor } from "./index.ts";
 
@@ -20,9 +20,77 @@ for (let seed = 1; seed <= 100; seed++) {
   assert.equal(canOccupy(grid, floor.stairs.x, floor.stairs.y, PLAYER_RADIUS), true);
   for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true);
   for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true);
+
+  // ---- heightfield 2.5D invariants ----
+  const g = grid.ground;
+  assert.equal(g.length, grid.solid.length, `seed ${seed} ground array wrong size`);
+
+  // (a) Global slope cap: every open 4-neighbour pair is within WALKABLE_DELTA. This IS the
+  //     invariant the v2 step-up gate trusts; if it holds, height never makes the floor an island.
+  let maxDelta = 0;
+  for (let y = 0; y < grid.h; y++) {
+    for (let x = 0; x < grid.w; x++) {
+      const i = y * grid.w + x;
+      if (grid.solid[i] !== 0) continue;
+      if (x + 1 < grid.w && grid.solid[i + 1] === 0) maxDelta = Math.max(maxDelta, Math.abs(g[i]! - g[i + 1]!));
+      if (y + 1 < grid.h && grid.solid[i + grid.w] === 0) maxDelta = Math.max(maxDelta, Math.abs(g[i]! - g[i + grid.w]!));
+    }
+  }
+  assert.ok(maxDelta <= WALKABLE_DELTA, `seed ${seed} open slope ${maxDelta}px exceeds WALKABLE_DELTA ${WALKABLE_DELTA}`);
+
+  // (b) Height-aware reachability: flooding only across walkable (<=cap) open edges still reaches
+  //     every open cell + the stairs. (Implied by (a) but asserts the gate's actual traversal.)
+  const hReach = heightFlood(grid.solid, g, grid.w, grid.h, startX, startY, WALKABLE_DELTA);
+  for (let i = 0; i < grid.solid.length; i++) {
+    if (grid.solid[i] === 0) assert.equal(hReach.has(i), true, `seed ${seed} tile unreachable across walkable slopes`);
+  }
+  assert.equal(hReach.has(stairsY * grid.w + stairsX), true, `seed ${seed} stairs unreachable across walkable slopes`);
+
+  // (c) Flat landings: the OPEN cells of the 3x3 around entrance + stairs are level (safe spawn /
+  //     exit). Wall cells in the 3x3 keep their own terrain height — they aren't walkable.
+  assertFlat3x3(g, grid.solid, grid.w, grid.h, startX, startY, `seed ${seed} entrance`);
+  assertFlat3x3(g, grid.solid, grid.w, grid.h, stairsX, stairsY, `seed ${seed} stairs`);
 }
 
-console.log("procgen connectivity: 100 seeds passed");
+console.log("procgen connectivity + heightfield: 100 seeds passed");
+
+function assertFlat3x3(ground: Int16Array, solid: Uint8Array, w: number, h: number, cx: number, cy: number, label: string): void {
+  const center = ground[cy * w + cx]!;
+  for (let y = cy - 1; y <= cy + 1; y++) {
+    for (let x = cx - 1; x <= cx + 1; x++) {
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      if (solid[y * w + x] !== 0) continue; // walls keep their terrain height
+      assert.equal(ground[y * w + x], center, `${label} landing is not flat at (${x},${y})`);
+    }
+  }
+}
+
+function heightFlood(solid: Uint8Array, ground: Int16Array, w: number, h: number, startX: number, startY: number, cap: number): Set<number> {
+  const seen = new Set<number>();
+  const queue = [{ x: startX, y: startY }];
+  seen.add(startY * w + startX);
+  let head = 0;
+  while (head < queue.length) {
+    const current = queue[head++]!;
+    const ci = current.y * w + current.x;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const x = current.x + dx;
+      const y = current.y + dy;
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const index = y * w + x;
+      if (solid[index] === 1 || seen.has(index)) continue;
+      if (Math.abs(ground[ci]! - ground[index]!) > cap) continue; // too steep to walk
+      seen.add(index);
+      queue.push({ x, y });
+    }
+  }
+  return seen;
+}
 
 function flood(solid: Uint8Array, w: number, h: number, startX: number, startY: number): Set<number> {
   const seen = new Set<number>();

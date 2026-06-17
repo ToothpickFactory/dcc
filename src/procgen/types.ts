@@ -5,6 +5,9 @@ export interface CollisionGrid {
   h: number; // grid height (cells)
   cell: number; // cell size (px)
   solid: Uint8Array; // 1 = blocked
+  ground: Int16Array; // per-cell ground HEIGHT in px (same fine-grid layout as solid; cy*w+cx). 0 = flat.
+  // NOTE: `h` above is row-count, not elevation. Adjacent open cells differ by <= WALKABLE_DELTA
+  // (guaranteed by procgen relaxation) so the v2 step-up gate can trust it. Heightfield 2.5D.
 }
 
 export interface FloorDescriptor {

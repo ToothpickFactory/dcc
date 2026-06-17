@@ -106,6 +106,7 @@ export interface SelfDTO {
   shield: number; // current absorb shield (HUD)
   status: "alive" | "spectator";
   reached: boolean; // reached the stairs — in the safe waiting room (spectate + manage gear)
+  slowed?: boolean; // a slow (frost) is active — client prediction must apply SLOW_FACTOR to match the sim
   dashReadyAt?: number; // tick when the dodge/dash is off cooldown (HUD cue)
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
   bestFloor?: number; // deepest floor ever reached (all-time)

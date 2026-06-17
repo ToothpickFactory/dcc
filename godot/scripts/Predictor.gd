@@ -91,6 +91,10 @@ func update(self_dto: Dictionary, mv: Vector2, dt: float) -> void:
 		var derived: Variant = self_dto.get("derived", {})
 		if derived is Dictionary and derived.has("moveSpeed"):
 			speed = float(derived["moveSpeed"])
+		# Mirror movement.ts: a slow (frost) halves move speed. Without this the client over-predicts
+		# under frost and _reconcile claws it back every tick = rubber-band. Dash branch ignores slow.
+		if bool(self_dto.get("slowed", false)):
+			speed *= DccConst.SLOW_FACTOR
 		var dx := (mv.x / l) * speed * dt
 		var dy := (mv.y / l) * speed * dt
 		if not _grid.is_empty():

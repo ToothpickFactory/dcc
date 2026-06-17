@@ -14,5 +14,6 @@ const HOTBAR_SIZE := 6         # first N abilities are the castable hotbar; the 
 const DASH_SPEED := 760.0      # px/s during the dash burst
 const DASH_MS := 180.0         # dash duration
 const DASH_CD := 1400.0        # cooldown between dashes
+const SLOW_FACTOR := 0.5        # movement multiplier while slowed (frost) — mirror src/shared/constants.ts
 const PROTOCOL_VERSION := 15  # v15: ally hp/class on wire, loot owner-priority, buy vendor; v14 was attr points + respec
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"
