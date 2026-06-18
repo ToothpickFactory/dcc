@@ -1,0 +1,134 @@
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+=== HERO GLB INSPECTION ===
+-- Kevin --
+path=res://assets/Heroes/Kevin/Kevin-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, 0.00043, -0.0), Y: (-0.000421, 0.980207, -0.197975), Z: (-0.000085, 0.197975, 0.980207), O: (-0.001163, -0.15078, 0.015482)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.500307, -0.457609, -0.210184) aabb_size=(1.00079, 0.910739, 0.436694)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,kick,punch_jab,roll,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Barbarian --
+path=res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, -0.000026, -0.0), Y: (0.000026, 0.994328, -0.106352), Z: (0.000003, 0.106352, 0.994328), O: (-0.000415, -0.10706, 0.013502)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.500544, -0.398237, -0.146977) aabb_size=(1.001082, 0.794278, 0.296552)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,sword_regular_combo,walk
+-- Cleric --
+path=res://assets/Heroes/Cleric/Cleric-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (0.999999, -0.001686, -0.0), Y: (0.001675, 0.993222, -0.116217), Z: (0.000196, 0.116217, 0.993224), O: (0.002473, -0.07246, 0.017027)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.493215, -0.500696, -0.156009) aabb_size=(0.986128, 1.001595, 0.310466)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Paladin --
+path=res://assets/Heroes/Paladin/Paladin-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, -0.000714, -0.0), Y: (0.00071, 0.995348, -0.096339), Z: (0.000069, 0.096339, 0.995349), O: (-0.000631, -0.105612, 0.015886)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.5006, -0.467361, -0.162577) aabb_size=(1.001162, 0.934514, 0.324765)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_block,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Ranger --
+path=res://assets/Heroes/Ranger/Ranger-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (0.999998, 0.002079, 0.0), Y: (-0.00207, 0.995442, -0.095347), Z: (-0.000198, 0.095346, 0.995444), O: (0.000288, -0.103605, 0.01391)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.500908, -0.409463, -0.03063) aabb_size=(1.001883, 0.818273, 0.061296)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Rogue --
+path=res://assets/Heroes/Rogue/Rogue-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, 0.000101, 0.0), Y: (-0.0001, 0.994999, -0.099889), Z: (-0.00001, 0.099889, 0.994999), O: (-0.000626, -0.088809, 0.015402)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.500975, -0.452103, -0.031192) aabb_size=(1.001949, 0.906045, 0.06189)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,sword_regular_combo,walk
+-- Wizard --
+path=res://assets/Heroes/Wizard/Wizard-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (0.999999, 0.001597, 0.0), Y: (-0.00158, 0.988973, -0.148088), Z: (-0.000237, 0.148088, 0.988974), O: (-0.024993, -0.048139, 0.014146)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:22)
+aabb_pos=(-0.500663, -0.415428, -0.166896) aabb_size=(1.001199, 0.83215, 0.3334)
+animations(AnimationPlayer)=hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+=== WORKING CONTROLS ===
+-- Orc --
+path=res://assets/Enemies/Orc/Orc-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, -0.000689, -0.0), Y: (0.000685, 0.995395, -0.095859), Z: (0.000066, 0.095859, 0.995395), O: (-0.000536, -0.049264, 0.013045)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:25)
+aabb_pos=(-0.500283, -0.383891, -0.13002) aabb_size=(1.000931, 0.76736, 0.258697)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Troll --
+path=res://assets/Enemies/Troll/Troll-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (1.0, -0.000055, -0.0), Y: (0.000055, 0.995008, -0.099799), Z: (0.000006, 0.099799, 0.995008), O: (-0.000589, -0.070116, 0.013166)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:25)
+aabb_pos=(-0.500955, -0.388597, -0.122717) aabb_size=(1.001903, 0.774482, 0.245636)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_attack,sword_regular_a,sword_regular_b,sword_regular_c,walk
+-- Iron Jailor --
+path=res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb packed=true
+root_class=Node3D basis=[X: (1.0, 0.0, 0.0), Y: (0.0, 1.0, 0.0), Z: (0.0, 0.0, 1.0)] scale=(1.0, 1.0, 1.0) rot_deg=(0.0, 0.0, 0.0)
+mesh_count=1 skeleton_count=1 anim_player_count=1
+first_skeleton=Skeleton3D bone_count=22 rot_deg=(0.0, 0.0, 0.0)
+first_bone=mixamorig_Hips rest=[X: (0.999999, -0.001422, 0.0), Y: (0.001412, 0.993248, -0.116004), Z: (0.000165, 0.116004, 0.993249), O: (-0.000351, -0.056109, 0.01365)]
+ERROR: Condition "!is_inside_tree()" is true. Returning: Transform3D()
+   at: get_global_transform (scene/3d/node_3d.cpp:642)
+   GDScript backtrace (most recent call first):
+       [0] _inspect (res://../.tmp/inspect_hero_glbs.gd:56)
+       [1] _initialize (res://../.tmp/inspect_hero_glbs.gd:25)
+aabb_pos=(-0.500717, -0.401142, -0.147392) aabb_size=(1.001525, 0.802984, 0.296164)
+animations(AnimationPlayer)=death,hit_chest,idle,jog_fwd,punch_jab,sword_regular_a,sword_regular_b,sword_regular_c,sword_regular_combo,walk

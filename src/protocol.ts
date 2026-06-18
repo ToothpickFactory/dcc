@@ -7,10 +7,10 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, CcKind, Klass, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 16; // was 15 - heightfield 2.5D ground layer on FloorGeometry
+export const PROTOCOL_VERSION = 17; // was 16 - monster DTO now carries monKind for Godot GLB selection
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -74,6 +74,7 @@ export interface EntityDTO {
   name?: string; // players + named bosses
   cls?: PlayerClass; // players only (emergent playstyle label)
   klass?: Klass; // players only: chosen WoW class (drives the ally nameplate icon)
+  monKind?: MonsterKind; // monsters only: server archetype, used by 3D clients for matching GLBs
   sprite?: number; // atlas frame id (kind-specific)
   proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
   n?: number; // item count (loot bags)

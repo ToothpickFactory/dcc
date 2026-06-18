@@ -35,7 +35,7 @@ const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   clockwork: "/assets/Props/clockwork-props.png",
   nightmare: "/assets/Props/nightmare-props.png",
 };
-const ENEMY_ROOTS = ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"].map((n) => `/assets/Enemies/${n}`);
+const ENEMY_ROOTS = ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan"].map((n) => `/assets/Enemies/${n}`);
 const MOVE_ANIM_NAMES = [
   "iso_idle_up_right",
   "iso_idle_right_right",

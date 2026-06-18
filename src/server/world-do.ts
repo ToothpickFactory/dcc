@@ -79,8 +79,10 @@ const FIRST_SEED = 0xdcc;
 const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
   swarm: 0.08,
   grunt: 0.12,
+  pirate: 0.16,
   ranged: 0.2,
   healer: 0.25,
+  sharkman: 0.28,
   brute: 0.45,
 };
 const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
@@ -385,7 +387,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // distribute archetypes so the per-kind behaviors are exercised. The moment
     // floor.spawns carry real variety (any non-grunt present), honor them as-is.
     const homogeneousGrunt = this.floor.spawns.every((s) => s.kind === "grunt");
-    const VARIETY: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "swarm", "grunt"];
+    const VARIETY: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "pirate", "sharkman", "healer", "swarm", "grunt", "pirate"];
     // Per-floor scaling so descent gets deadlier, not just more crowded.
     const depthSteps = Math.max(0, this.floor.depth - 1);
     const hpMult = 1 + depthSteps * FLOOR_HP_SCALE;
@@ -1557,7 +1559,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const m of this.monsters) {
       if (m.dead && !this.corpseLootExists(m.id)) continue;
       const mcc = m.ccUntil > this.now && m.ccKind !== "" ? m.ccKind : undefined;
-      ents.push({ id: m.id, kind: "monster", x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead, cc: mcc });
+      ents.push({ id: m.id, kind: "monster", monKind: m.kind, x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead, cc: mcc });
     }
     if (this.boss && (!this.boss.dead || this.corpseLootExists(this.boss.id))) {
       const bcc = this.boss.ccUntil > this.now && this.boss.ccKind !== "" ? this.boss.ccKind : undefined;

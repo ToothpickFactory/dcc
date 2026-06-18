@@ -11,7 +11,7 @@ export type PlayerClass =
   | "shadow"
   | "negotiator"
   | "berserker";
-export type MonsterKind = "grunt" | "ranged" | "brute" | "swarm" | "healer";
+export type MonsterKind = "grunt" | "ranged" | "brute" | "swarm" | "healer" | "pirate" | "sharkman";
 
 // Hard crowd control applied to enemies by player abilities. `root` locks movement
 // only; `stun`/`freeze` lock movement AND action (and interrupt a wind-up). `freeze`

@@ -74,6 +74,8 @@ export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
   grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 20 },
   brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 28 }, // slow tank, big hits
   swarm: { hp: 24, speed: 158, dmg: 4, attackCd: 700, meleeRange: 42, radius: 13 }, // fast, fragile, weak
+  pirate: { hp: 72, speed: 104, dmg: 8, attackCd: 1050, meleeRange: 58, radius: 20 }, // agile cutlass-style brawler
+  sharkman: { hp: 115, speed: 84, dmg: 12, attackCd: 1250, meleeRange: 68, radius: 24 }, // sturdy bruiser
   ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
   healer: { hp: 50, speed: 92, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, heal: { amount: 14, cd: 1400, range: 320, kite: 240 } }, // mends its camp
 };
@@ -111,7 +113,7 @@ export const BOSS_CAST_WINDUP_MS = 420; // boss bolt-fan tell
 // resistance differentiates a swarm bug (flies) from a brute (barely budges).
 export const KNOCK_SPEED = 560; // px/s knockback burst on a player hit
 export const KNOCK_MS = 170; // knockback impulse duration (decays out)
-export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, ranged: 1.1, healer: 1.0, brute: 0.4 };
+export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, pirate: 0.95, ranged: 1.1, healer: 1.0, sharkman: 0.65, brute: 0.4 };
 
 // Hard crowd control (stun / root / freeze): player abilities lock enemies out so a
 // mage/rogue/warrior/hunter play differently. Durations live on the abilities (stunMs/

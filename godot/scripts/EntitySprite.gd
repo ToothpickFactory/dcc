@@ -23,14 +23,16 @@ const MODEL_DEATH_MS := 1400.0
 const TOMBSTONE_SPRITE_PX := 56.0
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
-const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Barbarian-3d-animated.glb"
+const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin-3d-animated.glb"
 const HERO_MODEL_SCALE := 84.0
 const HERO_LIGHT_ENERGY := 1.35
 const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb"
 const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
 const PALADIN_MODEL_PATH := "res://assets/Heroes/Paladin/Paladin-3d-animated.glb"
+const RANGER_MODEL_PATH := "res://assets/Heroes/Ranger/Ranger-3d-animated.glb"
 const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue-3d-animated.glb"
 const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
+const HERO_CLASS_IDS := ["warrior", "mage", "priest", "hunter", "rogue"]
 const BOSS_ROOT := "res://assets/Bosses/Slime"
 const JAILOR_NAME := "Iron Jailor"
 const JAILOR_MODEL_PATH := "res://assets/Bosses/Jailor/Iron Jailor-3d-animated.glb"
@@ -49,6 +51,12 @@ const INFERNAX_LIGHT_ENERGY := 1.65
 const ORC_MODEL_PATH := "res://assets/Enemies/Orc/Orc-3d-animated.glb"
 const ORC_MODEL_SCALE := 124.0
 const ORC_LIGHT_ENERGY := 1.55
+const PIRATE_MODEL_PATH := "res://assets/Enemies/Pirate/Pirate Zombie-3d-animated.glb"
+const PIRATE_MODEL_SCALE := 120.0
+const PIRATE_LIGHT_ENERGY := 1.55
+const SHARKMAN_MODEL_PATH := "res://assets/Enemies/SharkMan/SharkMan-3d-animated.glb"
+const SHARKMAN_MODEL_SCALE := 124.0
+const SHARKMAN_LIGHT_ENERGY := 1.6
 const SKELETON_MODEL_PATH := "res://assets/Enemies/Skeleton/Skeleton-3d-animated.glb"
 const SKELETON_MODEL_SCALE := 112.0
 const SKELETON_LIGHT_ENERGY := 1.45
@@ -61,16 +69,16 @@ const WRAITH_LIGHT_ENERGY := 1.7
 const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie"]
 const POISON_PROJECTILE_SPRITE := 95 # src/shared/constants.ts POISON_PROJECTILE_SPRITE
 const POISON_MODEL_PATH := "res://assets/Projectiles/Poisonball/Poisonball.glb"
-const POISON_MODEL_SCALE := 18.0
+const POISON_MODEL_SCALE := 36.0
 const ICE_PROJECTILE_SPRITE := 96 # src/shared/constants.ts ICE_PROJECTILE_SPRITE
 const ICE_MODEL_PATH := "res://assets/Projectiles/Iceball/An ice projectile.glb"
-const ICE_MODEL_SCALE := 18.0
+const ICE_MODEL_SCALE := 36.0
 const FIREBALL_PROJECTILE_SPRITE := 97 # src/shared/constants.ts FIREBALL_PROJECTILE_SPRITE
 const FIREBALL_MODEL_PATH := "res://assets/Projectiles/Fireball/Fireball.glb"
-const FIREBALL_MODEL_SCALE := 18.0
+const FIREBALL_MODEL_SCALE := 36.0
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 
@@ -200,10 +208,14 @@ var is_self := false
 var _entity_name := ""
 var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue"|"hunter")
 var _model_root: Node3D
+var _model_inst: Node3D
+var _model_light: OmniLight3D
 var _model_anim: AnimationPlayer
 var _model_anim_name := ""
 var _model_profile: Dictionary = {}
+var _model_debug_logged := false
 var _projectile_render := ""
+var _monster_kind := ""
 var _model_slash_index := 0
 var _dead_until := 0.0
 var _is_dead_body := false
@@ -335,18 +347,27 @@ func set_entity_name(v: String) -> void:
 	_ensure_model_for_entity()
 
 func set_chosen_class(klass: String) -> void:
+	klass = _normalize_class(klass)
 	if _chosen_class == klass:
 		return
 	_chosen_class = klass
 	if kind != "player":
 		return
-	# Swap to the new class model. Free the old one so _ensure_model_for_entity re-runs.
+	# Swap to the new class model. Immediately remove and free the old wrapper so it's
+	# gone before the new one is added — deferred free would leave both in the tree
+	# for one frame and can corrupt the new model's initial transform.
+	if _model_light != null:
+		_model_light.queue_free()
+		_model_light = null
 	if _model_root != null:
-		_model_root.queue_free()
+		remove_child(_model_root)
+		_model_root.free()
 		_model_root = null
+		_model_inst = null
 		_model_anim = null
 		_model_anim_name = ""
 		_model_profile = {}
+		_model_debug_logged = false
 	_ensure_model_for_entity()
 
 # ---------------------------------------------------------------------------
@@ -361,6 +382,25 @@ static func _fnv1a(s: String) -> int:
 	return h & 0xFFFFFFFF
 
 func _enemy_root() -> String:
+	match _monster_kind:
+		"ghoul":
+			return "res://assets/Enemies/Ghoul"
+		"infernax":
+			return "res://assets/Enemies/Infernax"
+		"orc":
+			return "res://assets/Enemies/Orc"
+		"pirate":
+			return "res://assets/Enemies/Pirate"
+		"sharkman":
+			return "res://assets/Enemies/SharkMan"
+		"skeleton":
+			return "res://assets/Enemies/Skeleton"
+		"troll":
+			return "res://assets/Enemies/Troll"
+		"wraith":
+			return "res://assets/Enemies/Wraith"
+		"zombie":
+			return "res://assets/Enemies/Zombie"
 	var idx := _fnv1a(ent_id) % ENEMY_ROOTS.size()
 	return "res://assets/Enemies/" + str(ENEMY_ROOTS[idx])
 
@@ -368,7 +408,6 @@ func _model_profile_for_entity() -> Dictionary:
 	if kind == "player":
 		var model_path := HERO_MODEL_PATH
 		var label := "Kevin"
-		var rotation_fix := Vector3.ZERO
 		match _chosen_class:
 			"warrior":
 				model_path = BARBARIAN_MODEL_PATH
@@ -380,8 +419,8 @@ func _model_profile_for_entity() -> Dictionary:
 				model_path = CLERIC_MODEL_PATH
 				label = "Cleric"
 			"hunter":
-				model_path = PALADIN_MODEL_PATH
-				label = "Paladin"
+				model_path = RANGER_MODEL_PATH
+				label = "Ranger"
 			"rogue":
 				model_path = ROGUE_MODEL_PATH
 				label = "Rogue"
@@ -396,8 +435,6 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
-		if rotation_fix != Vector3.ZERO:
-			profile["rotation_degrees"] = rotation_fix
 		return profile
 	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
@@ -470,6 +507,30 @@ func _model_profile_for_entity() -> Dictionary:
 				"light_energy": ORC_LIGHT_ENERGY,
 				"light_range": 300.0,
 				"light_y": 112.0,
+				"contrast": 1.25,
+				"saturation": 1.25,
+			}
+		if root.ends_with("/Pirate"):
+			return {
+				"label": "Pirate",
+				"path": PIRATE_MODEL_PATH,
+				"scale": PIRATE_MODEL_SCALE,
+				"model_y": 66.0,
+				"light_energy": PIRATE_LIGHT_ENERGY,
+				"light_range": 300.0,
+				"light_y": 110.0,
+				"contrast": 1.25,
+				"saturation": 1.25,
+			}
+		if root.ends_with("/SharkMan"):
+			return {
+				"label": "SharkMan",
+				"path": SHARKMAN_MODEL_PATH,
+				"scale": SHARKMAN_MODEL_SCALE,
+				"model_y": 68.0,
+				"light_energy": SHARKMAN_LIGHT_ENERGY,
+				"light_range": 310.0,
+				"light_y": 114.0,
 				"contrast": 1.25,
 				"saturation": 1.25,
 			}
@@ -578,13 +639,16 @@ func _ensure_model_for_entity() -> void:
 	wrapper.position.y = float(profile.get("model_y", 0.0))
 	wrapper.add_child(inst)
 	_model_root = wrapper
+	_model_inst = inst as Node3D
 	add_child(_model_root)
+	if is_self and kind == "player" and not _model_debug_logged:
+		print("[DCC] hero model active label=%s class=%s path=%s" % [label, _chosen_class, model_path])
+		_model_debug_logged = true
 	_model_anim = _find_animation_player(_model_root)
 	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))
 	_add_model_light(profile)
 	texture = null
 	modulate.a = 0.0
-	print("[DCC] %s model active — inst.rotation_degrees=%v  inst.basis=%v" % [label, (inst as Node3D).rotation_degrees, (inst as Node3D).basis])
 	_play_model_anim("idle")
 
 static var _failed_models := {}  # paths that failed once — don't retry (avoids per-frame load spam)
@@ -637,12 +701,6 @@ func _brighten_model(node: Node, contrast: float, saturation: float) -> void:
 				var copy := (mat as StandardMaterial3D).duplicate() as StandardMaterial3D
 				copy.albedo_color = _contrast_color(copy.albedo_color, contrast, saturation)
 				copy.emission_enabled = false
-				# Local hero: render the model surfaces on top of walls so it's never
-				# occluded by a tall wall facing the camera. Back-face culling stays on,
-				# which keeps the see-through look clean (no inside-out artifacts).
-				if is_self:
-					copy.no_depth_test = true
-					copy.render_priority = 4
 				mesh_instance.set_surface_override_material(i, copy)
 	for child in node.get_children():
 		_brighten_model(child, contrast, saturation)
@@ -665,6 +723,7 @@ func _add_model_light(profile: Dictionary) -> void:
 	light.omni_range = float(profile.get("light_range", 260.0))
 	light.position = Vector3(0.0, float(profile.get("light_y", 100.0)), 0.0)
 	add_child(light)
+	_model_light = light
 
 func _play_model_anim(intent: String) -> void:
 	if _model_anim == null:
@@ -793,6 +852,24 @@ func _facing_with_hysteresis(dx: float, dy: float, moving: bool, aim: float) -> 
 			dir = "up" if dy < 0.0 else "down"
 	return {"dir": dir, "flip": dx < 0.0}
 
+func _model_yaw_for_facing(dir: String, flip: bool, offset: float = 0.0) -> float:
+	var yaw := 0.0
+	match dir:
+		"up":
+			yaw = PI
+		"down":
+			yaw = 0.0
+		_:
+			yaw = -PI * 0.5 if flip else PI * 0.5
+	return yaw + offset
+
+func _normalize_class(klass: String) -> String:
+	var k := klass.strip_edges().to_lower()
+	return "" if k == "null" or k == "<null>" or k == "nil" else k
+
+func _has_chosen_class() -> bool:
+	return HERO_CLASS_IDS.has(_chosen_class)
+
 # ---------------------------------------------------------------------------
 # Clip path builders (render.ts clipPath / actionClipPath). Left-facing reuses the
 # right-facing atlas and mirrors the sprite, so we only ever request *_right / *Right art.
@@ -832,6 +909,8 @@ func _clip_duration_ms(clip: Variant, is_enemy: bool, frame_count: int) -> float
 # event (cast/melee) targets this entity. Latches the CURRENT facing for the duration.
 # ---------------------------------------------------------------------------
 func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_count: int = 0, frame_speed: float = ACTION_FRAME_SPEED) -> void:
+	_action_facing_dir = _facing_dir
+	_action_flip = _flip
 	if _model_root != null:
 		if _action == "death":
 			return
@@ -844,8 +923,6 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 		_action_until = now_ms + 650.0
 		_play_model_anim(model_action)
 		return
-	_action_facing_dir = _facing_dir
-	_action_flip = _flip
 	_action_frame_start = frame_start
 	_action_frame_count = frame_count
 	_action_frame_speed = frame_speed
@@ -914,10 +991,11 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
-		var face_angle := aim
-		if position_changed:
-			face_angle = atan2(dy, dx)
-		_model_root.rotation.y = -face_angle + PI * 0.5
+		var model_dir := _action_facing_dir if _action != "" else _facing_dir
+		var model_flip := _action_flip if _action != "" else _flip
+		_model_root.rotation.x = 0.0
+		_model_root.rotation.y = _model_yaw_for_facing(model_dir, model_flip, float(_model_profile.get("yaw_offset", 0.0)))
+		_model_root.rotation.z = 0.0
 		if _action == "":
 			_play_model_anim("run" if moving else "idle")
 		return
@@ -1096,6 +1174,27 @@ func set_projectile_render(v: String) -> void:
 	if _projectile_render == v:
 		return
 	_projectile_render = v
+	_ensure_model_for_entity()
+
+func set_monster_kind(v: String) -> void:
+	v = v.strip_edges().to_lower()
+	if _monster_kind == v:
+		return
+	_monster_kind = v
+	if kind != "monster":
+		return
+	if _model_light != null:
+		_model_light.queue_free()
+		_model_light = null
+	if _model_root != null:
+		remove_child(_model_root)
+		_model_root.free()
+		_model_root = null
+		_model_inst = null
+		_model_anim = null
+		_model_anim_name = ""
+		_model_profile = {}
+		_model_debug_logged = false
 	_ensure_model_for_entity()
 
 # Scale a 128px frame (or fallback quad) to roughly `sprite_px` world units tall/wide.

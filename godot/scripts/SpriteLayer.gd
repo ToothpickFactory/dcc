@@ -37,13 +37,12 @@ const ICE_PROJECTILE_SPRITE := 96
 const FIREBALL_PROJECTILE_SPRITE := 97
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan"]
 
 var _sprites: Dictionary = {}   # id -> EntitySprite
 var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, for facing delta)
 var _net                        # Net node (prev/cur snapshots); set via set_net
 var _grid: Dictionary = {}      # collision grid for canSee()
-var _hero_attack_toggle := false # render.ts heroAttackToggle (alternates cleave punch frames)
 var _you_class := ""            # local player's chosen Klass; drives hero model selection
 
 func set_net(net) -> void:
@@ -53,6 +52,7 @@ func set_grid(grid: Dictionary) -> void:
 	_grid = grid
 
 func set_you_class(klass: String) -> void:
+	klass = _normalize_class(klass)
 	if _you_class == klass:
 		return
 	_you_class = klass
@@ -61,6 +61,10 @@ func set_you_class(klass: String) -> void:
 		if spr.is_self:
 			spr.set_chosen_class(klass)
 			break
+
+func _normalize_class(klass: String) -> String:
+	var k := klass.strip_edges().to_lower()
+	return "" if k == "null" or k == "<null>" or k == "nil" else k
 
 # ---- hit flash dispatch (juice) -------------------------------------------
 # Flash a specific entity's sprite (death event carries an id).
@@ -114,17 +118,24 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 				_last_pos.erase(id)
 			continue
 		var is_self := id == you_id
+		var player_class := _player_class_from_dto(d, is_self)
 
 		var spr: EntitySprite = _sprites.get(id)
 		if spr == null:
 			spr = EntitySprite.new()
-			if is_self:
-				spr.set_chosen_class(_you_class)
+			if k == "player":
+				spr.set_chosen_class(player_class)
+			elif k == "monster":
+				spr.set_monster_kind(str(d.get("monKind", "")))
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
 			if k != "proj":  # projectiles are too fleeting to pop; everything else scales in
 				spr.spawn(now_ms)
+		elif k == "player":
+			spr.set_chosen_class(player_class)
+		elif k == "monster":
+			spr.set_monster_kind(str(d.get("monKind", "")))
 		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.
@@ -144,7 +155,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.set_loot_owner(lb_owner != "" and lb_owner != you_id)
 		elif k == "player" and not is_self:
 			# Ally nameplate + HP bar (so a healer can read teammate HP). Self uses the top HUD.
-			spr.set_ally_status(float(d.get("hp", 0.0)), float(d.get("maxHp", 0.0)), str(d.get("klass", "")))
+			spr.set_ally_status(float(d.get("hp", 0.0)), float(d.get("maxHp", 0.0)), player_class)
 		spr.set_cc(str(d.get("cc", ""))) # hard CC status tint (stun/root/freeze)
 		spr.set_dead_body(bool(d.get("dead", false)), now_ms)
 
@@ -204,18 +215,7 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 			if spr == null:
 				continue
 			if cid == you_id:
-				# render.ts self-cast specialisation: mend -> cast, cleave -> alternating
-				# punch (frameStart 0/8, 8 frames), else generic cast. We only have the
-				# ability INDEX on the wire; without the live ability list we fall back to
-				# a generic cast one-shot (the common case). Index 1 = starter "rocks"
-				# (cleave-like throw) -> punch toggle, matching the starter action bar.
-				var ability_idx := int(event.get("ability", 0))
-				if ability_idx == 1:
-					var frame_start := 8 if _hero_attack_toggle else 0
-					_hero_attack_toggle = not _hero_attack_toggle
-					spr.queue_action("punch", now_ms, frame_start, 8)
-				else:
-					spr.queue_action("cast", now_ms)
+				spr.queue_action(_self_action_for_ability(int(event.get("ability", 0))), now_ms)
 				continue
 			# A remote caster plays the "bolt" cast pose.
 			spr.queue_action("bolt", now_ms)
@@ -227,6 +227,23 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 			if spr2.kind != "monster" and spr2.kind != "boss":
 				continue
 			spr2.queue_action("strike", now_ms)
+
+func _self_action_for_ability(ability_idx: int) -> String:
+	if _net == null:
+		return "cast"
+	var abilities: Variant = _net.self_dto.get("abilities", [])
+	if not (abilities is Array):
+		return "cast"
+	if ability_idx < 0 or ability_idx >= (abilities as Array).size():
+		return "cast"
+	var ability: Variant = (abilities as Array)[ability_idx]
+	if not (ability is Dictionary):
+		return "cast"
+	var ab := ability as Dictionary
+	var is_projectile := bool(ab.get("projectile", false))
+	var dmg := float(ab.get("dmg", 0.0))
+	var is_melee := not is_projectile and dmg > 0.0 and not bool(ab.get("taunt", false)) and str(ab.get("groupBuff", "")) == ""
+	return "strike" if is_melee else "cast"
 
 # ---------------------------------------------------------------------------
 # Interpolation: blend a remote entity between its prev-snapshot and cur-snapshot
@@ -242,6 +259,11 @@ func _interp_alpha(now_ms: float) -> float:
 	var recv := float(cur.get("recv", now_ms))
 	var a := (now_ms - recv) / SNAPSHOT_MS
 	return clampf(a, 0.0, 1.0)
+
+func _player_class_from_dto(d: Dictionary, is_self: bool) -> String:
+	if is_self:
+		return _you_class if _you_class != "" else _normalize_class(str(d.get("klass", "")))
+	return _normalize_class(str(d.get("klass", "")))
 
 func _interp_pos(id: String, cur_dto: Dictionary, alpha: float) -> Vector2:
 	var cur_pos := Vector2(float(cur_dto.get("x", 0.0)), float(cur_dto.get("y", 0.0)))

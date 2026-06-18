@@ -807,8 +807,8 @@ function carveTunnel(solid: Uint8Array, w: number, h: number, from: number, reac
 
 // ---- spawns: camps (clusters) + scattered singles ----
 
-const MELEE_KINDS: MonsterKind[] = ["grunt", "brute", "swarm"];
-const ALL_KINDS: MonsterKind[] = ["grunt", "brute", "swarm", "ranged"];
+const MELEE_KINDS: MonsterKind[] = ["grunt", "brute", "swarm", "pirate", "sharkman"];
+const ALL_KINDS: MonsterKind[] = ["grunt", "brute", "swarm", "ranged", "pirate", "sharkman"];
 
 function generateSpawns(
   solid: Uint8Array,
@@ -828,7 +828,7 @@ function generateSpawns(
   // CAMPS: clusters of mixed kinds (melee + ranged + a healer) around far rooms.
   const rooms = roomCenters.filter(farFromStart).filter((r) => manhattan(r.x, r.y, farthest.x, farthest.y) > 3);
   shuffle(rooms, random);
-  const campCount = Math.min(rooms.length, 2 + Math.floor(depth * 0.5));
+  const campCount = Math.min(rooms.length, (2 + Math.floor(depth * 0.5)) * 2);
   for (let i = 0; i < campCount; i++) {
     placeCamp(spawns, solid, w, h, cell, random, rooms[i]!, depth);
   }
@@ -836,10 +836,11 @@ function generateSpawns(
   // SINGLES: lone wanderers scattered across the floor (the classic feel).
   const loose = openCells(solid, w, h).filter(farFromStart);
   shuffle(loose, random);
-  const singleCount = Math.min(loose.length, 3 + depth);
+  const singleCount = Math.min(loose.length, (3 + depth) * 2);
+  const singleKinds = shuffledKinds(ALL_KINDS, random);
   for (let i = 0; i < singleCount; i++) {
     const p = loose[i]!;
-    spawns.push({ ...cellCenter(p.x, p.y, cell), kind: ALL_KINDS[Math.floor(random() * ALL_KINDS.length)]! });
+    spawns.push({ ...cellCenter(p.x, p.y, cell), kind: singleKinds[i % singleKinds.length]! });
   }
   return spawns;
 }
@@ -864,6 +865,12 @@ function placeCamp(
     const c = openCellNear(solid, w, h, center, 3, random);
     if (c) spawns.push({ ...cellCenter(c.x, c.y, cell), kind });
   }
+}
+
+function shuffledKinds(kinds: MonsterKind[], random: () => number): MonsterKind[] {
+  const out = [...kinds];
+  shuffle(out, random);
+  return out;
 }
 
 function openCellNear(solid: Uint8Array, w: number, h: number, center: { x: number; y: number }, radius: number, random: () => number): { x: number; y: number } | null {

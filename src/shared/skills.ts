@@ -78,6 +78,8 @@ export function canEvolve(ability: Ability): boolean {
 export const MONSTER_XP: Record<MonsterKind | "boss", number> = {
   grunt: 5,
   swarm: 3,
+  pirate: 7,
+  sharkman: 10,
   brute: 12,
   ranged: 8,
   healer: 7, // support unit — worth killing first to stop the camp's heals
