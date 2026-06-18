@@ -132,6 +132,32 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
   check("concussive bolt stunned on impact", mob.ccKind === "stun" && mob.ccUntil > ctx.now, `ccKind=${mob.ccKind}`);
 }
 
+// ---- targeted AoE: resolves at the aimed point and fans visual bolts --------
+{
+  const mage = player("A", 0, 0, { abilities: [{ ...ABILITY_NODES.boulder }] });
+  const near = monster("N", 460, 0);
+  const splash = monster("S", 520, 70);
+  const far = monster("F", 760, 0);
+  const ctx = ctxOf([mage], [near, splash, far]);
+  check("targeted AoE fired", castAbility(ctx, mage, 0, 0) === true);
+  check("targeted AoE hit the target point", near.hp < 60, `near.hp=${near.hp}`);
+  check("targeted AoE splashed nearby foes", splash.hp < 60, `splash.hp=${splash.hp}`);
+  check("targeted AoE left distant foes alone", far.hp === 60, `far.hp=${far.hp}`);
+  check("targeted AoE spawned radial visual bolts", ctx.projectiles.length === 16 && ctx.projectiles.every((p) => p.visualOnly === true), `projectiles=${ctx.projectiles.length}`);
+}
+
+// ---- nova AoE: originates on the caster, not at max range -------------------
+{
+  const mage = player("NOVA", 0, 0, { abilities: [{ ...ABILITY_NODES.frostnova }] });
+  const close = monster("C", 120, 0);
+  const far = monster("F", 360, 0);
+  const ctx = ctxOf([mage], [close, far]);
+  check("frost nova fired", castAbility(ctx, mage, 0, 0) === true);
+  check("frost nova hit around the caster", close.hp < 60 && close.ccKind === "freeze", `hp=${close.hp} cc=${close.ccKind}`);
+  check("frost nova did not hit at max range", far.hp === 60, `far.hp=${far.hp}`);
+  check("frost nova spawned radial visual bolts", ctx.projectiles.length === 16 && ctx.projectiles.every((p) => p.visualOnly === true), `projectiles=${ctx.projectiles.length}`);
+}
+
 // ---- build depth: attribute points feed derived stats (spendAttr core) -----
 // Spent points live in `base`; recomputePlayer folds base -> derived. This is the
 // exact path WorldDO.spendAttr drives (p.base[attr] += 1; recomputePlayer).

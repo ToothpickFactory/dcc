@@ -22,6 +22,11 @@ import { applyCc, applyDamage, applyHeal } from "./combat";
 import { propBlocking } from "./collision";
 
 let seq = 0;
+const AREA_BOLT_COUNT = 16;
+const AREA_BOLT_RANGE = 150;
+const AREA_BOLT_SPEED = 520;
+const AREA_RADIUS_MIN = 120;
+const AREA_RADIUS_MAX = 230;
 
 // Resolve a cast in the aim direction. BALLISTIC — there is no homing/target.
 // Returns true if the cast fired (off cooldown).
@@ -56,6 +61,13 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   // Group haste (bloodlust): shared cooldown; buffs every nearby ally for a burst.
   if (ab.groupBuff === "haste") {
     applyGroupHaste(ctx, caster);
+    return true;
+  }
+
+  if (isAreaAbility(ab)) {
+    const origin = areaOrigin(ctx, caster, ab, aim);
+    resolveArea(ctx, caster, idx, ab, origin.x, origin.y, dmg);
+    spawnAreaBolts(ctx, caster, idx, ab, origin.x, origin.y);
     return true;
   }
 
@@ -148,6 +160,90 @@ function projectileRenderForAbility(ab: Ability): "fire" | "ice" | "poison" | un
   return ab.projectile ? "ice" : undefined;
 }
 
+function isAreaAbility(ab: Ability): boolean {
+  if (ab.category === "aoe") return true;
+  if (!ab.projectile) return false;
+  if (ab.dmg <= 0) return false;
+  return /\b(nova|burst|cataclysm|wildfire|detonation|shockwave|explosion|quake|storm|blast)\b/i.test(abilityTitle(ab));
+}
+
+function isNovaArea(ab: Ability): boolean {
+  const title = abilityTitle(ab);
+  return /\b(nova|whirlwind)\b/i.test(title) || (!ab.projectile && (ab.cone ?? 0) >= Math.PI * 1.8);
+}
+
+function abilityTitle(ab: Ability): string {
+  return `${ab.name ?? ""} ${ab.flavor ?? ""} ${ab.twist ?? ""}`;
+}
+
+function areaOrigin(ctx: WorldCtx, caster: PlayerState, ab: Ability, aim: number): { x: number; y: number } {
+  if (isNovaArea(ab)) return { x: caster.x, y: caster.y };
+  const range = Math.max(0, ab.range);
+  let x = caster.x + Math.cos(aim) * range;
+  let y = caster.y + Math.sin(aim) * range;
+  const step = Math.max(24, ctx.floor.collision.cell * 0.35);
+  for (let d = range; d > 0 && blocked(ctx.floor.collision, x, y); d -= step) {
+    x = caster.x + Math.cos(aim) * d;
+    y = caster.y + Math.sin(aim) * d;
+  }
+  return { x, y };
+}
+
+function areaRadius(ab: Ability): number {
+  if (isNovaArea(ab)) return Math.max(AREA_RADIUS_MIN, Math.min(AREA_RADIUS_MAX, ab.range));
+  return Math.max(AREA_RADIUS_MIN, Math.min(AREA_RADIUS_MAX, ab.range * 0.38));
+}
+
+function resolveArea(ctx: WorldCtx, caster: PlayerState, idx: number, ab: Ability, x: number, y: number, dmg: number): void {
+  const radius = areaRadius(ab);
+  for (const prop of ctx.props) {
+    if (prop.hp > 0 && hit(x, y, prop.x, prop.y, radius + prop.radius)) ctx.damageProp(prop, caster.id, true, idx);
+  }
+  for (const m of ctx.monsters) {
+    if (m.dead) continue;
+    if (hit(x, y, m.x, m.y, radius + MONSTER_KINDS[m.kind].radius)) {
+      applyDamage(ctx, m, dmg, caster.id, true, ab.slowMs, idx, dist(caster, m));
+      applyCc(ctx, m, ab);
+    }
+  }
+  if (ctx.boss && !ctx.boss.dead && hit(x, y, ctx.boss.x, ctx.boss.y, radius + BOSS_RADIUS)) {
+    applyDamage(ctx, ctx.boss, dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
+    applyCc(ctx, ctx.boss, ab);
+  }
+  for (const p of ctx.players.values()) {
+    if (p.id === caster.id || p.status !== "alive" || p.reached) continue;
+    if (hit(x, y, p.x, p.y, radius + PLAYER_RADIUS)) applyDamage(ctx, p, dmg, caster.id, true, ab.slowMs, idx, dist(caster, p));
+  }
+  ctx.pushFx({ e: "hit", x, y, ability: idx });
+}
+
+function spawnAreaBolts(ctx: WorldCtx, caster: PlayerState, idx: number, ab: Ability, x: number, y: number): void {
+  const render = projectileRenderForAbility(ab);
+  const sprite = projectileSpriteForAbility(ab);
+  const range = Math.min(AREA_BOLT_RANGE, Math.max(80, areaRadius(ab) * 0.85));
+  const speed = Math.max(ab.speed ?? AREA_BOLT_SPEED, 240);
+  for (let i = 0; i < AREA_BOLT_COUNT; i++) {
+    const a = (Math.PI * 2 * i) / AREA_BOLT_COUNT;
+    ctx.projectiles.push({
+      id: `pr_${(++seq).toString(36)}`,
+      ownerId: caster.id,
+      x,
+      y,
+      vx: Math.cos(a) * speed,
+      vy: Math.sin(a) * speed,
+      dmg: 0,
+      slowMs: 0,
+      ability: idx,
+      sprite,
+      proj: render,
+      ttl: range / speed,
+      hitR: 0,
+      boss: false,
+      visualOnly: true,
+    });
+  }
+}
+
 function isIceOrRockProjectile(ab: Ability): boolean {
   const rockIds = new Set(["rocks", "sharprocks", "boulder", "multishot", "scattershot"]);
   return ab.projectile === true && (rockIds.has(ab.id) || (ab.slowMs ?? 0) > 0);
@@ -223,6 +319,7 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
     pr.x += pr.vx * dt;
     pr.y += pr.vy * dt;
     if (blocked(grid, pr.x, pr.y)) return false; // stopped by a wall
+    if (pr.visualOnly) return true;
     const prop = propBlocking(ctx, pr.x, pr.y, pr.hitR);
     if (prop) {
       ctx.damageProp(prop, pr.ownerId, !pr.boss, pr.ability);

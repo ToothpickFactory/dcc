@@ -81,6 +81,9 @@ const FIREBALL_MODEL_PATH := "res://assets/Projectiles/Fireball/Fireball.glb"
 const FIREBALL_MODEL_SCALE := 36.0
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
+const LOOT_MODEL_PATH := "res://assets/Props/loot.glb"
+const LOOT_MODEL_SCALE := 42.0
+const LOOT_LIGHT_ENERGY := 1.8
 
 # Fallback fill colors (render.ts `C` + per-kind). Used when no clip is loaded yet, and as
 # the modulate tint for non-animated kinds (proj / lootbag).
@@ -108,6 +111,22 @@ var _loot_locked := false
 var _lock_label: Label3D
 func set_loot_owner(locked: bool) -> void:
 	_loot_locked = locked
+
+func _loot_display_color(now_ms: float) -> Color:
+	var col: Color = LOOT_RARITY_COL.get(_loot_rarity, COL_LOOT)
+	if _loot_rarity != "common":
+		col = col * (0.85 + 0.25 * (0.5 + 0.5 * sin(now_ms * 0.006)))
+	if _loot_locked:
+		col = col * 0.45
+	return col
+
+func _update_loot_model_effects(now_ms: float) -> void:
+	if kind != "lootbag":
+		return
+	var col := _loot_display_color(now_ms)
+	if _model_light != null:
+		_model_light.light_color = col
+		_model_light.light_energy = LOOT_LIGHT_ENERGY * (0.65 if _loot_locked else 1.0)
 
 # ---- ally nameplate + HP bar (other players only; self uses the top HUD) ----
 const ALLY_BAR_W := 90.0
@@ -471,6 +490,18 @@ func _model_profile_for_entity() -> Dictionary:
 			"light_y": 16.0,
 			"contrast": 1.3,
 			"saturation": 1.35,
+		}
+	if kind == "lootbag":
+		return {
+			"label": "Loot",
+			"path": LOOT_MODEL_PATH,
+			"scale": LOOT_MODEL_SCALE,
+			"y": 8.0,
+			"light_energy": LOOT_LIGHT_ENERGY,
+			"light_range": 150.0,
+			"light_y": 42.0,
+			"contrast": 1.18,
+			"saturation": 1.15,
 		}
 	if kind == "monster":
 		var root := _enemy_root()
@@ -991,6 +1022,10 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		scale = Vector3.ONE
 		texture = null
 		modulate.a = 0.0
+		if kind == "lootbag":
+			_update_loot_model_effects(now_ms)
+			_update_loot_lock()
+			return
 		var model_dir := _action_facing_dir if _action != "" else _facing_dir
 		var model_flip := _action_flip if _action != "" else _flip
 		_model_root.rotation.x = 0.0
@@ -1010,12 +1045,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 		# Loot bags glow by rarity (overbright tint) + shimmer for uncommon+, so you can
 		# spot a legendary across the room — CoN's loot-shower legibility.
 		if kind == "lootbag":
-			var col: Color = LOOT_RARITY_COL.get(_loot_rarity, COL_LOOT)
-			if _loot_rarity != "common":
-				col = col * (0.85 + 0.25 * (0.5 + 0.5 * sin(now_ms * 0.006)))
-			if _loot_locked:
-				col = col * 0.45 # dimmed — owned by another player for now
-			modulate = col
+			modulate = _loot_display_color(now_ms)
 			_update_loot_lock()
 		_apply_size(sprite_px)
 		return

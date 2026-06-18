@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE, ICE_PROJECTILE_SPRITE, POISON_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent } from "../protocol";
@@ -19,6 +20,7 @@ const C = {
 
 const HERO_ROOT = "/assets/Heroes/Kevin";
 const BOSS_ROOT = "/assets/Bosses/Slime";
+const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
   cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
@@ -107,6 +109,10 @@ export class Renderer {
   private clipPromises = new Map<string, Promise<LoadedClip | null>>();
   private lastPos = new Map<string, { x: number; y: number }>();
   private textureLoader = new THREE.TextureLoader();
+  private gltfLoader = new GLTFLoader();
+  private lootModelSource: THREE.Object3D | null = null;
+  private lootModelPromise: Promise<THREE.Object3D | null> | null = null;
+  private lootModels = new Map<string, THREE.Object3D>();
   private tombstoneTexture: THREE.CanvasTexture | null = null;
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
@@ -377,6 +383,77 @@ export class Renderer {
     return s;
   }
 
+  private ensureLootModel(): Promise<THREE.Object3D | null> {
+    if (this.lootModelSource) return Promise.resolve(this.lootModelSource);
+    if (this.lootModelPromise) return this.lootModelPromise;
+    this.lootModelPromise = this.gltfLoader.loadAsync(LOOT_MODEL_PATH)
+      .then((gltf) => {
+        const source = gltf.scene;
+        source.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+          obj.frustumCulled = false;
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          obj.material = mats.map((mat) => mat.clone()) as THREE.Material[];
+        });
+        this.lootModelSource = source;
+        return source;
+      })
+      .catch(() => null)
+      .finally(() => {
+        this.lootModelPromise = null;
+      });
+    return this.lootModelPromise;
+  }
+
+  private lootColor(rarity?: string): THREE.Color {
+    switch (rarity) {
+      case "uncommon": return new THREE.Color(0x6cff99);
+      case "rare": return new THREE.Color(0x73c7ff);
+      case "epic": return new THREE.Color(0xd06cff);
+      case "legendary": return new THREE.Color(0xffc95a);
+      default: return new THREE.Color(0xd1c894);
+    }
+  }
+
+  private createLootModel(id: string, rarity?: string): THREE.Object3D | null {
+    if (!this.lootModelSource) {
+      void this.ensureLootModel();
+      return null;
+    }
+    const root = this.lootModelSource.clone(true);
+    root.userData.entityId = id;
+    const color = this.lootColor(rarity);
+    root.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      obj.material = mats.map((mat) => {
+        const copy = mat.clone();
+        if ("color" in copy && copy.color instanceof THREE.Color) copy.color.lerp(color, 0.2);
+        if ("emissive" in copy && copy.emissive instanceof THREE.Color) {
+          copy.emissive.copy(color).multiplyScalar(0.25);
+        }
+        return copy;
+      }) as THREE.Material[];
+    });
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    root.scale.setScalar(44 / maxDim);
+    this.scene.add(root);
+    this.lootModels.set(id, root);
+    return root;
+  }
+
+  private syncLootModel(e: EntityDTO, visible: boolean): boolean {
+    let model = this.lootModels.get(e.id);
+    if (!model) model = this.createLootModel(e.id, e.rarity);
+    if (!model) return false;
+    model.position.set(e.x, 8, e.y);
+    model.visible = visible;
+    return true;
+  }
+
   private setFallback(state: SpriteState, color: number): void {
     const mat = state.sprite.material as THREE.SpriteMaterial;
     mat.map = null;
@@ -634,6 +711,7 @@ export class Renderer {
     const now = performance.now();
     const seen = new Set<string>();
     const propIds = new Set<string>();
+    const seenLootModels = new Set<string>();
     for (const e of ents) {
       seen.add(e.id);
       if (e.kind === "prop") {
@@ -644,6 +722,18 @@ export class Renderer {
           (stale.sprite.material as THREE.SpriteMaterial).dispose();
           this.sprites.delete(e.id);
         }
+        continue;
+      }
+      if (e.kind === "lootbag" && this.syncLootModel(e, true)) {
+        seenLootModels.add(e.id);
+        const stale = this.sprites.get(e.id);
+        if (stale) {
+          this.scene.remove(stale.sprite);
+          stale.texture?.dispose();
+          (stale.sprite.material as THREE.SpriteMaterial).dispose();
+          this.sprites.delete(e.id);
+        }
+        this.lastPos.set(e.id, { x: e.x, y: e.y });
         continue;
       }
       let color: number;
@@ -780,6 +870,13 @@ export class Renderer {
         (s.sprite.material as THREE.SpriteMaterial).dispose();
         this.sprites.delete(id);
         this.lastPos.delete(id);
+      }
+    }
+    for (const [id, model] of this.lootModels) {
+      if (!seenLootModels.has(id)) {
+        this.scene.remove(model);
+        this.lootModels.delete(id);
+        if (!seen.has(id)) this.lastPos.delete(id);
       }
     }
   }

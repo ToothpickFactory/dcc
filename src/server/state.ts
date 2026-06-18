@@ -123,6 +123,7 @@ export interface ProjectileState {
   ttl: number; // seconds remaining
   hitR: number; // projectile's own collision radius (px), added to the target's
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players
+  visualOnly?: boolean; // client-only spell flourish; moves/fades but never resolves hits
   allyOnly?: boolean; // support projectile: only ever resolves on allied players (heals/shields)
   shield?: number; // support projectile: absorb shield applied to the struck ally
 }
