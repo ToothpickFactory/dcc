@@ -1,6 +1,6 @@
 import { WALKABLE_DELTA } from "../shared/constants";
 import type { MonsterKind, Theme } from "../shared/types";
-import type { CollisionGrid, FloorDescriptor } from "./types";
+import type { CollisionGrid, FloorDescriptor, HazardSpec } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
 
 const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
@@ -113,6 +113,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   const decorations = [...prefabDecor, ...scatterDecor];
 
   const theme = THEMES[Math.floor(random() * THEMES.length)]!;
+  const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
 
   // Heightfield 2.5D: generate a deterministic per-cell ground height on the FINE grid. The seed is
   // drawn HERE, as the very last random() call, so every existing layout draw above stays byte-
@@ -147,6 +148,111 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     spawns,
     chests,
     decorations,
+    hazards,
+  };
+}
+
+function generateHazards(
+  solid: Uint8Array,
+  gw: number,
+  gh: number,
+  cell: number,
+  random: () => number,
+  depth: number,
+  openness: number,
+  start: { x: number; y: number },
+  stairs: { x: number; y: number },
+  bossCell: { x: number; y: number },
+): HazardSpec[] {
+  const open = openCells(solid, gw, gh).filter((p) =>
+    manhattan(p.x, p.y, start.x, start.y) > 5 &&
+    manhattan(p.x, p.y, stairs.x, stairs.y) > 4 &&
+    manhattan(p.x, p.y, bossCell.x, bossCell.y) > 3
+  );
+  shuffle(open, random);
+  const count = Math.min(open.length, 6 + Math.floor(depth * 1.35) + Math.floor(openness * 5));
+  const hazards: HazardSpec[] = [];
+  const used = new Set<string>();
+  const baseDmg = 5 + Math.floor(depth * 1.7);
+  const pickOpen = () => {
+    while (open.length > 0) {
+      const p = open.pop()!;
+      let crowded = false;
+      for (let y = p.y - 2; y <= p.y + 2 && !crowded; y++) {
+        for (let x = p.x - 2; x <= p.x + 2; x++) {
+          if (used.has(`${x},${y}`)) {
+            crowded = true;
+            break;
+          }
+        }
+      }
+      if (crowded) continue;
+      used.add(`${p.x},${p.y}`);
+      return p;
+    }
+    return null;
+  };
+
+  for (let i = 0; i < count; i++) {
+    const p = pickOpen();
+    if (!p) break;
+    const roll = random();
+    const center = cellCenter(p.x, p.y, cell);
+    const phaseMs = Math.floor(random() * 2600);
+    if (roll < 0.26) {
+      hazards.push({ kind: "floor_spikes", ...center, r: 46, dmg: baseDmg, periodMs: 2300, activeMs: 820, phaseMs });
+    } else if (roll < 0.47) {
+      hazards.push({ kind: "lava_pit", ...center, r: 58, dmg: baseDmg + 3 });
+    } else if (roll < 0.66) {
+      hazards.push({ kind: "acid_pit", ...center, r: 58, dmg: Math.max(3, baseDmg - 1) });
+    } else {
+      const wall = adjacentWallDir(solid, gw, gh, p.x, p.y, random);
+      if (!wall) {
+        hazards.push({ kind: "floor_spikes", ...center, r: 46, dmg: baseDmg, periodMs: 2300, activeMs: 820, phaseMs });
+        continue;
+      }
+      const kind = roll < 0.83 ? "wall_spikes" : "flame_turret";
+      hazards.push({
+        kind,
+        ...center,
+        r: kind === "flame_turret" ? 54 : 42,
+        dmg: kind === "flame_turret" ? baseDmg + 2 : baseDmg + 1,
+        dir: wall,
+        length: kind === "flame_turret" ? cell * 3.2 : cell * 2.1,
+        width: kind === "flame_turret" ? 72 : 58,
+        periodMs: kind === "flame_turret" ? 2800 : 2100,
+        activeMs: kind === "flame_turret" ? 1050 : 640,
+        phaseMs,
+      });
+    }
+  }
+  return hazards;
+}
+
+function adjacentWallDir(solid: Uint8Array, w: number, h: number, x: number, y: number, random: () => number): number | null {
+  const dirs = [
+    { dx: -1, dy: 0, dir: 0 },
+    { dx: 0, dy: -1, dir: 1 },
+    { dx: 1, dy: 0, dir: 2 },
+    { dx: 0, dy: 1, dir: 3 },
+  ].filter((d) => {
+    const wx = x + d.dx;
+    const wy = y + d.dy;
+    return wx >= 0 && wy >= 0 && wx < w && wy < h && solid[wy * w + wx] === 1;
+  });
+  if (dirs.length === 0) return null;
+  return dirs[Math.floor(random() * dirs.length)]!.dir;
+}
+
+function scHazard(h: HazardSpec): HazardSpec {
+  const SCALE = 2;
+  return {
+    ...h,
+    x: h.x * SCALE,
+    y: h.y * SCALE,
+    r: h.r * SCALE,
+    length: h.length === undefined ? undefined : h.length * SCALE,
+    width: h.width === undefined ? undefined : h.width * SCALE,
   };
 }
 

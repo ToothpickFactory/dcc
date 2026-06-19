@@ -1,5 +1,21 @@
 import type { Theme, MonsterKind } from "../shared/types";
 
+export type HazardKind = "floor_spikes" | "lava_pit" | "acid_pit" | "wall_spikes" | "flame_turret";
+
+export interface HazardSpec {
+  kind: HazardKind;
+  x: number;
+  y: number;
+  r: number;
+  dmg: number;
+  dir?: number; // 0=east, 1=south, 2=west, 3=north
+  length?: number;
+  width?: number;
+  periodMs?: number;
+  activeMs?: number;
+  phaseMs?: number;
+}
+
 export interface CollisionGrid {
   w: number; // grid width (cells)
   h: number; // grid height (cells)
@@ -26,4 +42,5 @@ export interface FloorDescriptor {
   spawns: { x: number; y: number; kind: MonsterKind }[];
   chests: { x: number; y: number }[];
   decorations: { x: number; y: number; variant: number; scale: number }[];
+  hazards: HazardSpec[];
 }

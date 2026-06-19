@@ -49,6 +49,7 @@ for (let seed = 1; seed <= 100; seed++) {
   assert.equal(canOccupy(grid, floor.stairs.x, floor.stairs.y, PLAYER_RADIUS), true);
   for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true);
   for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true);
+  for (const hazard of floor.hazards) assert.equal(canOccupy(grid, hazard.x, hazard.y, 12), true);
 
   // ---- heightfield 2.5D invariants ----
   const g = grid.ground;

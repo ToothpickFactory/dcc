@@ -143,6 +143,7 @@ export class Renderer {
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
   private decorations: THREE.Sprite[] = [];
+  private hazards: THREE.Object3D[] = [];
   private livePropIds = new Set<string>();
   private propsSeen = false;
   private floatingTexts: FloatingText[] = [];
@@ -381,6 +382,70 @@ export class Renderer {
     this.decorations = [];
     this.propsSeen = false;
     this.livePropIds = new Set();
+  }
+
+  private setHazards(floor: FloorDescriptor): void {
+    this.clearHazards();
+    for (const hazard of floor.hazards) {
+      const group = new THREE.Group();
+      group.userData.hazard = hazard;
+      group.userData.periodic = !!hazard.periodMs && !!hazard.activeMs;
+      const color = hazard.kind === "lava_pit" || hazard.kind === "flame_turret"
+        ? 0xff5a20
+        : hazard.kind === "acid_pit"
+          ? 0x78ff4d
+          : 0xd8d6c6;
+      if (hazard.kind === "lava_pit" || hazard.kind === "acid_pit") {
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.78, depthWrite: false });
+        const disk = new THREE.Mesh(new THREE.CircleGeometry(hazard.r, 32), mat);
+        disk.rotation.x = -Math.PI / 2;
+        disk.position.set(hazard.x, 3, hazard.y);
+        group.add(disk);
+        const rim = new THREE.Mesh(new THREE.RingGeometry(hazard.r * 0.78, hazard.r, 32), new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.45, depthWrite: false }));
+        rim.rotation.x = -Math.PI / 2;
+        rim.position.set(hazard.x, 4, hazard.y);
+        group.add(rim);
+      } else if (hazard.kind === "floor_spikes") {
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+        const count = 8;
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2;
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(13, 42, 4), mat);
+          const rr = i === 0 ? 0 : hazard.r * 0.42;
+          spike.position.set(hazard.x + Math.cos(a) * rr, 21, hazard.y + Math.sin(a) * rr);
+          spike.rotation.y = Math.PI * 0.25;
+          group.add(spike);
+        }
+      } else {
+        const len = hazard.length ?? hazard.r;
+        const width = hazard.width ?? hazard.r;
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.62, depthWrite: false });
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(len, 10, width), mat);
+        const dir = hazard.dir ?? 0;
+        const ang = dir === 0 ? 0 : dir === 1 ? Math.PI / 2 : dir === 2 ? Math.PI : -Math.PI / 2;
+        beam.rotation.y = ang;
+        beam.position.set(hazard.x + Math.cos(ang) * len * 0.5, 8, hazard.y + Math.sin(ang) * len * 0.5);
+        group.add(beam);
+        const turret = new THREE.Mesh(new THREE.CylinderGeometry(22, 28, 36, 8), new THREE.MeshBasicMaterial({ color: hazard.kind === "flame_turret" ? 0x33221a : 0x343945 }));
+        turret.position.set(hazard.x, 24, hazard.y);
+        group.add(turret);
+      }
+      this.scene.add(group);
+      this.hazards.push(group);
+    }
+  }
+
+  private clearHazards(): void {
+    for (const hazard of this.hazards) {
+      this.scene.remove(hazard);
+      hazard.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        obj.geometry.dispose();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) mat.dispose();
+      });
+    }
+    this.hazards = [];
   }
 
   private spriteFor(id: string, color: number, size: number): SpriteState {
@@ -1061,6 +1126,7 @@ export class Renderer {
   setFloor(floor: FloorDescriptor, exitOpen = true): void {
     void this.applyTileTheme(floor.theme);
     void this.applyPropTheme(floor, exitOpen);
+    this.setHazards(floor);
 
     if (this.walls) {
       this.scene.remove(this.walls);
@@ -1111,6 +1177,7 @@ export class Renderer {
     this.propThemeRequest++;
     this.removeStairs();
     this.clearDecorations();
+    this.clearHazards();
   }
 
   private removeStairs(): void {
@@ -1320,6 +1387,7 @@ export class Renderer {
 
   draw() {
     this.updateFloatingTexts();
+    this.updateHazards(performance.now());
     // Pulse the stairs marker (size + opacity) so the exit reads as a beacon.
     if (this.stairs) {
       const t = performance.now();
@@ -1329,6 +1397,29 @@ export class Renderer {
       (this.stairs.material as THREE.SpriteMaterial).opacity = 0.65 + 0.35 * pulse;
     }
     this.renderer.render(this.scene, this.camera);
+  }
+
+  private updateHazards(now: number): void {
+    for (const group of this.hazards) {
+      const hazard = group.userData.hazard as FloorDescriptor["hazards"][number] | undefined;
+      if (!hazard) continue;
+      const active = this.clientHazardActive(hazard, now);
+      const pulse = 0.75 + 0.25 * Math.sin(now / 110 + (hazard.phaseMs ?? 0));
+      group.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (!(mat instanceof THREE.MeshBasicMaterial)) continue;
+          mat.opacity = active ? (hazard.kind === "floor_spikes" ? 0.82 + 0.18 * pulse : 0.55 + 0.35 * pulse) : 0.2;
+        }
+        if (hazard.kind === "floor_spikes") obj.position.y = active ? Math.max(obj.position.y, 21) : 8;
+      });
+    }
+  }
+
+  private clientHazardActive(hazard: FloorDescriptor["hazards"][number], now: number): boolean {
+    if (!hazard.periodMs || !hazard.activeMs) return true;
+    return ((now + (hazard.phaseMs ?? 0)) % hazard.periodMs) < hazard.activeMs;
   }
 
   private updateFloatingTexts(): void {

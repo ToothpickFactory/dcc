@@ -10,7 +10,7 @@ extends Node3D
 ## a "dcc_world" Vector2 meta) so Main can fog them with Geo.line_of_sight.
 ##
 ## Public API:
-##   apply(theme: String, decorations: Array, stairs: Dictionary) -> void
+##   apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = []) -> void
 ##   clear() -> void
 ##   decoration_sprites: Array[Sprite3D]   # spawned decoration billboards
 ##   stairs_sprite: Sprite3D               # the exit marker (null until apply)
@@ -63,6 +63,7 @@ var stairs_sprite: Sprite3D
 # decorations, but NOT destructible props (skipped by set_live_props). Glow pools flicker.
 var atmo_sprites: Array[Node3D] = []
 var _glow_quads: Array[Node3D] = []  # subset of atmo_sprites that flicker
+var _hazard_nodes: Array[Node3D] = []
 var _flicker := 0.0
 static var _glow_tex: Texture2D
 static var _decal_tex: Texture2D
@@ -90,6 +91,8 @@ func _process(dt: float) -> void:
 			var phase := float(i) * 1.7
 			var f := 0.78 + 0.22 * sin(_flicker * 7.0 + phase) * (0.6 + 0.4 * sin(_flicker * 17.0 + phase))
 			(q as GeometryInstance3D).transparency = clampf(1.0 - f, 0.0, 0.6)
+	if not _hazard_nodes.is_empty():
+		_update_hazards()
 	# Pulse + shimmer the stairs marker so the exit reads as a glowing portal.
 	if stairs_sprite == null or not stairs_sprite.visible:
 		return
@@ -104,7 +107,7 @@ func _process(dt: float) -> void:
 
 ## Theme the floor: retexture World's ground/wall materials and spawn decoration +
 ## stairs billboards. Mirrors applyTileTheme + applyPropTheme from render.ts.
-func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
+func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = []) -> void:
 	clear()
 	if not THEMES.has(theme):
 		# Unknown theme: leave World on its flat fallback colours, no props.
@@ -160,6 +163,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary) -> void:
 
 	# 5) Atmosphere: torch light-pools along walls + grime decals on the floor.
 	_place_atmosphere()
+	_place_hazards(hazards)
 
 func set_live_props(ents: Array) -> void:
 	if ents.is_empty():
@@ -192,6 +196,10 @@ func clear() -> void:
 			a.queue_free()
 	atmo_sprites.clear()
 	_glow_quads.clear()
+	for h in _hazard_nodes:
+		if is_instance_valid(h):
+			h.queue_free()
+	_hazard_nodes.clear()
 	if is_instance_valid(stairs_sprite):
 		stairs_sprite.queue_free()
 	stairs_sprite = null
@@ -222,6 +230,125 @@ func _make_billboard(tex: Texture2D, wx: float, wy: float, wz: float, size_px: f
 	sprite.position = Vector3(wx, wy, wz)
 	sprite.set_meta("dcc_world", Vector2(wx, wz))
 	return sprite
+
+
+# --- hazards ---------------------------------------------------------------
+
+func _place_hazards(hazards: Array) -> void:
+	for h in hazards:
+		if typeof(h) != TYPE_DICTIONARY:
+			continue
+		var hz: Dictionary = h
+		var kind := str(hz.get("kind", ""))
+		var color := Color(0.85, 0.84, 0.78, 0.9)
+		if kind == "lava_pit" or kind == "flame_turret":
+			color = Color(1.0, 0.32, 0.08, 0.78)
+		elif kind == "acid_pit":
+			color = Color(0.45, 1.0, 0.27, 0.78)
+		var node := Node3D.new()
+		node.set_meta("dcc_hazard", hz)
+		add_child(node)
+		_hazard_nodes.append(node)
+		var x := float(hz.get("x", 0.0))
+		var y := float(hz.get("y", 0.0))
+		var gh := _gh(x, y)
+		if kind == "lava_pit" or kind == "acid_pit":
+			var disk := _cylinder_mesh(float(hz.get("r", 80.0)), 4.0, color)
+			disk.position = Vector3(x, gh + 3.0, y)
+			node.add_child(disk)
+			var rim := _cylinder_mesh(float(hz.get("r", 80.0)) * 1.04, 3.0, Color(0.03, 0.025, 0.02, 0.45))
+			rim.position = Vector3(x, gh + 2.0, y)
+			node.add_child(rim)
+		elif kind == "floor_spikes":
+			var count := 8
+			for i in count:
+				var a := (float(i) / float(count)) * TAU
+				var rr := 0.0 if i == 0 else float(hz.get("r", 80.0)) * 0.42
+				var spike := _cone_mesh(13.0, 42.0, color)
+				spike.position = Vector3(x + cos(a) * rr, gh + 21.0, y + sin(a) * rr)
+				spike.rotate_y(PI * 0.25)
+				node.add_child(spike)
+		else:
+			var dir := int(hz.get("dir", 0))
+			var angle := 0.0
+			if dir == 1:
+				angle = PI * 0.5
+			elif dir == 2:
+				angle = PI
+			elif dir == 3:
+				angle = -PI * 0.5
+			var length := float(hz.get("length", hz.get("r", 120.0)))
+			var width := float(hz.get("width", hz.get("r", 80.0)))
+			var beam := _box_mesh(Vector3(length, 10.0, width), color)
+			beam.rotation.y = angle
+			beam.position = Vector3(x + cos(angle) * length * 0.5, gh + 8.0, y + sin(angle) * length * 0.5)
+			node.add_child(beam)
+			var turret := _cylinder_mesh(26.0, 36.0, Color(0.18, 0.16, 0.14, 1.0))
+			turret.position = Vector3(x, gh + 24.0, y)
+			node.add_child(turret)
+
+func _update_hazards() -> void:
+	var now := float(Time.get_ticks_msec())
+	for node in _hazard_nodes:
+		if not is_instance_valid(node):
+			continue
+		var hz: Dictionary = node.get_meta("dcc_hazard", {})
+		var active := _hazard_active(hz, now)
+		var pulse := 0.75 + 0.25 * sin(now / 110.0 + float(hz.get("phaseMs", 0.0)))
+		for child in node.get_children():
+			if child is GeometryInstance3D:
+				var gi := child as GeometryInstance3D
+				gi.transparency = 0.0 if active else 0.68
+				if str(hz.get("kind", "")) == "floor_spikes":
+					gi.position.y = (21.0 + _gh(gi.position.x, gi.position.z)) if active else (8.0 + _gh(gi.position.x, gi.position.z))
+				else:
+					gi.scale = Vector3.ONE * (0.95 + 0.05 * pulse if active else 1.0)
+
+func _hazard_active(hz: Dictionary, now: float) -> bool:
+	var period := float(hz.get("periodMs", 0.0))
+	var active := float(hz.get("activeMs", 0.0))
+	if period <= 0.0 or active <= 0.0:
+		return true
+	return fmod(now + float(hz.get("phaseMs", 0.0)), period) < active
+
+func _hazard_mat(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if color.a < 0.85 else BaseMaterial3D.BLEND_MODE_MIX
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
+
+func _cylinder_mesh(radius: float, height: float, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 32
+	mesh.material = _hazard_mat(color)
+	mi.mesh = mesh
+	return mi
+
+func _cone_mesh(radius: float, height: float, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.0
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = 4
+	mesh.material = _hazard_mat(color)
+	mi.mesh = mesh
+	return mi
+
+func _box_mesh(size: Vector3, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	mesh.material = _hazard_mat(color)
+	mi.mesh = mesh
+	return mi
 
 
 # --- atmosphere: torch light-pools + grime decals --------------------------

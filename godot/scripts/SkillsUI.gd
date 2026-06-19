@@ -41,6 +41,7 @@ var _stats_box: VBoxContainer
 var _attr_box: VBoxContainer
 var _talent_box: VBoxContainer
 var _list: VBoxContainer
+var _scroll: ScrollContainer
 var _reached := false        # in the waiting room (gates the Respec button)
 var _respec_armed := false   # two-tap confirm for Respec
 
@@ -76,6 +77,7 @@ func toggle() -> void:
 func open() -> void:
 	if not _root.visible:
 		_sfx_play("ui_open")
+	_fit_card_to_window()
 	_root.visible = true
 	_key = ""
 	_render()
@@ -400,16 +402,16 @@ func _build_panel() -> void:
 
 	# Roomy two-column layout so nothing needs scrolling on a normal window. The scroll
 	# stays as a safety net for very small windows / huge talent trees.
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(960, 720)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.custom_minimum_size = _panel_size(960.0)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(_scroll)
 
 	var col := VBoxContainer.new()
 	col.custom_minimum_size = Vector2(940, 0)
 	col.add_theme_constant_override("separation", 10)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(col)
+	_scroll.add_child(col)
 
 	# Header: title + close.
 	var headrow := HBoxContainer.new()
@@ -491,6 +493,16 @@ func _build_panel() -> void:
 # =====================================================================
 # Helpers
 # =====================================================================
+
+func _panel_size(width: float) -> Vector2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	return Vector2(minf(width, viewport_size.x * 0.94), maxf(240.0, viewport_size.y * 0.7))
+
+func _fit_card_to_window() -> void:
+	if _scroll == null:
+		return
+	_scroll.custom_minimum_size = _panel_size(_scroll.custom_minimum_size.x)
+	_scroll.size = _scroll.custom_minimum_size
 
 func _state_key() -> String:
 	var abilities := _abilities()

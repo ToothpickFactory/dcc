@@ -126,6 +126,7 @@ func open() -> void:
 	if not _has_inv:
 		return
 	_selected_slot = -1
+	_fit_card_to_window(_inv_root)
 	if not _inv_root.visible:
 		_sfx_play("ui_open")
 	_inv_root.visible = true
@@ -152,6 +153,7 @@ func on_bag(msg: Dictionary) -> void:
 	if _open_bag_items.is_empty():
 		close_loot()   # emptied -> auto-close
 		return
+	_fit_card_to_window(_loot_root)
 	if not _loot_root.visible:
 		_sfx_play("ui_open")
 	_loot_root.visible = true
@@ -743,7 +745,7 @@ func _card(parent: Control) -> Control:
 	center.add_child(panel)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(780, 760)
+	scroll.custom_minimum_size = _panel_size(780.0)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	panel.add_child(scroll)
 
@@ -753,6 +755,28 @@ func _card(parent: Control) -> Control:
 	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(holder)
 	return holder
+
+func _panel_size(width: float) -> Vector2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	return Vector2(minf(width, viewport_size.x * 0.94), maxf(240.0, viewport_size.y * 0.7))
+
+func _fit_card_to_window(root: Control) -> void:
+	if root == null:
+		return
+	var scroll := _find_scroll(root)
+	if scroll == null:
+		return
+	scroll.custom_minimum_size = _panel_size(scroll.custom_minimum_size.x)
+	scroll.size = scroll.custom_minimum_size
+
+func _find_scroll(node: Node) -> ScrollContainer:
+	if node is ScrollContainer:
+		return node
+	for child in node.get_children():
+		var found := _find_scroll(child)
+		if found != null:
+			return found
+	return null
 
 # Section header label (uppercase, spaced).
 func _section(text: String) -> Label:

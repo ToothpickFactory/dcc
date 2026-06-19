@@ -65,7 +65,7 @@ import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
 import { castAbility, stepProjectiles } from "./sim/projectiles";
-import { applyHeal } from "./sim/combat";
+import { applyDamage, applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
 import { MIGRATIONS, SCHEMA } from "./persistence/schema";
@@ -88,6 +88,7 @@ const GEAR_DROP_CHANCE: Record<MonsterKind, number> = {
 const POTION_DROP_CHANCE = 0.35; // separate, frequent roll so healing stays available
 const PROP_LOOT_CHANCE = 0.14; // destructible decoration chance to spill a small pickup
 const PROP_RADIUS = 24; // px; matches ~58px billboard props without making corridors impossible
+const HAZARD_HIT_MS = 760; // per-player cooldown while standing in a live hazard
 const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-side validation)
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
@@ -119,6 +120,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private profiles: ProfileTracker = new EmaProfileTracker();
   private loot: LootEngine = new HeuristicLootEngine();
   private lootStream: () => number = () => 0; // seeded per floor for deterministic grants
+  private hazardNextHit = new Map<string, number>(); // `${playerId}:${hazardIndex}` -> next logical hit
   private flavorSvc!: AiFlavorService; // LLM name/flavor (off the loop); falls open to a static table
   private flavorEnabled = false; // feature flag (env FLAVOR_ENABLED); default off
   private sql: SqlStorage;
@@ -191,6 +193,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = `run-${Date.now().toString(36)}`;
     this.phase = "running";
     this.floor = this.makeFloor(FIRST_SEED, 1, false);
+    this.hazardNextHit.clear();
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -202,6 +205,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = run.runId;
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
     this.floor = generateFloor(run.seed, run.currentFloor, { pvp: run.pvp });
+    this.hazardNextHit.clear();
     this.pvpExitOpen = this.floor.pvp ? run.pvpExitOpen !== false : true;
     this.seedLoot();
     this.spawnProps();
@@ -299,6 +303,49 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       radius: Math.max(12, PROP_RADIUS * d.scale),
       hp: 1,
     }));
+  }
+
+  private stepHazards(): void {
+    if (this.floor.hazards.length === 0) return;
+    for (const p of this.players.values()) {
+      if (p.status !== "alive" || p.reached) continue;
+      for (let i = 0; i < this.floor.hazards.length; i++) {
+        const hazard = this.floor.hazards[i]!;
+        if (!this.hazardActive(hazard)) continue;
+        if (!this.inHazard(p.x, p.y, hazard)) continue;
+        const key = `${p.id}:${i}`;
+        if ((this.hazardNextHit.get(key) ?? 0) > this.now) continue;
+        this.hazardNextHit.set(key, this.now + HAZARD_HIT_MS);
+        const status = hazard.kind === "lava_pit" || hazard.kind === "flame_turret"
+          ? "fire"
+          : hazard.kind === "acid_pit"
+            ? "poison"
+            : undefined;
+        applyDamage(this, p, hazard.dmg, `hazard:${hazard.kind}`, false, 0, 0, 0, 1, status);
+      }
+    }
+  }
+
+  private hazardActive(hazard: FloorDescriptor["hazards"][number]): boolean {
+    if (!hazard.periodMs || !hazard.activeMs) return true;
+    const t = (this.now + (hazard.phaseMs ?? 0)) % hazard.periodMs;
+    return t < hazard.activeMs;
+  }
+
+  private inHazard(x: number, y: number, hazard: FloorDescriptor["hazards"][number]): boolean {
+    if (hazard.kind === "wall_spikes" || hazard.kind === "flame_turret") {
+      const dir = hazard.dir ?? 0;
+      const len = hazard.length ?? hazard.r;
+      const width = hazard.width ?? hazard.r;
+      const dx = x - hazard.x;
+      const dy = y - hazard.y;
+      const along = dir === 0 ? dx : dir === 2 ? -dx : dir === 1 ? dy : -dy;
+      const across = dir === 0 || dir === 2 ? dy : dx;
+      return along >= -hazard.r * 0.25 && along <= len && Math.abs(across) <= width * 0.5;
+    }
+    const dx = x - hazard.x;
+    const dy = y - hazard.y;
+    return dx * dx + dy * dy <= hazard.r * hazard.r;
   }
 
   // Award XP to the ability that landed a hit/kill, plus character XP on kills.
@@ -544,6 +591,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = runId;
     this.phase = "running";
     this.floor = this.makeFloor(seed, 1, false);
+    this.hazardNextHit.clear();
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -654,6 +702,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // Floor-end reward — granted on the COMPLETED floor (its depth/theme/seed).
     for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
     this.floor = this.makeFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
+    this.hazardNextHit.clear();
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -1337,6 +1386,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.now += TICK_MS;
     const dt = TICK_MS / 1000;
     for (const p of this.players.values()) stepPlayer(this, p, dt);
+    this.stepHazards();
     updateMonsters(this, dt);
     updateBoss(this, dt);
     for (const p of this.players.values()) if (p.status === "alive") this.autoCast(p);
@@ -1690,6 +1740,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         entrance: this.floor.entrance,
         stairs: this.floor.stairs,
         decorations: this.floor.decorations,
+        hazards: this.floor.hazards,
       },
     };
   }
