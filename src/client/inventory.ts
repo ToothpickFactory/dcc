@@ -48,6 +48,7 @@ export class InventoryUI {
     // Tapping the dark backdrop (not the card) closes the panel.
     this.inv.addEventListener("click", (e) => { if (e.target === this.inv) this.close(); });
     this.loot.addEventListener("click", (e) => { if (e.target === this.loot) this.closeLoot(); });
+    window.addEventListener("resize", () => { if (this.isOpen()) fitPanelToWindow(this.inv); });
 
     net.onInv = (s) => { if (this.isOpen()) this.render(s); };
     net.onBag = (s) => this.onBag(s);
@@ -61,6 +62,7 @@ export class InventoryUI {
   open(): void {
     if (!this.net.inv) return;
     this.inv.style.display = "flex";
+    fitPanelToWindow(this.inv);
     this.selectedSlot = null;
     this.render(this.net.inv);
     this.renderBar();
@@ -209,6 +211,16 @@ export class InventoryUI {
 
 function byId(id: string): HTMLElement {
   return document.getElementById(id) as HTMLElement;
+}
+
+export function fitPanelToWindow(panel: HTMLElement): void {
+  const card = panel.querySelector<HTMLElement>(".panelCard");
+  if (!card) return;
+  const h = `${Math.floor(window.innerHeight * 0.7)}px`;
+  card.style.height = h;
+  card.style.maxHeight = h;
+  card.style.minHeight = "0";
+  card.style.overflow = "hidden";
 }
 
 function statStr(it: Item): string {

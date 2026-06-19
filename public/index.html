@@ -155,7 +155,7 @@
       .invHint { font-size: 9px; color: #6b7790; margin-top: 5px; line-height: 1.25; }
       #invGold { font-size: 12px; font-weight: 700; color: #e7c14d; }
 
-      #inventory .panelCard { width: min(98vw, 920px); max-height: 90dvh; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: min-content; gap: 0 10px; align-content: start; }
+      #inventory .panelCard { width: min(98vw, 920px); height: 70vh !important; max-height: 70vh !important; height: 70dvh !important; max-height: 70dvh !important; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: min-content; gap: 0 10px; align-content: start; }
       #inventory .panelHead, #inventory .invHint { grid-column: 1 / -1; }
       #inventory .panelHead { order: 0; }
       #inventory .panelCard > .invSection:nth-of-type(2) { order: 1; grid-column: 1; }
@@ -174,7 +174,7 @@
       #inventory #abilityBar { grid-template-columns: repeat(6, minmax(0, 1fr)); }
       #inventory #carryGrid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
       #inventory #statPanel { align-self: start; }
-      #skills .panelCard { width: min(98vw, 780px); max-height: 90dvh; font-size: 11px; }
+      #skills .panelCard { width: min(98vw, 780px); height: 70vh !important; max-height: 70vh !important; height: 70dvh !important; max-height: 70dvh !important; min-height: 0; font-size: 11px; }
       #skills #skillList { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       #skills .skcard { margin-bottom: 0; padding: 6px 8px; border-radius: 8px; }
       #skills .skhead { margin-bottom: 4px; }
@@ -209,11 +209,11 @@
         .attrRow { font-size: 9px; }
         .attrPlus { width: 16px; height: 16px; }
         .invHint { font-size: 8px; margin-top: 3px; }
-        #inventory .panelCard { width: calc(100vw - 8px); max-height: 90dvh; gap: 0 6px; }
+        #inventory .panelCard { width: calc(100vw - 8px); height: 70vh !important; max-height: 70vh !important; height: 70dvh !important; max-height: 70dvh !important; gap: 0 6px; }
         #inventory #equipGrid { grid-template-columns: repeat(9, minmax(0, 1fr)); }
         #inventory #abilityBar { grid-template-columns: repeat(6, minmax(0, 1fr)); }
         #inventory #carryGrid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
-        #skills .panelCard { width: calc(100vw - 8px); max-height: 90dvh; }
+        #skills .panelCard { width: calc(100vw - 8px); height: 70vh !important; max-height: 70vh !important; height: 70dvh !important; max-height: 70dvh !important; }
         #skills #skillList { gap: 4px; }
         #skills .skcard { padding: 4px 5px; }
       }

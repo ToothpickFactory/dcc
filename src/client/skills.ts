@@ -4,7 +4,7 @@ import { ABILITY_NODES, EVOLUTIONS, canEvolve, charLevelOf, charXpForNext, evolv
 import { CLASS_INFO, CLASS_MAIN_STAT, CLASS_ROLE, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent } from "../shared/talents";
 import { ATTR_KEYS } from "../shared/items";
-import { renderStatRows } from "./inventory";
+import { fitPanelToWindow, renderStatRows } from "./inventory";
 
 // The Skills screen (E): per-ability level + XP, and — when an ability has
 // matured — the branching evolution choices to pick. Plus the character level.
@@ -24,12 +24,13 @@ export class SkillsUI {
     byId("skillsClose").addEventListener("click", () => this.close());
     this.btn.addEventListener("click", () => this.toggle());
     this.panel.addEventListener("click", (e) => { if (e.target === this.panel) this.close(); });
+    window.addEventListener("resize", () => { if (this.isOpen()) fitPanelToWindow(this.panel); });
   }
 
   showButton(): void { this.btn.style.display = "block"; }
   isOpen(): boolean { return this.panel.style.display === "flex"; }
   toggle(): void { (this.isOpen() ? this.close() : this.open()); }
-  open(): void { this.panel.style.display = "flex"; this.key = ""; this.render(); }
+  open(): void { this.panel.style.display = "flex"; fitPanelToWindow(this.panel); this.key = ""; this.render(); }
   close(): void { this.panel.style.display = "none"; }
 
   // Any ability ready to evolve? Drives the button glow + the level-up toast.
