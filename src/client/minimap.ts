@@ -7,6 +7,7 @@ import type { EntityDTO } from "../protocol";
 // and living teammates. Purely client-side; mirrors the fog's LoS so the two agree.
 const SIZE = 168; // canvas px (square)
 const REDRAW_MS = 80; // ~12 fps is plenty for a minimap
+const STAIRS_HIGHLIGHT_MS = 15000;
 
 export class Minimap {
   private canvas = document.getElementById("minimap") as HTMLCanvasElement;
@@ -17,6 +18,7 @@ export class Minimap {
   private scale = 1; // world px -> minimap px
   private lastCell = -1; // recompute discovery only when the player's cell changes
   private nextDraw = 0;
+  private stairsHighlightUntil = 0;
 
   constructor() {
     this.canvas.width = SIZE;
@@ -29,8 +31,18 @@ export class Minimap {
     this.stairs = stairs;
     this.discovered.clear();
     this.lastCell = -1;
+    this.stairsHighlightUntil = 0;
     this.scale = SIZE / (grid.w * grid.cell);
     this.canvas.style.display = "block";
+  }
+
+  highlightStairs(): void {
+    if (!this.grid || !this.stairs) return;
+    const sx = Math.floor(this.stairs.x / this.grid.cell);
+    const sy = Math.floor(this.stairs.y / this.grid.cell);
+    this.discovered.add(sy * this.grid.w + sx);
+    this.stairsHighlightUntil = performance.now() + STAIRS_HIGHLIGHT_MS;
+    this.nextDraw = 0;
   }
 
   // px/py = local player world pos (for the "you" dot + LoS reveal). inPlay=false
@@ -84,6 +96,14 @@ export class Minimap {
       if (this.discovered.has(sy * grid.w + sx)) {
         ctx.fillStyle = "#5dff9b";
         dot(ctx, this.stairs.x * s, this.stairs.y * s, 3);
+        if (performance.now() < this.stairsHighlightUntil) {
+          const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.012);
+          ctx.strokeStyle = "#ffd34d";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(this.stairs.x * s, this.stairs.y * s, 7 + pulse * 4, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
     }
     // Living teammates (always shown for co-op awareness).

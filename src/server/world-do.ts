@@ -1350,16 +1350,17 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     // Permadeath must be durable the instant it happens, not on the next
     // heartbeat — persist any player who died this tick.
-    let pvpExitUnlocked = false;
+    let exitUnlocked = false;
     for (const e of this.events) {
       if (e.e === "death") {
         const dp = this.players.get(e.id);
         if (dp && dp.status === "spectator") this.persistPlayer(dp);
         if (this.floor.pvp && !this.pvpExitOpen && dp) {
           this.pvpExitOpen = true;
-          pvpExitUnlocked = true;
+          exitUnlocked = true;
         }
       } else if (e.e === "boss" && e.state === "dead" && this.boss) {
+        exitUnlocked = true;
         // The boss is a guaranteed, big drop for whoever did the most damage.
         const id = this.topThreat(this.boss.threat);
         const winner = id ? this.players.get(id) : null;
@@ -1396,7 +1397,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (living > 0 && allReached) this.advanceFloor();
     }
 
-    if (pvpExitUnlocked) {
+    if (exitUnlocked) {
       this.checkpoint();
       this.broadcastFloorRun();
     }

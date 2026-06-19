@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 19; // was 18 - PvP floors can hide/reveal the exit
+export const PROTOCOL_VERSION = 20; // was 19 - boss kill events reveal/highlight the exit
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -123,7 +123,7 @@ export type GameEvent =
   | { e: "hit"; x: number; y: number; ability: number }
   | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
   | { e: "cc"; x: number; y: number; id: string; kind: CcKind; ms: number } // hard CC landed on a foe (pop fx)
-  | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
+  | { e: "boss"; x: number; y: number; state: "spawn" | "dead"; by?: string };
 
 export type StatusEffect = "fire" | "frost" | "poison";
 

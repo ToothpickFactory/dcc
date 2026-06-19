@@ -107,7 +107,7 @@ export function applyDamage(
     ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId, crit, status });
     if (target.hp <= 0) {
       target.dead = true;
-      ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead" });
+      ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead", by: sourceId });
       ctx.pushFx({ e: "death", x: target.x, y: target.y, id: target.id });
       if (sourceIsPlayer) {
         ctx.pushPlay({ e: "kill", by: sourceId, targetKind: "monster" });

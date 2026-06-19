@@ -100,6 +100,11 @@ net.onClose = () => {
 net.onEvents = (events) => {
   if (net.cur) renderer.handleEvents(events, net.cur.ents, net.you);
   for (const e of events) {
+    if (e.e === "boss" && e.state === "dead" && e.by === net.you) {
+      minimap.highlightStairs();
+      showToast("Exit stairs marked on your minimap!", "#ffd34d");
+      continue;
+    }
     if (e.e === "boss") {
       if (e.state === "spawn") showToast("⚠ A BOSS has awoken — dodge its bolts! ⚠", "#e7b3ff");
       else showToast("☠ The boss has been slain! ☠", "#ffd34d");
