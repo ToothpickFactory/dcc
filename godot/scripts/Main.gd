@@ -449,11 +449,12 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
 	_fog.attach(_world)
+	var stairs: Dictionary = geometry.get("stairs", {}) if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
-	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), geometry.get("stairs", {}))
+	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs)
 	_sprites.set_grid(_world.grid)
-	_minimap.set_floor(_world.grid, geometry.get("stairs", {}))
-	var st: Dictionary = geometry.get("stairs", {})
+	_minimap.set_floor(_world.grid, stairs)
+	var st: Dictionary = stairs
 	_stairs = Vector2(float(st.get("x", 0.0)), float(st.get("y", 0.0)))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
 	_music.set_theme(str(info.get("theme", "fantasy")))

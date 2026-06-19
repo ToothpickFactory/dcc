@@ -24,6 +24,14 @@ import { generateFloor } from "./index.ts";
   assert.equal(canStep(gold, cc(2), cc(2), cc(3), cc(2)), false, "Int16 extremes -> huge");
 }
 
+{
+  const normal = generateFloor(4242, 4);
+  const pvp = generateFloor(4242, 4, { pvp: true });
+  assert.equal(pvp.pvp, true);
+  const areaRatio = (pvp.collision.w * pvp.collision.h) / (normal.collision.w * normal.collision.h);
+  assert.ok(areaRatio > 0.22 && areaRatio < 0.28, `PvP area ratio ${areaRatio} should be about 25%`);
+}
+
 for (let seed = 1; seed <= 100; seed++) {
   const floor = generateFloor(seed, 1 + (seed % 20));
   const grid = floor.collision;

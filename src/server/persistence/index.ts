@@ -23,6 +23,8 @@ export interface RunCheckpoint {
   currentFloor: number;
   seed: number;
   phase: string;
+  pvp?: boolean;
+  pvpExitOpen?: boolean;
   savedAt: number;
 }
 export interface FloorRecord {
@@ -55,6 +57,8 @@ interface RunRow {
   current_floor: number;
   seed: number;
   phase: string;
+  pvp: number;
+  pvp_exit_open: number;
   saved_at: number;
   [k: string]: SqlStorageValue;
 }
@@ -95,13 +99,16 @@ export class SqlRunStore implements RunStore {
 
   checkpointSync(c: RunCheckpoint): void {
     this.sql.exec(
-      `INSERT INTO run_state (id, run_id, current_floor, seed, phase, saved_at) VALUES (1, ?, ?, ?, ?, ?)
+      `INSERT INTO run_state (id, run_id, current_floor, seed, phase, pvp, pvp_exit_open, saved_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET run_id=excluded.run_id, current_floor=excluded.current_floor,
-         seed=excluded.seed, phase=excluded.phase, saved_at=excluded.saved_at`,
+         seed=excluded.seed, phase=excluded.phase, pvp=excluded.pvp, pvp_exit_open=excluded.pvp_exit_open,
+         saved_at=excluded.saved_at`,
       c.runId,
       c.currentFloor,
       c.seed,
       c.phase,
+      c.pvp ? 1 : 0,
+      c.pvpExitOpen === false ? 0 : 1,
       c.savedAt,
     );
   }
@@ -140,11 +147,19 @@ export class SqlRunStore implements RunStore {
 
   async loadRun(): Promise<RunCheckpoint | null> {
     const rows = this.sql
-      .exec<RunRow>("SELECT run_id, current_floor, seed, phase, saved_at FROM run_state WHERE id = 1")
+      .exec<RunRow>("SELECT run_id, current_floor, seed, phase, pvp, pvp_exit_open, saved_at FROM run_state WHERE id = 1")
       .toArray();
     if (rows.length !== 1 || !rows[0].run_id) return null;
     const r = rows[0];
-    return { runId: r.run_id, currentFloor: r.current_floor, seed: r.seed, phase: r.phase, savedAt: r.saved_at };
+    return {
+      runId: r.run_id,
+      currentFloor: r.current_floor,
+      seed: r.seed,
+      phase: r.phase,
+      pvp: r.pvp === 1,
+      pvpExitOpen: r.pvp_exit_open !== 0,
+      savedAt: r.saved_at,
+    };
   }
 
   async saveCheckpoint(c: RunCheckpoint): Promise<void> {

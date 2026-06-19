@@ -17,6 +17,7 @@ export interface FloorDescriptor {
   theme: Theme;
   w: number; // world px
   h: number; // world px
+  pvp?: boolean;
   durationMs: number; // per-floor timer (decision #9 — NOT depth-scaled)
   collision: CollisionGrid; // server-authoritative
   entrance: { x: number; y: number };

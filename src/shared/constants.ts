@@ -154,7 +154,8 @@ export const FIRST_BOSS_NAME = "Iron Jailor";
 export const BOSS_NAME = "Slime Guardian";
 export const BRIAR_REVENANT_BOSS_NAME = "Briar Revenant";
 export const PRIMAL_CONFLUX_BOSS_NAME = "Primal Conflux";
-export const BOSS_NAMES = [BRIAR_REVENANT_BOSS_NAME, PRIMAL_CONFLUX_BOSS_NAME, BOSS_NAME] as const;
+export const JUGGERNAUT_BOSS_NAME = "Juggernaut";
+export const BOSS_NAMES = [BRIAR_REVENANT_BOSS_NAME, PRIMAL_CONFLUX_BOSS_NAME, JUGGERNAUT_BOSS_NAME, BOSS_NAME] as const;
 export function bossNameForDepth(depth: number): string {
   if (depth <= 1) return FIRST_BOSS_NAME;
   return BOSS_NAMES[(depth - 2) % BOSS_NAMES.length];

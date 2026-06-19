@@ -20,6 +20,12 @@ const C = {
 
 const HERO_ROOT = "/assets/Heroes/Kevin";
 const BOSS_ROOT = "/assets/Bosses/Slime";
+const BOSS_MODEL_PATHS: Record<string, string> = {
+  "Iron Jailor": "/assets/Bosses/Jailor/Iron Jailor-3d-animated.glb",
+  "Briar Revenant": "/assets/Bosses/BriarRevenant/Briar Revenant-3d-animated.glb",
+  "Primal Conflux": "/assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb",
+  Juggernaut: "/assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb",
+};
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const STATUS_EFFECT_MS = 3000;
 const STATUS_EFFECT_SIZE = 112;
@@ -130,6 +136,9 @@ export class Renderer {
   private lootModelSource: THREE.Object3D | null = null;
   private lootModelPromise: Promise<THREE.Object3D | null> | null = null;
   private lootModels = new Map<string, THREE.Object3D>();
+  private bossModelSources = new Map<string, THREE.Object3D | null>();
+  private bossModelPromises = new Map<string, Promise<THREE.Object3D | null>>();
+  private bossModels = new Map<string, THREE.Object3D>();
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
@@ -314,15 +323,17 @@ export class Renderer {
     return texture;
   }
 
-  private async applyPropTheme(floor: FloorDescriptor): Promise<void> {
+  private async applyPropTheme(floor: FloorDescriptor, exitOpen: boolean): Promise<void> {
     const request = ++this.propThemeRequest;
     this.clearDecorations();
-    this.setStairs(floor.stairs.x, floor.stairs.y, null);
+    if (exitOpen) this.setStairs(floor.stairs.x, floor.stairs.y, null);
+    else this.removeStairs();
 
     try {
       const textures = await this.loadPropTextures(floor.theme);
       if (request !== this.propThemeRequest) return;
-      this.setStairs(floor.stairs.x, floor.stairs.y, textures[0] ?? null);
+      if (exitOpen) this.setStairs(floor.stairs.x, floor.stairs.y, textures[0] ?? null);
+      else this.removeStairs();
       this.setDecorations(floor, textures);
     } catch {
       if (request !== this.propThemeRequest) return;
@@ -491,6 +502,72 @@ export class Renderer {
         this.lootModelPromise = null;
       });
     return this.lootModelPromise;
+  }
+
+  private ensureBossModel(name?: string): Promise<THREE.Object3D | null> {
+    if (!name) return Promise.resolve(null);
+    const path = BOSS_MODEL_PATHS[name];
+    if (!path) return Promise.resolve(null);
+    if (this.bossModelSources.has(name)) return Promise.resolve(this.bossModelSources.get(name) ?? null);
+    const inFlight = this.bossModelPromises.get(name);
+    if (inFlight) return inFlight;
+    const p = this.gltfLoader.loadAsync(path)
+      .then((gltf) => {
+        const source = gltf.scene;
+        source.traverse((obj) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+          obj.frustumCulled = false;
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          obj.material = mats.map((mat) => mat.clone()) as THREE.Material[];
+        });
+        this.bossModelSources.set(name, source);
+        return source;
+      })
+      .catch(() => {
+        this.bossModelSources.set(name, null);
+        return null;
+      })
+      .finally(() => {
+        this.bossModelPromises.delete(name);
+      });
+    this.bossModelPromises.set(name, p);
+    return p;
+  }
+
+  private createBossModel(id: string, name?: string): THREE.Object3D | null {
+    if (!name) return null;
+    const source = this.bossModelSources.get(name);
+    if (!source) {
+      void this.ensureBossModel(name);
+      return null;
+    }
+    const root = source.clone(true);
+    root.userData.entityId = id;
+    root.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      obj.material = mats.map((mat) => mat.clone()) as THREE.Material[];
+    });
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    root.scale.setScalar(118 / maxDim);
+    this.scene.add(root);
+    this.bossModels.set(id, root);
+    return root;
+  }
+
+  private syncBossModel(e: EntityDTO, visible: boolean): boolean {
+    let model = this.bossModels.get(e.id);
+    if (!model) {
+      const created = this.createBossModel(e.id, e.name);
+      if (!created) return false;
+      model = created;
+    }
+    model.position.set(e.x, 0, e.y);
+    model.visible = visible && !e.dead;
+    return true;
   }
 
   private lootColor(rarity?: string): THREE.Color {
@@ -702,6 +779,15 @@ export class Renderer {
     return best;
   }
 
+  private entityVisible(e: EntityDTO, x: number, y: number, predicted: { x: number; y: number } | null): boolean {
+    const fogged = e.kind === "monster" || e.kind === "boss" || e.kind === "proj";
+    if (!fogged || !predicted) return true;
+    const dx = x - predicted.x;
+    const dy = y - predicted.y;
+    const dsq = dx * dx + dy * dy;
+    return dsq <= NEAR_REVEAL_SQ || (dsq <= VISION_RADIUS_SQ && this.canSee(predicted.x, predicted.y, x, y));
+  }
+
   handleEvents(events: GameEvent[], ents: EntityDTO[], selfId: string): void {
     const now = performance.now();
     for (const event of events) {
@@ -773,6 +859,7 @@ export class Renderer {
     const seen = new Set<string>();
     const propIds = new Set<string>();
     const seenLootModels = new Set<string>();
+    const seenBossModels = new Set<string>();
     for (const e of ents) {
       seen.add(e.id);
       if (e.kind === "prop") {
@@ -794,6 +881,19 @@ export class Renderer {
           (stale.sprite.material as THREE.SpriteMaterial).dispose();
           this.sprites.delete(e.id);
         }
+        this.lastPos.set(e.id, { x: e.x, y: e.y });
+        continue;
+      }
+      if (e.kind === "boss" && this.syncBossModel(e, this.entityVisible(e, e.x, e.y, predicted))) {
+        seenBossModels.add(e.id);
+        const stale = this.sprites.get(e.id);
+        if (stale) {
+          this.scene.remove(stale.sprite);
+          stale.texture?.dispose();
+          (stale.sprite.material as THREE.SpriteMaterial).dispose();
+          this.sprites.delete(e.id);
+        }
+        this.updateStatusOverlay(e.id, e.x, e.y, 38, !e.dead && this.entityVisible(e, e.x, e.y, predicted), now);
         this.lastPos.set(e.id, { x: e.x, y: e.y });
         continue;
       }
@@ -911,16 +1011,7 @@ export class Renderer {
       // Fog of war: the local player + allies are always drawn; monsters, the
       // boss, and projectiles only within VISION_RADIUS and with clear line-of-
       // sight to the player (walls block). predicted = local player world pos.
-      const fogged = e.kind === "monster" || e.kind === "boss" || e.kind === "proj";
-      if (fogged && predicted) {
-        const ddx = wx - predicted.x;
-        const ddy = wy - predicted.y;
-        const dsq = ddx * ddx + ddy * ddy;
-        // Always show close foes (a wall-hugging attacker can't be invisible); LoS-gate the rest.
-        s.sprite.visible = dsq <= NEAR_REVEAL_SQ || (dsq <= VISION_RADIUS_SQ && this.canSee(predicted.x, predicted.y, wx, wy));
-      } else {
-        s.sprite.visible = true;
-      }
+      s.sprite.visible = this.entityVisible(e, wx, wy, predicted);
       if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
         this.updateStatusOverlay(e.id, wx, wy, h, s.sprite.visible && !e.dead, now);
       }
@@ -943,6 +1034,13 @@ export class Renderer {
         if (!seen.has(id)) this.lastPos.delete(id);
       }
     }
+    for (const [id, model] of this.bossModels) {
+      if (!seenBossModels.has(id)) {
+        this.scene.remove(model);
+        this.bossModels.delete(id);
+        if (!seen.has(id)) this.lastPos.delete(id);
+      }
+    }
   }
 
   // The exit. Client rebuilds its position from the floor seed (shared procgen).
@@ -960,9 +1058,9 @@ export class Renderer {
     this.stairs.position.set(x, 30, y);
   }
 
-  setFloor(floor: FloorDescriptor): void {
+  setFloor(floor: FloorDescriptor, exitOpen = true): void {
     void this.applyTileTheme(floor.theme);
-    void this.applyPropTheme(floor);
+    void this.applyPropTheme(floor, exitOpen);
 
     if (this.walls) {
       this.scene.remove(this.walls);
@@ -1011,12 +1109,15 @@ export class Renderer {
 
   clearStairs() {
     this.propThemeRequest++;
-    if (this.stairs) {
-      this.scene.remove(this.stairs);
-      (this.stairs.material as THREE.SpriteMaterial).dispose();
-      this.stairs = null;
-    }
+    this.removeStairs();
     this.clearDecorations();
+  }
+
+  private removeStairs(): void {
+    if (!this.stairs) return;
+    this.scene.remove(this.stairs);
+    (this.stairs.material as THREE.SpriteMaterial).dispose();
+    this.stairs = null;
   }
 
   follow(x: number, y: number) {

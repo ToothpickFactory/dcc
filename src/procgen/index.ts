@@ -26,10 +26,11 @@ export function rng(seed: number): () => number {
 // guaranteed: a maze backbone, then operations that only ADD cells adjacent to
 // the connected open set (dilation, rooms centered on open cells), so every open
 // tile stays reachable (asserted by the procgen test across 100 seeds).
-export function generateFloor(seed: number, depth: number): FloorDescriptor {
+export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean } = {}): FloorDescriptor {
   const random = rng(seed + depth * 1013);
   const cell = CELL;
-  const size = nearestOdd(Math.min(MAX_GRID, BASE_GRID + depth * GROW_PER_DEPTH), MAX_GRID);
+  const normalSize = nearestOdd(Math.min(MAX_GRID, BASE_GRID + depth * GROW_PER_DEPTH), MAX_GRID);
+  const size = opts.pvp ? nearestOdd(Math.max(19, Math.floor(normalSize * 0.5)), MAX_GRID) : normalSize;
   const gw = size;
   const gh = size;
   const solid = new Uint8Array(gw * gh).fill(1);
@@ -138,6 +139,7 @@ export function generateFloor(seed: number, depth: number): FloorDescriptor {
     // TEMP: flat 10-minute timer on every floor (was: 5 min on floor 1, then scaled by
     // floor size / path length). Revert to the scaled formula when tuning difficulty.
     durationMs: 600000,
+    pvp: opts.pvp || undefined,
     collision,
     entrance,
     stairs,

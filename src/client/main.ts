@@ -264,13 +264,16 @@ function frame(now: number) {
 
   // Floor/run transitions -> place the stairs marker (rebuilt from the seed) and
   // toast. Key on seed:depth so a NEW run at the same depth still rebuilds.
-  const floorKey = net.floor ? `${net.floor.info.seed}:${net.floor.info.depth}` : "";
+  const floorKey = net.floor
+    ? `${net.floor.info.seed}:${net.floor.info.depth}:${net.floor.info.pvp ? 1 : 0}:${net.floor.state.exitOpen === false ? 0 : 1}`
+    : "";
   if (net.floor && floorKey !== lastFloorKey && net.run?.phase !== "ended") {
     lastFloorKey = floorKey;
-    const f = generateFloor(net.floor.info.seed, net.floor.info.depth);
+    const exitOpen = net.floor.state.exitOpen !== false;
+    const f = generateFloor(net.floor.info.seed, net.floor.info.depth, { pvp: net.floor.info.pvp === true });
     predictor.setCollision(f.collision);
-    renderer.setFloor(f);
-    minimap.setFloor(f.collision, f.stairs); // fresh floor = fresh discovery
+    renderer.setFloor(f, exitOpen);
+    minimap.setFloor(f.collision, exitOpen ? f.stairs : null); // fresh floor = fresh discovery
     showToast(`⬇ Floor ${net.floor.info.depth} — ${net.floor.info.theme}`, "#9be7ff");
   }
   if (net.run && net.run.phase !== lastRunPhase) {

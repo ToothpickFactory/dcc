@@ -24,7 +24,7 @@ export class Minimap {
     this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;
   }
 
-  setFloor(grid: CollisionGrid, stairs: { x: number; y: number }): void {
+  setFloor(grid: CollisionGrid, stairs: { x: number; y: number } | null): void {
     this.grid = grid;
     this.stairs = stairs;
     this.discovered.clear();

@@ -91,6 +91,7 @@ const PROP_RADIUS = 24; // px; matches ~58px billboard props without making corr
 const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-side validation)
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
+const PVP_FLOOR_CHANCE = 0.25;
 
 // The single global world. It IS the authoritative server: a fixed-rate tick over
 // in-memory state, persisted to the DO's SQLite so the run AND identities survive
@@ -129,6 +130,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private runId = "run-dev";
   private phase: RunPhase = "running";
   private floorEndsAt = 0; // wall-clock deadline of the current floor (mirrors the DO alarm)
+  private pvpExitOpen = true;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -188,7 +190,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private bootstrapRun() {
     this.runId = `run-${Date.now().toString(36)}`;
     this.phase = "running";
-    this.floor = generateFloor(FIRST_SEED, 1);
+    this.floor = this.makeFloor(FIRST_SEED, 1, false);
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -199,11 +201,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private resumeRun(run: RunCheckpoint) {
     this.runId = run.runId;
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
-    this.floor = generateFloor(run.seed, run.currentFloor);
+    this.floor = generateFloor(run.seed, run.currentFloor, { pvp: run.pvp });
+    this.pvpExitOpen = this.floor.pvp ? run.pvpExitOpen !== false : true;
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+  }
+
+  private makeFloor(seed: number, depth: number, allowPvp = true): FloorDescriptor {
+    const pvpRoll = rng((seed * 1103515245 + depth * 12345) >>> 0)();
+    const pvp = allowPvp && this.aliveCount() > 1 && pvpRoll < PVP_FLOOR_CHANCE;
+    this.pvpExitOpen = !pvp;
+    return generateFloor(seed, depth, { pvp });
+  }
+
+  private exitOpen(): boolean {
+    return this.floor.pvp ? this.pvpExitOpen : !this.boss || this.boss.dead;
   }
 
   // ---- WorldCtx hooks the sim modules call ----
@@ -383,6 +397,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private spawnMonsters() {
+    if (this.floor.pvp) {
+      this.monsters = [];
+      return;
+    }
     // Stream D's procgen stub spawns all grunts; until it emits varied kinds,
     // distribute archetypes so the per-kind behaviors are exercised. The moment
     // floor.spawns carry real variety (any non-grunt present), honor them as-is.
@@ -445,6 +463,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private spawnBoss() {
+    if (this.floor.pvp) {
+      this.boss = null;
+      return;
+    }
     // The exit guardian starts near the stairs on every floor.
     const { x, y } = this.bossSpawnNearStairs();
     const depthSteps = Math.max(0, this.floor.depth - 1);
@@ -521,7 +543,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     this.runId = runId;
     this.phase = "running";
-    this.floor = generateFloor(seed, 1);
+    this.floor = this.makeFloor(seed, 1, false);
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -631,7 +653,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.persistFloorComplete(this.floor.depth, survivors.length);
     // Floor-end reward — granted on the COMPLETED floor (its depth/theme/seed).
     for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
-    this.floor = generateFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
+    this.floor = this.makeFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -669,6 +691,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           currentFloor: this.floor.depth,
           seed: this.floor.seed,
           phase: this.phase,
+          pvp: this.floor.pvp === true,
+          pvpExitOpen: this.pvpExitOpen,
           savedAt: Date.now(),
         }),
       );
@@ -1326,10 +1350,15 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     // Permadeath must be durable the instant it happens, not on the next
     // heartbeat — persist any player who died this tick.
+    let pvpExitUnlocked = false;
     for (const e of this.events) {
       if (e.e === "death") {
         const dp = this.players.get(e.id);
         if (dp && dp.status === "spectator") this.persistPlayer(dp);
+        if (this.floor.pvp && !this.pvpExitOpen && dp) {
+          this.pvpExitOpen = true;
+          pvpExitUnlocked = true;
+        }
       } else if (e.e === "boss" && e.state === "dead" && this.boss) {
         // The boss is a guaranteed, big drop for whoever did the most damage.
         const id = this.topThreat(this.boss.threat);
@@ -1358,7 +1387,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         // Latch: the instant you touch the stairs you're "done" — safe in the
         // waiting room. You don't have to stay on the tile. BUT the boss gates the
         // exit — the stairs only open once the floor's guardian is dead (CoN act beat).
-        if (!p.reached && this.atStairs(p) && (!this.boss || this.boss.dead)) this.markReached(p);
+        if (!p.reached && this.atStairs(p) && this.exitOpen()) this.markReached(p);
         living++;
         if (!p.reached) allReached = false;
       }
@@ -1367,6 +1396,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       if (living > 0 && allReached) this.advanceFloor();
     }
 
+    if (pvpExitUnlocked) {
+      this.checkpoint();
+      this.broadcastFloorRun();
+    }
     this.broadcast();
     this.events = [];
     if (++this.ticksSincePersist >= PERSIST_EVERY) {
@@ -1383,6 +1416,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           currentFloor: this.floor.depth,
           seed: this.floor.seed,
           phase: this.phase,
+          pvp: this.floor.pvp === true,
+          pvpExitOpen: this.pvpExitOpen,
           savedAt: Date.now(),
         });
         for (const p of this.players.values()) this.store.playerSync(this.recordOf(p));
@@ -1634,6 +1669,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         w: this.floor.w,
         h: this.floor.h,
         durationMs: this.floor.durationMs,
+        pvp: this.floor.pvp || undefined,
       },
       state: {
         index: this.floor.index,
@@ -1641,6 +1677,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         endsAt: this.floorEndsAt, // wall-clock; client counts down via Date.now()
         livingAtStairs: this.atStairsCount(),
         living: this.aliveCount(),
+        exitOpen: this.exitOpen(),
       },
       // Static geometry for non-procgen clients (Godot). The browser ignores it.
       geometry: {

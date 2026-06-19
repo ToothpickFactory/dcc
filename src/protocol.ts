@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 18; // was 17 - dmg events can carry elemental status effect overlays
+export const PROTOCOL_VERSION = 19; // was 18 - PvP floors can hide/reveal the exit
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -150,6 +150,7 @@ export interface FloorClientInfo {
   w: number;
   h: number;
   durationMs: number;
+  pvp?: boolean;
 }
 export type FloorPhase = "generating" | "active" | "closing" | "complete";
 export interface FloorState {
@@ -158,6 +159,7 @@ export interface FloorState {
   endsAt: number; // wall-clock ms (the floor's durable-alarm deadline); client counts down via its own clock
   livingAtStairs: number;
   living: number;
+  exitOpen?: boolean;
 }
 
 export type RunPhase = "lobby" | "running" | "ended" | "cooldown";
