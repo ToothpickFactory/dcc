@@ -81,6 +81,19 @@ func windup_id(id: String, ms: float) -> void:
 
 # Flash the sprite nearest a world point (dmg/heal events carry only x,y).
 func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false, reaction: String = "hit") -> void:
+	var best_id := _nearest_sprite_id_at(x, y, radius)
+	if best_id != "":
+		flash_id(best_id, hurt, reaction)
+
+func status_at(x: float, y: float, status: String, radius: float = 90.0) -> void:
+	var best_id := _nearest_sprite_id_at(x, y, radius)
+	if best_id == "":
+		return
+	var spr: EntitySprite = _sprites.get(best_id)
+	if spr != null:
+		spr.play_status_fx(status, float(Time.get_ticks_msec()))
+
+func _nearest_sprite_id_at(x: float, y: float, radius: float) -> String:
 	var best_id := ""
 	var best_sq := radius * radius
 	for id in _last_pos.keys():
@@ -89,8 +102,7 @@ func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false, reac
 		if dsq <= best_sq:
 			best_sq = dsq
 			best_id = id
-	if best_id != "":
-		flash_id(best_id, hurt, reaction)
+	return best_id
 
 # ---------------------------------------------------------------------------
 # Per-frame sync. ents = the latest server snapshot's entity list (Net.cur.ents).

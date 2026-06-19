@@ -331,7 +331,7 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
       for (const p of ctx.players.values()) {
         if (p.status !== "alive" || p.reached) continue;
         if (hit(pr.x, pr.y, p.x, p.y, pr.hitR + PLAYER_RADIUS)) {
-          applyDamage(ctx, p, pr.dmg, pr.ownerId, false, pr.slowMs);
+          applyDamage(ctx, p, pr.dmg, pr.ownerId, false, pr.slowMs, 0, 0, 1, statusForProjectile(pr.proj));
           ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
           return false;
         }
@@ -386,10 +386,15 @@ function resolve(
     // How far the shooter was from the impact — drives the ranged/melee axes.
     const owner = ctx.players.get(pr.ownerId);
     const range = owner ? Math.hypot(owner.x - target.x, owner.y - target.y) : 0;
-    applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs, pr.ability, range);
+    applyDamage(ctx, target, pr.dmg, pr.ownerId, true, pr.slowMs, pr.ability, range, 1, statusForProjectile(pr.proj));
     applyCc(ctx, target, { stunMs: pr.stunMs, rootMs: pr.rootMs, freeze: pr.freeze }); // CC bolts (concussive shot)
   }
   ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
+}
+
+function statusForProjectile(proj: ProjectileState["proj"]): "fire" | "frost" | "poison" {
+  if (proj === "ice") return "frost";
+  return proj ?? "fire";
 }
 
 function hit(ax: number, ay: number, bx: number, by: number, r: number): boolean {

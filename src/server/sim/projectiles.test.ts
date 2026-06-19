@@ -12,6 +12,7 @@ import { CLASS_KIT } from "../../shared/classes.ts";
 import { talentSpent } from "../../shared/talents.ts";
 import { ATTR_KEYS, deriveStats, zeroAttrs } from "../../shared/items.ts";
 import type { MonsterState, PlayerState, WorldCtx } from "../state.ts";
+import type { GameEvent } from "../../protocol.ts";
 
 let failures = 0;
 function check(name: string, cond: boolean, detail = "") {
@@ -37,12 +38,12 @@ function monster(id: string, x: number, y: number): MonsterState {
     dmgMult: 1, windupUntil: 0, windupTarget: "", knockUntil: 0, knockVx: 0, knockVy: 0, ccUntil: 0, ccKind: "",
   };
 }
-function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
+function ctxOf(players: PlayerState[], monsters: MonsterState[], events: GameEvent[] = []): WorldCtx {
   const grid = { w: 40, h: 40, cell: 80, solid: new Uint8Array(40 * 40) }; // all open
   return {
     now: 1000, players: new Map(players.map((p) => [p.id, p])), monsters, projectiles: [], boss: null,
     lootBags: [], props: [], groupHasteReadyAt: 0, floor: { collision: grid } as WorldCtx["floor"],
-    pushFx() {}, pushPlay() {}, dropLoot() {}, rollDrops() {}, gainXp() {},
+    pushFx(e) { events.push(e); }, pushPlay() {}, dropLoot() {}, rollDrops() {}, gainXp() {},
   };
 }
 
@@ -144,6 +145,56 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[]): WorldCtx {
   check("targeted AoE splashed nearby foes", splash.hp < 60, `splash.hp=${splash.hp}`);
   check("targeted AoE left distant foes alone", far.hp === 60, `far.hp=${far.hp}`);
   check("targeted AoE spawned radial visual bolts", ctx.projectiles.length === 16 && ctx.projectiles.every((p) => p.visualOnly === true), `projectiles=${ctx.projectiles.length}`);
+}
+
+// ---- enemy fire projectiles tag the damage event for status overlays --------
+{
+  const hero = player("P", 0, 0);
+  const events: GameEvent[] = [];
+  const ctx = ctxOf([hero], [], events);
+  ctx.projectiles.push({
+    id: "enemy-fire",
+    ownerId: "monster",
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    dmg: 5,
+    slowMs: 0,
+    ability: 98,
+    proj: "fire",
+    ttl: 1,
+    hitR: 7,
+    boss: true,
+  });
+  stepProjectiles(ctx, 0.1);
+  const dmg = events.find((e) => e.e === "dmg");
+  check("enemy fire projectile tagged damage status", dmg?.e === "dmg" && dmg.status === "fire", JSON.stringify(dmg));
+}
+
+// ---- temporary test mode: any damaging projectile gets a status overlay -----
+{
+  const caster = player("C", 0, 0);
+  const mob = monster("M", 0, 0);
+  const events: GameEvent[] = [];
+  const ctx = ctxOf([caster], [mob], events);
+  ctx.projectiles.push({
+    id: "plain-projectile",
+    ownerId: "C",
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    dmg: 5,
+    slowMs: 0,
+    ability: 0,
+    ttl: 1,
+    hitR: 7,
+    boss: false,
+  });
+  stepProjectiles(ctx, 0.1);
+  const dmg = events.find((e) => e.e === "dmg");
+  check("plain damaging projectile defaults to fire status", dmg?.e === "dmg" && dmg.status === "fire", JSON.stringify(dmg));
 }
 
 // ---- nova AoE: originates on the caster, not at max range -------------------

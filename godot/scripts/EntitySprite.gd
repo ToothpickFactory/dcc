@@ -20,7 +20,15 @@ const ACTION_FRAME_SPEED := 1.25
 const MOVEMENT_HOLD_MS := 150
 const MODEL_HIT_MS := 360.0
 const MODEL_DEATH_MS := 1400.0
-const TOMBSTONE_SPRITE_PX := 56.0
+const STATUS_EFFECT_MS := 3000.0
+const STATUS_EFFECT_FRAMES := 16
+const STATUS_EFFECT_COLS := 4
+const STATUS_EFFECT_SIZE := 112.0
+const STATUS_EFFECT_PATHS := {
+	"fire": "res://assets/StatusEffects/Fire/Fire-spritesheet.png",
+	"frost": "res://assets/StatusEffects/Frost/Frost-spritesheet.png",
+	"poison": "res://assets/StatusEffects/Poison/Poison-spritesheet.png",
+}
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin-3d-animated.glb"
@@ -240,6 +248,11 @@ var _dead_until := 0.0
 var _is_dead_body := false
 var _death_freeze_at := 0.0
 var _death_frozen := false
+var _status_sprite: Sprite3D
+var _status_atlas: AtlasTexture
+var _status_until := 0.0
+var _status_started_at := 0.0
+var _status_kind := ""
 
 # ---- hit flash (juice): brief overbright/red tint on taking damage ----
 const FLASH_MS := 110.0
@@ -276,6 +289,49 @@ func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> v
 		_action_until = now_ms + MODEL_HIT_MS
 		_play_model_anim("hit")
 
+func play_status_fx(kind_name: String, now_ms: float) -> void:
+	kind_name = kind_name.strip_edges().to_lower()
+	if not STATUS_EFFECT_PATHS.has(kind_name):
+		return
+	var tex: Texture2D = load(str(STATUS_EFFECT_PATHS[kind_name]))
+	if tex == null:
+		return
+	if _status_sprite == null:
+		_status_sprite = Sprite3D.new()
+		_status_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_status_sprite.shaded = false
+		_status_sprite.transparent = true
+		_status_sprite.no_depth_test = true
+		_status_sprite.render_priority = 7
+		add_child(_status_sprite)
+	if _status_atlas == null:
+		_status_atlas = AtlasTexture.new()
+		_status_atlas.filter_clip = true
+	_status_atlas.atlas = tex
+	_status_sprite.texture = _status_atlas
+	_status_sprite.visible = true
+	_status_started_at = now_ms
+	_status_until = now_ms + STATUS_EFFECT_MS
+	_status_kind = kind_name
+	_update_status_fx(now_ms)
+
+func _update_status_fx(now_ms: float) -> void:
+	if _status_sprite == null:
+		return
+	if _is_dead_body or now_ms >= _status_until:
+		_status_sprite.visible = false
+		return
+	var t := clampf((now_ms - _status_started_at) / STATUS_EFFECT_MS, 0.0, 0.999)
+	var frame := mini(STATUS_EFFECT_FRAMES - 1, int(floor(t * STATUS_EFFECT_FRAMES)))
+	var col := frame % STATUS_EFFECT_COLS
+	var row := frame / STATUS_EFFECT_COLS
+	var frame_px := 128.0
+	_status_atlas.region = Rect2(float(col) * frame_px, float(row) * frame_px, frame_px, frame_px)
+	_status_sprite.position = Vector3(0.0, 42.0, 0.0)
+	var s := STATUS_EFFECT_SIZE / frame_px
+	_status_sprite.scale = Vector3(s, s, s)
+	_status_sprite.visible = true
+
 func is_waiting_for_death_anim(now_ms: float) -> bool:
 	return _dead_until > now_ms
 
@@ -285,15 +341,16 @@ func set_dead_body(dead: bool, now_ms: float) -> void:
 	_is_dead_body = dead
 	if dead:
 		_action = "death"
-		_action_until = INF
-		_dead_until = INF
+		_action_until = now_ms + _model_anim_duration_ms("death", MODEL_DEATH_MS)
+		_dead_until = _action_until
 		if _death_freeze_at <= now_ms:
 			_death_freeze_at = now_ms + _model_anim_duration_ms("death", MODEL_DEATH_MS)
 		_death_frozen = false
 		_moving_until = 0.0
 		if _model_root != null:
 			_model_root.visible = false
-		_show_tombstone()
+		texture = null
+		modulate.a = 0.0
 	else:
 		_dead_until = 0.0
 		_death_freeze_at = 0.0
@@ -765,7 +822,7 @@ func _play_model_anim(intent: String) -> void:
 	var needles: Array[String] = []
 	match intent:
 		"run":
-			needles = ["run", "walk", "move"]
+			needles = _movement_anim_needles()
 		"slash_a":
 			needles = ["slash a", "slash_a", "slasha", "slash 1", "slash_1", "attack a", "attack_a", "attack 1"]
 		"slash_b":
@@ -836,7 +893,7 @@ func _model_anim_name_for_intent(intent: String) -> String:
 		"hit", "hurt":
 			needles = ["hit", "hurt", "damage", "impact", "react"]
 		"run":
-			needles = ["run", "walk", "move"]
+			needles = _movement_anim_needles()
 		_:
 			needles = ["idle"]
 	for anim_name in names:
@@ -845,6 +902,11 @@ func _model_anim_name_for_intent(intent: String) -> String:
 			if lower.contains(needle):
 				return String(anim_name)
 	return String(names[0])
+
+func _movement_anim_needles() -> Array[String]:
+	if kind == "player":
+		return ["jog", "job", "run", "walk", "move"]
+	return ["run", "walk", "move"]
 
 func _freeze_death_anim_if_ready(now_ms: float) -> void:
 	if not _is_dead_body or _death_frozen or now_ms < _death_freeze_at:
@@ -982,9 +1044,13 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 # ---------------------------------------------------------------------------
 func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_ms: float, sprite_px: float, ground_z: float = 0.0) -> void:
 	_update_ally_overlay() # ally nameplate + HP bar (no-op for non-allies)
+	_update_status_fx(now_ms)
 	if _is_dead_body:
 		position = Vector3(wx, _height_for_kind() + ground_z, wy)
-		_show_tombstone()
+		texture = null
+		modulate.a = 0.0
+		if _model_root != null:
+			_model_root.visible = false
 		return
 
 	# Spawn-pop scale factor (ease-out-back overshoot) applied in _apply_size.
@@ -1166,16 +1232,6 @@ func _set_fallback() -> void:
 	modulate = _fallback_color()
 	flip_h = false
 
-func _show_tombstone() -> void:
-	texture = _tombstone_texture()
-	modulate = Color.WHITE
-	flip_h = false
-	if _model_root != null:
-		_model_root.visible = false
-	var th := texture.get_height()
-	var s := TOMBSTONE_SPRITE_PX / float(th if th > 0 else 56)
-	scale = Vector3(s, s, s)
-
 func _fallback_color() -> Color:
 	if kind == "boss":
 		return COL_BOSS
@@ -1252,43 +1308,3 @@ func _ensure_fallback_texture() -> void:
 		_white_tex = ImageTexture.create_from_image(img)
 	texture = _white_tex
 
-static var _tombstone_tex: Texture2D
-static func _tombstone_texture() -> Texture2D:
-	if _tombstone_tex != null:
-		return _tombstone_tex
-	var w := 48
-	var h := 56
-	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var stone := Color(0.62, 0.64, 0.68, 1)
-	var shade := Color(0.38, 0.4, 0.45, 1)
-	var edge := Color(0.18, 0.2, 0.24, 1)
-	for y in h:
-		for x in w:
-			var inside := false
-			if y >= 18 and x >= 9 and x <= 39 and y <= 48:
-				inside = true
-			else:
-				var dx := float(x - 24) / 15.0
-				var dy := float(y - 18) / 18.0
-				inside = y <= 18 and y >= 2 and dx * dx + dy * dy <= 1.0
-			if inside:
-				var border := x <= 10 or x >= 38 or y >= 47 or (y < 20 and absf(float(x - 24)) > 12.5)
-				img.set_pixel(x, y, edge if border else stone)
-	for y in range(42, 52):
-		for x in range(4, 44):
-			var alpha := 1.0 - absf(float(x - 24)) / 24.0
-			if alpha > 0.0:
-				img.set_pixel(x, y, Color(0.07, 0.08, 0.09, 0.35 * alpha))
-	_draw_tombstone_bar(img, 17, 26, 14, 2, shade)
-	_draw_tombstone_bar(img, 23, 20, 2, 14, shade)
-	_draw_tombstone_bar(img, 16, 34, 16, 2, shade)
-	_draw_tombstone_bar(img, 18, 39, 12, 2, shade)
-	_tombstone_tex = ImageTexture.create_from_image(img)
-	return _tombstone_tex
-
-static func _draw_tombstone_bar(img: Image, x0: int, y0: int, bw: int, bh: int, col: Color) -> void:
-	for y in range(y0, y0 + bh):
-		for x in range(x0, x0 + bw):
-			if x >= 0 and x < img.get_width() and y >= 0 and y < img.get_height():
-				img.set_pixel(x, y, col)

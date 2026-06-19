@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE, ICE_PROJECTILE_SPRITE, POISON_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
-import type { EntityDTO, GameEvent } from "../protocol";
+import type { EntityDTO, GameEvent, StatusEffect } from "../protocol";
 import type { CollisionGrid, FloorDescriptor } from "../procgen/types";
 import { loadAtlasClip } from "./atlas";
 
@@ -21,6 +21,15 @@ const C = {
 const HERO_ROOT = "/assets/Heroes/Kevin";
 const BOSS_ROOT = "/assets/Bosses/Slime";
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
+const STATUS_EFFECT_MS = 3000;
+const STATUS_EFFECT_SIZE = 112;
+const STATUS_EFFECT_FRAMES = 16;
+const STATUS_EFFECT_COLS = 4;
+const STATUS_EFFECT_PATHS: Record<StatusEffect, string> = {
+  fire: "/assets/StatusEffects/Fire/Fire-spritesheet.png",
+  frost: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
+  poison: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
+};
 const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
   cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
@@ -98,6 +107,14 @@ interface FloatingText {
   startY: number;
 }
 
+interface StatusOverlay {
+  sprite: THREE.Sprite;
+  texture: THREE.Texture;
+  kind: StatusEffect;
+  startedAt: number;
+  until: number;
+}
+
 export class Renderer {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -113,7 +130,6 @@ export class Renderer {
   private lootModelSource: THREE.Object3D | null = null;
   private lootModelPromise: Promise<THREE.Object3D | null> | null = null;
   private lootModels = new Map<string, THREE.Object3D>();
-  private tombstoneTexture: THREE.CanvasTexture | null = null;
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
@@ -121,6 +137,9 @@ export class Renderer {
   private livePropIds = new Set<string>();
   private propsSeen = false;
   private floatingTexts: FloatingText[] = [];
+  private statusTextureSources = new Map<StatusEffect, THREE.Texture | null>();
+  private statusTexturePromises = new Map<StatusEffect, Promise<THREE.Texture | null>>();
+  private statusOverlays = new Map<string, StatusOverlay>();
   private ground: THREE.Mesh;
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
   private wallMaterial = new THREE.MeshBasicMaterial({ color: 0x39445e });
@@ -383,6 +402,75 @@ export class Renderer {
     return s;
   }
 
+  private async ensureStatusTexture(kind: StatusEffect): Promise<THREE.Texture | null> {
+    const cached = this.statusTextureSources.get(kind);
+    if (cached !== undefined) return cached;
+    const inFlight = this.statusTexturePromises.get(kind);
+    if (inFlight) return inFlight;
+    const p = this.textureLoader.loadAsync(STATUS_EFFECT_PATHS[kind])
+      .then((tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.generateMipmaps = false;
+        tex.repeat.set(1 / STATUS_EFFECT_COLS, 1 / STATUS_EFFECT_COLS);
+        this.statusTextureSources.set(kind, tex);
+        return tex;
+      })
+      .catch(() => {
+        this.statusTextureSources.set(kind, null);
+        return null;
+      })
+      .finally(() => {
+        this.statusTexturePromises.delete(kind);
+      });
+    this.statusTexturePromises.set(kind, p);
+    return p;
+  }
+
+  private playStatusOverlay(id: string, kind: StatusEffect, now: number): void {
+    void this.ensureStatusTexture(kind).then((source) => {
+      if (!source) return;
+      const existing = this.statusOverlays.get(id);
+      if (existing) {
+        this.scene.remove(existing.sprite);
+        existing.texture.dispose();
+        (existing.sprite.material as THREE.SpriteMaterial).dispose();
+      }
+      const texture = source.clone();
+      texture.needsUpdate = true;
+      texture.repeat.set(1 / STATUS_EFFECT_COLS, 1 / STATUS_EFFECT_COLS);
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }));
+      sprite.scale.set(STATUS_EFFECT_SIZE, STATUS_EFFECT_SIZE, 1);
+      this.scene.add(sprite);
+      this.statusOverlays.set(id, { sprite, texture, kind, startedAt: now, until: now + STATUS_EFFECT_MS });
+    });
+  }
+
+  private updateStatusOverlay(id: string, x: number, y: number, height: number, visible: boolean, now: number): void {
+    const overlay = this.statusOverlays.get(id);
+    if (!overlay) return;
+    if (now >= overlay.until) {
+      this.removeStatusOverlay(id, overlay);
+      return;
+    }
+    const t = (now - overlay.startedAt) / STATUS_EFFECT_MS;
+    const frame = Math.min(STATUS_EFFECT_FRAMES - 1, Math.floor(t * STATUS_EFFECT_FRAMES));
+    const col = frame % STATUS_EFFECT_COLS;
+    const row = Math.floor(frame / STATUS_EFFECT_COLS);
+    overlay.texture.offset.set(col / STATUS_EFFECT_COLS, 1 - (row + 1) / STATUS_EFFECT_COLS);
+    overlay.sprite.position.set(x, height + 42, y);
+    overlay.sprite.visible = visible;
+  }
+
+  private removeStatusOverlay(id: string, overlay = this.statusOverlays.get(id)): void {
+    if (!overlay) return;
+    this.scene.remove(overlay.sprite);
+    overlay.texture.dispose();
+    (overlay.sprite.material as THREE.SpriteMaterial).dispose();
+    this.statusOverlays.delete(id);
+  }
+
   private ensureLootModel(): Promise<THREE.Object3D | null> {
     if (this.lootModelSource) return Promise.resolve(this.lootModelSource);
     if (this.lootModelPromise) return this.lootModelPromise;
@@ -447,8 +535,11 @@ export class Renderer {
 
   private syncLootModel(e: EntityDTO, visible: boolean): boolean {
     let model = this.lootModels.get(e.id);
-    if (!model) model = this.createLootModel(e.id, e.rarity);
-    if (!model) return false;
+    if (!model) {
+      const created = this.createLootModel(e.id, e.rarity);
+      if (!created) return false;
+      model = created;
+    }
     model.position.set(e.x, 8, e.y);
     model.visible = visible;
     return true;
@@ -458,6 +549,18 @@ export class Renderer {
     const mat = state.sprite.material as THREE.SpriteMaterial;
     mat.map = null;
     mat.color.setHex(color);
+    mat.opacity = 1;
+    mat.needsUpdate = true;
+  }
+
+  private hideState(state: SpriteState): void {
+    state.texture?.dispose();
+    state.texture = null;
+    state.textureSource = null;
+    state.action = null;
+    const mat = state.sprite.material as THREE.SpriteMaterial;
+    mat.map = null;
+    mat.opacity = 0;
     mat.needsUpdate = true;
   }
 
@@ -475,55 +578,9 @@ export class Renderer {
     const texture = state.texture!;
     mat.map = texture;
     mat.color.setHex(0xffffff);
+    mat.opacity = 1;
     texture.repeat.set((flipX ? -1 : 1) * (f.w / clip.sheetW), f.h / clip.sheetH);
     texture.offset.set((f.x + (flipX ? f.w : 0)) / clip.sheetW, 1 - (f.y + f.h) / clip.sheetH);
-    mat.needsUpdate = true;
-  }
-
-  private applyTombstone(state: SpriteState): void {
-    if (!this.tombstoneTexture) {
-      const canvas = document.createElement("canvas");
-      canvas.width = 96;
-      canvas.height = 112;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
-        ctx.beginPath();
-        ctx.ellipse(48, 92, 40, 11, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#9da3ad";
-        ctx.strokeStyle = "#30343c";
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(20, 92);
-        ctx.lineTo(20, 42);
-        ctx.quadraticCurveTo(20, 14, 48, 14);
-        ctx.quadraticCurveTo(76, 14, 76, 42);
-        ctx.lineTo(76, 92);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = "#555c66";
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(34, 52);
-        ctx.lineTo(62, 52);
-        ctx.moveTo(48, 36);
-        ctx.lineTo(48, 68);
-        ctx.moveTo(34, 76);
-        ctx.lineTo(62, 76);
-        ctx.stroke();
-      }
-      this.tombstoneTexture = new THREE.CanvasTexture(canvas);
-      this.tombstoneTexture.colorSpace = THREE.SRGBColorSpace;
-    }
-    state.texture?.dispose();
-    state.texture = null;
-    state.textureSource = null;
-    const mat = state.sprite.material as THREE.SpriteMaterial;
-    mat.map = this.tombstoneTexture;
-    mat.color.setHex(0xffffff);
     mat.needsUpdate = true;
   }
 
@@ -648,8 +705,12 @@ export class Renderer {
   handleEvents(events: GameEvent[], ents: EntityDTO[], selfId: string): void {
     const now = performance.now();
     for (const event of events) {
-      if (event.e === "dmg" && (event.by === undefined || event.by === selfId)) {
-        this.floatText(`-${Math.round(event.amount)}`, event.x, event.y, "#ff5c4d");
+      if (event.e === "dmg") {
+        if (event.status) {
+          const target = this.nearestEntity(ents, event.x, event.y, ["player", "monster", "boss"], 90);
+          if (target) this.playStatusOverlay(target.id, event.status, now);
+        }
+        if (event.by === undefined || event.by === selfId) this.floatText(`-${Math.round(event.amount)}`, event.x, event.y, "#ff5c4d");
         continue;
       }
 
@@ -789,8 +850,7 @@ export class Renderer {
       if (s.action && now >= s.actionUntil) s.action = null;
 
       if (e.dead && (e.kind === "player" || e.kind === "monster" || e.kind === "boss")) {
-        this.applyTombstone(s);
-        size = 52;
+        this.hideState(s);
       } else if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
         const root = e.kind === "player" ? HERO_ROOT : e.kind === "boss" ? BOSS_ROOT : this.enemyRoot(e.id);
         const displayFlipX = s.action ? s.actionFlipX : s.flipX;
@@ -861,6 +921,9 @@ export class Renderer {
       } else {
         s.sprite.visible = true;
       }
+      if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
+        this.updateStatusOverlay(e.id, wx, wy, h, s.sprite.visible && !e.dead, now);
+      }
     }
     if (ents.length > 0) { this.propsSeen = true; this.livePropIds = propIds; }
     for (const [id, s] of this.sprites) {
@@ -870,6 +933,7 @@ export class Renderer {
         (s.sprite.material as THREE.SpriteMaterial).dispose();
         this.sprites.delete(id);
         this.lastPos.delete(id);
+        this.removeStatusOverlay(id);
       }
     }
     for (const [id, model] of this.lootModels) {

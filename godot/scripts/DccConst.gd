@@ -16,5 +16,5 @@ const DASH_MS := 180.0         # dash duration
 const DASH_CD := 1400.0        # cooldown between dashes
 const SLOW_FACTOR := 0.5        # movement multiplier while slowed (frost) — mirror src/shared/constants.ts
 const WALKABLE_DELTA := 24      # max ground-height step (px) between adjacent open cells (heightfield 2.5D) — mirror src/shared/constants.ts
-const PROTOCOL_VERSION := 17  # v17: monster DTO carries monKind for matching 3D enemy GLBs
+const PROTOCOL_VERSION := 18  # v18: damage events can carry elemental status overlays
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"

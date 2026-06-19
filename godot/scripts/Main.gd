@@ -373,6 +373,9 @@ func _on_events(events: Array) -> void:
 				var vp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
+				var status := str(ev.get("status", ""))
+				if status != "":
+					_sprites.status_at(vp.x, vp.y, status)
 				if self_hit:
 					_shake = 1.0
 					_sfx.play("hurt")

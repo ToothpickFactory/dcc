@@ -10,7 +10,7 @@
 import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 
-export const PROTOCOL_VERSION = 17; // was 16 - monster DTO now carries monKind for Godot GLB selection
+export const PROTOCOL_VERSION = 18; // was 17 - dmg events can carry elemental status effect overlays
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -115,7 +115,7 @@ export interface SelfDTO {
 }
 
 export type GameEvent =
-  | { e: "dmg"; x: number; y: number; amount: number; by?: string; crit?: boolean }
+  | { e: "dmg"; x: number; y: number; amount: number; by?: string; crit?: boolean; status?: StatusEffect }
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
   | { e: "cast"; x: number; y: number; ability: number }
@@ -124,6 +124,8 @@ export type GameEvent =
   | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
   | { e: "cc"; x: number; y: number; id: string; kind: CcKind; ms: number } // hard CC landed on a foe (pop fx)
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead" };
+
+export type StatusEffect = "fire" | "frost" | "poison";
 
 // Static floor geometry shipped to clients that don't run the TS procgen (e.g. the
 // native Godot client). The browser ignores this and rebuilds from `seed`. Sent

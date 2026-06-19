@@ -1,5 +1,7 @@
 import { CRIT_MULT, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
+import type { StatusEffect } from "../../protocol";
+import type { Ability } from "../../shared/types";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 
 function isPlayer(t: PlayerState | MonsterState | BossState): t is PlayerState {
@@ -38,14 +40,17 @@ export function applyDamage(
   ability = 0,
   hitRange = 0,
   knockMult = 1,
+  statusOverride?: StatusEffect,
 ): void {
   // Player attacks can critically strike (scaled by crit chance) and tanks
   // generate extra threat. Resolve both once, up front, for all target types.
   let crit = false;
   let threatMult = 1;
+  let status: StatusEffect | undefined = statusOverride;
   if (sourceIsPlayer) {
     const attacker = ctx.players.get(sourceId);
     if (attacker) {
+      status = status ?? statusForAbility(attacker.abilities[ability]);
       threatMult = attacker.threatMult;
       if (dmg > 0 && Math.random() < attacker.derived.critChance) {
         crit = true;
@@ -70,7 +75,7 @@ export function applyDamage(
     }
     target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit, status });
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
     }
@@ -99,7 +104,7 @@ export function applyDamage(
       ctx.gainXp(sourceId, ability, false);
     }
     target.hp -= dmg;
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId, crit });
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId, crit, status });
     if (target.hp <= 0) {
       target.dead = true;
       ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead" });
@@ -136,7 +141,7 @@ export function applyDamage(
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   target.hp -= taken;
-  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit });
+  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit, status });
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;
@@ -185,6 +190,16 @@ export function applyHeal(
 // lock movement AND action and interrupt any pending wind-up. A stun/freeze is never
 // downgraded to a root while still active (priority), though a longer one extends it.
 // `freeze` leaves a short SLOW tail once it thaws. No-ops if the ability has no CC.
+function statusForAbility(ab: Ability | undefined): StatusEffect | undefined {
+  if (!ab || ab.dmg <= 0) return undefined;
+  const text = `${ab.id} ${ab.name ?? ""} ${ab.flavor ?? ""} ${ab.twist ?? ""}`.toLowerCase();
+  if (ab.category === "stealth" || /\b(poison|venom|toxin|toxic|acid|blight)\b/.test(text)) return "poison";
+  if (ab.freeze || (ab.slowMs ?? 0) > 0 || /\b(frost|ice|icy|freeze|frozen|nova|snow|chill)\b/.test(text)) return "frost";
+  if (ab.id.startsWith("loot-") && (ab.category === "ranged" || ab.category === "aoe")) return "fire";
+  if (/\b(fire|flame|wildfire|burn|ember|inferno|blaze|detonation|explosion)\b/.test(text)) return "fire";
+  return undefined;
+}
+
 export function applyCc(
   ctx: WorldCtx,
   target: PlayerState | MonsterState | BossState,
