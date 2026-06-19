@@ -25,6 +25,7 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   "Briar Revenant": "/assets/Bosses/BriarRevenant/Briar Revenant-3d-animated.glb",
   "Primal Conflux": "/assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb",
   Juggernaut: "/assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb",
+  TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot-3d-animated.glb",
 };
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const STATUS_EFFECT_MS = 3000;
@@ -144,6 +145,7 @@ export class Renderer {
   private walls: THREE.InstancedMesh | null = null;
   private decorations: THREE.Sprite[] = [];
   private hazards: THREE.Object3D[] = [];
+  private portals: THREE.Object3D[] = [];
   private livePropIds = new Set<string>();
   private propsSeen = false;
   private floatingTexts: FloatingText[] = [];
@@ -394,6 +396,8 @@ export class Renderer {
         ? 0xff5a20
         : hazard.kind === "acid_pit"
           ? 0x78ff4d
+          : hazard.kind === "wall_crusher"
+            ? 0x9aa1aa
           : 0xd8d6c6;
       if (hazard.kind === "lava_pit" || hazard.kind === "acid_pit") {
         const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.78, depthWrite: false });
@@ -415,6 +419,31 @@ export class Renderer {
           spike.position.set(hazard.x + Math.cos(a) * rr, 21, hazard.y + Math.sin(a) * rr);
           spike.rotation.y = Math.PI * 0.25;
           group.add(spike);
+        }
+      } else if (hazard.kind === "wall_crusher") {
+        const len = hazard.length ?? hazard.r;
+        const width = hazard.width ?? hazard.r;
+        const dir = hazard.dir ?? 0;
+        const plateMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.96 });
+        void this.loadTileMaterials(floor.theme).then(({ wall }) => {
+          plateMat.map = wall;
+          plateMat.color.setHex(0xffffff);
+          plateMat.needsUpdate = true;
+        });
+        const warnMat = new THREE.MeshBasicMaterial({ color: 0xffd24d, transparent: true, opacity: 0.22, depthWrite: false });
+        const warning = new THREE.Mesh(new THREE.BoxGeometry(dir === 0 ? width : len, 5, dir === 0 ? len : width), warnMat);
+        warning.position.set(hazard.x, 5, hazard.y);
+        group.add(warning);
+        const plateSize = dir === 0 ? new THREE.Vector3(28, 88, len) : new THREE.Vector3(len, 88, 28);
+        for (const side of [-1, 1]) {
+          const plate = new THREE.Mesh(new THREE.BoxGeometry(plateSize.x, plateSize.y, plateSize.z), plateMat);
+          plate.userData.crusherSide = side;
+          plate.position.set(
+            hazard.x + (dir === 0 ? side * width * 0.5 : 0),
+            44,
+            hazard.y + (dir === 1 ? side * width * 0.5 : 0),
+          );
+          group.add(plate);
         }
       } else {
         const len = hazard.length ?? hazard.r;
@@ -446,6 +475,45 @@ export class Renderer {
       });
     }
     this.hazards = [];
+  }
+
+  private setPortals(floor: FloorDescriptor): void {
+    this.clearPortals();
+    for (const portal of floor.portals) {
+      const color = 0x38bdf8;
+      const coreColor = 0x8be9ff;
+      const group = new THREE.Group();
+      group.userData.portal = portal;
+      group.position.set(portal.x, 0, portal.y);
+      const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.82, depthWrite: false });
+      const diskMat = new THREE.MeshBasicMaterial({ color: coreColor, transparent: true, opacity: 0.24, depthWrite: false });
+      const disk = new THREE.Mesh(new THREE.CircleGeometry(portal.r * 0.82, 32), diskMat);
+      disk.rotation.x = -Math.PI / 2;
+      disk.position.set(0, 6, 0);
+      group.add(disk);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(portal.r * 0.72, portal.r, 36), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(0, 9, 0);
+      group.add(ring);
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(portal.r * 0.16, portal.r * 0.32, 110, 16), new THREE.MeshBasicMaterial({ color: coreColor, transparent: true, opacity: 0.34, depthWrite: false }));
+      pillar.position.set(0, 55, 0);
+      group.add(pillar);
+      this.scene.add(group);
+      this.portals.push(group);
+    }
+  }
+
+  private clearPortals(): void {
+    for (const portal of this.portals) {
+      this.scene.remove(portal);
+      portal.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        obj.geometry.dispose();
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) mat.dispose();
+      });
+    }
+    this.portals = [];
   }
 
   private spriteFor(id: string, color: number, size: number): SpriteState {
@@ -1127,6 +1195,7 @@ export class Renderer {
     void this.applyTileTheme(floor.theme);
     void this.applyPropTheme(floor, exitOpen);
     this.setHazards(floor);
+    this.setPortals(floor);
 
     if (this.walls) {
       this.scene.remove(this.walls);
@@ -1178,6 +1247,7 @@ export class Renderer {
     this.removeStairs();
     this.clearDecorations();
     this.clearHazards();
+    this.clearPortals();
   }
 
   private removeStairs(): void {
@@ -1388,6 +1458,7 @@ export class Renderer {
   draw() {
     this.updateFloatingTexts();
     this.updateHazards(performance.now());
+    this.updatePortals(performance.now());
     // Pulse the stairs marker (size + opacity) so the exit reads as a beacon.
     if (this.stairs) {
       const t = performance.now();
@@ -1399,6 +1470,22 @@ export class Renderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  private updatePortals(now: number): void {
+    for (const group of this.portals) {
+      const portal = group.userData.portal as FloorDescriptor["portals"][number] | undefined;
+      if (!portal) continue;
+      const pulse = 0.5 + 0.5 * Math.sin(now / 260 + portal.hue * Math.PI * 2);
+      group.rotation.y += 0.018;
+      group.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (mat instanceof THREE.MeshBasicMaterial) mat.opacity = Math.max(0.18, mat.opacity * 0.92 + (0.32 + pulse * 0.46) * 0.08);
+        }
+      });
+    }
+  }
+
   private updateHazards(now: number): void {
     for (const group of this.hazards) {
       const hazard = group.userData.hazard as FloorDescriptor["hazards"][number] | undefined;
@@ -1407,6 +1494,15 @@ export class Renderer {
       const pulse = 0.75 + 0.25 * Math.sin(now / 110 + (hazard.phaseMs ?? 0));
       group.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) return;
+        if (hazard.kind === "wall_crusher" && typeof obj.userData.crusherSide === "number") {
+          const width = hazard.width ?? hazard.r;
+          const open = width * 0.5;
+          const closed = 16;
+          const d = active ? closed : open;
+          const side = obj.userData.crusherSide as number;
+          if ((hazard.dir ?? 0) === 0) obj.position.x = hazard.x + side * d;
+          else obj.position.z = hazard.y + side * d;
+        }
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
         for (const mat of mats) {
           if (!(mat instanceof THREE.MeshBasicMaterial)) continue;

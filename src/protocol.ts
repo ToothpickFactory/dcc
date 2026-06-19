@@ -9,9 +9,9 @@
 // ===========================================================================
 import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
-import type { HazardSpec } from "./procgen/types";
+import type { HazardSpec, PortalSpec } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 21; // was 20 - floor geometry includes environmental hazards
+export const PROTOCOL_VERSION = 22; // was 21 - floor geometry includes paired map portals
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -141,6 +141,7 @@ export interface FloorGeometry {
   stairs: { x: number; y: number; r: number };
   decorations: { x: number; y: number; variant: number; scale: number }[];
   hazards: HazardSpec[];
+  portals: PortalSpec[];
 }
 
 export interface FloorClientInfo {

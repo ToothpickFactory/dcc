@@ -451,7 +451,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_fog.attach(_world)
 	var stairs: Dictionary = geometry.get("stairs", {}) if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
-	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs, geometry.get("hazards", []))
+	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, stairs)
 	var st: Dictionary = stairs

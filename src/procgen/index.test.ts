@@ -50,6 +50,14 @@ for (let seed = 1; seed <= 100; seed++) {
   for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true);
   for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true);
   for (const hazard of floor.hazards) assert.equal(canOccupy(grid, hazard.x, hazard.y, 12), true);
+  assert.ok(floor.portals.length <= 4, `seed ${seed} has too many portals`);
+  const portals = new Map(floor.portals.map((p) => [p.id, p]));
+  for (const portal of floor.portals) {
+    assert.equal(canOccupy(grid, portal.x, portal.y, 12), true);
+    const pair = portals.get(portal.pair);
+    assert.ok(pair, `seed ${seed} portal ${portal.id} has no pair`);
+    assert.equal(pair?.pair, portal.id, `seed ${seed} portal ${portal.id} pair is not reciprocal`);
+  }
 
   // ---- heightfield 2.5D invariants ----
   const g = grid.ground;

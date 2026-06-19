@@ -1,6 +1,6 @@
 import { WALKABLE_DELTA } from "../shared/constants";
 import type { MonsterKind, Theme } from "../shared/types";
-import type { CollisionGrid, FloorDescriptor, HazardSpec } from "./types";
+import type { CollisionGrid, FloorDescriptor, HazardSpec, PortalSpec } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
 
 const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
@@ -114,6 +114,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
 
   const theme = THEMES[Math.floor(random() * THEMES.length)]!;
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
+  const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
   // Heightfield 2.5D: generate a deterministic per-cell ground height on the FINE grid. The seed is
   // drawn HERE, as the very last random() call, so every existing layout draw above stays byte-
@@ -149,7 +150,47 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     chests,
     decorations,
     hazards,
+    portals,
   };
+}
+
+function generatePortals(
+  solid: Uint8Array,
+  gw: number,
+  gh: number,
+  cell: number,
+  random: () => number,
+  depth: number,
+  start: { x: number; y: number },
+  stairs: { x: number; y: number },
+  bossCell: { x: number; y: number },
+): PortalSpec[] {
+  const candidates = openCells(solid, gw, gh).filter((p) =>
+    manhattan(p.x, p.y, start.x, start.y) > 6 &&
+    manhattan(p.x, p.y, stairs.x, stairs.y) > 6 &&
+    manhattan(p.x, p.y, bossCell.x, bossCell.y) > 4
+  );
+  shuffle(candidates, random);
+  const pairCount = Math.min(2, Math.max(1, Math.floor(depth / 4) + 1), Math.floor(candidates.length / 2));
+  const portals: PortalSpec[] = [];
+  const used: { x: number; y: number }[] = [];
+  const farEnough = (p: { x: number; y: number }) => used.every((u) => manhattan(p.x, p.y, u.x, u.y) >= 8);
+  for (let pair = 0; pair < pairCount; pair++) {
+    const a = candidates.find((p) => farEnough(p));
+    if (!a) break;
+    used.push(a);
+    const b = candidates.find((p) => p !== a && farEnough(p) && manhattan(p.x, p.y, a.x, a.y) >= Math.max(10, Math.floor((gw + gh) * 0.18)));
+    if (!b) break;
+    used.push(b);
+    const ac = cellCenter(a.x, a.y, cell);
+    const bc = cellCenter(b.x, b.y, cell);
+    const hue = (pair * 0.37 + random() * 0.18) % 1;
+    const aid = `portal_${pair}_a`;
+    const bid = `portal_${pair}_b`;
+    portals.push({ id: aid, pair: bid, ...ac, r: 34, hue });
+    portals.push({ id: bid, pair: aid, ...bc, r: 34, hue });
+  }
+  return portals;
 }
 
 function generateHazards(
@@ -193,6 +234,26 @@ function generateHazards(
     return null;
   };
 
+  const crusherCandidates = open.filter((p) => crusherDirAt(solid, gw, gh, p.x, p.y) !== null);
+  shuffle(crusherCandidates, random);
+  if (crusherCandidates.length > 0 && random() < 0.75) {
+    const p = crusherCandidates[0]!;
+    const center = cellCenter(p.x, p.y, cell);
+    hazards.push({
+      kind: "wall_crusher",
+      ...center,
+      r: 54,
+      dmg: 9999,
+      dir: crusherDirAt(solid, gw, gh, p.x, p.y) ?? 0,
+      length: cell * 1.2,
+      width: cell * 1.05,
+      periodMs: 3400,
+      activeMs: 520,
+      phaseMs: Math.floor(random() * 2600),
+    });
+    used.add(`${p.x},${p.y}`);
+  }
+
   for (let i = 0; i < count; i++) {
     const p = pickOpen();
     if (!p) break;
@@ -206,6 +267,22 @@ function generateHazards(
     } else if (roll < 0.66) {
       hazards.push({ kind: "acid_pit", ...center, r: 58, dmg: Math.max(3, baseDmg - 1) });
     } else {
+      const crusherDir = crusherDirAt(solid, gw, gh, p.x, p.y);
+      if (roll > 0.88 && crusherDir !== null) {
+        hazards.push({
+          kind: "wall_crusher",
+          ...center,
+          r: 54,
+          dmg: 9999,
+          dir: crusherDir,
+          length: cell * 1.2,
+          width: cell * 1.05,
+          periodMs: 3400,
+          activeMs: 520,
+          phaseMs,
+        });
+        continue;
+      }
       const wall = adjacentWallDir(solid, gw, gh, p.x, p.y, random);
       if (!wall) {
         hazards.push({ kind: "floor_spikes", ...center, r: 46, dmg: baseDmg, periodMs: 2300, activeMs: 820, phaseMs });
@@ -244,6 +321,23 @@ function adjacentWallDir(solid: Uint8Array, w: number, h: number, x: number, y: 
   return dirs[Math.floor(random() * dirs.length)]!.dir;
 }
 
+function crusherDirAt(solid: Uint8Array, w: number, h: number, x: number, y: number): number | null {
+  if (x <= 0 || y <= 0 || x >= w - 1 || y >= h - 1) return null;
+  const here = y * w + x;
+  if (solid[here] !== 0) return null;
+  const leftWall = solid[y * w + x - 1] === 1;
+  const rightWall = solid[y * w + x + 1] === 1;
+  const upWall = solid[(y - 1) * w + x] === 1;
+  const downWall = solid[(y + 1) * w + x] === 1;
+  const openUp = y > 1 && solid[(y - 1) * w + x] === 0;
+  const openDown = y < h - 2 && solid[(y + 1) * w + x] === 0;
+  const openLeft = x > 1 && solid[y * w + x - 1] === 0;
+  const openRight = x < w - 2 && solid[y * w + x + 1] === 0;
+  if (leftWall && rightWall && (openUp || openDown)) return 0;
+  if (upWall && downWall && (openLeft || openRight)) return 1;
+  return null;
+}
+
 function scHazard(h: HazardSpec): HazardSpec {
   const SCALE = 2;
   return {
@@ -254,6 +348,11 @@ function scHazard(h: HazardSpec): HazardSpec {
     length: h.length === undefined ? undefined : h.length * SCALE,
     width: h.width === undefined ? undefined : h.width * SCALE,
   };
+}
+
+function scPortal(p: PortalSpec): PortalSpec {
+  const SCALE = 2;
+  return { ...p, x: p.x * SCALE, y: p.y * SCALE, r: p.r * SCALE };
 }
 
 // ---- geometry ----

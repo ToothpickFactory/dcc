@@ -52,6 +52,8 @@ const PRIMAL_CONFLUX_NAME := "Primal Conflux"
 const PRIMAL_CONFLUX_MODEL_PATH := "res://assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb"
 const JUGGERNAUT_NAME := "Juggernaut"
 const JUGGERNAUT_MODEL_PATH := "res://assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb"
+const TERRORBOT_NAME := "TerrorBot"
+const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot-3d-animated.glb"
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
@@ -682,6 +684,8 @@ func _model_profile_for_entity() -> Dictionary:
 			boss_model_path = PRIMAL_CONFLUX_MODEL_PATH
 		elif _entity_name == JUGGERNAUT_NAME:
 			boss_model_path = JUGGERNAUT_MODEL_PATH
+		elif _entity_name == TERRORBOT_NAME:
+			boss_model_path = TERRORBOT_MODEL_PATH
 		if boss_model_path != "":
 			return {
 				"label": _entity_name,

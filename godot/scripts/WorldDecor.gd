@@ -10,7 +10,7 @@ extends Node3D
 ## a "dcc_world" Vector2 meta) so Main can fog them with Geo.line_of_sight.
 ##
 ## Public API:
-##   apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = []) -> void
+##   apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = [], portals: Array = []) -> void
 ##   clear() -> void
 ##   decoration_sprites: Array[Sprite3D]   # spawned decoration billboards
 ##   stairs_sprite: Sprite3D               # the exit marker (null until apply)
@@ -64,6 +64,7 @@ var stairs_sprite: Sprite3D
 var atmo_sprites: Array[Node3D] = []
 var _glow_quads: Array[Node3D] = []  # subset of atmo_sprites that flicker
 var _hazard_nodes: Array[Node3D] = []
+var _portal_nodes: Array[Node3D] = []
 var _flicker := 0.0
 static var _glow_tex: Texture2D
 static var _decal_tex: Texture2D
@@ -74,6 +75,7 @@ var _tile_cache: Dictionary = {}
 var _prop_cache: Dictionary = {}
 # raw sheet path -> Texture2D (parsed once)
 var _sheet_cache: Dictionary = {}
+var _hazard_wall_tex: Texture2D
 
 var _stairs_pulse := 0.0
 var _stairs_tex_h := 64.0  # cached stairs texture height, for the pulse pixel_size
@@ -93,6 +95,8 @@ func _process(dt: float) -> void:
 			(q as GeometryInstance3D).transparency = clampf(1.0 - f, 0.0, 0.6)
 	if not _hazard_nodes.is_empty():
 		_update_hazards()
+	if not _portal_nodes.is_empty():
+		_update_portals(dt)
 	# Pulse + shimmer the stairs marker so the exit reads as a glowing portal.
 	if stairs_sprite == null or not stairs_sprite.visible:
 		return
@@ -107,7 +111,7 @@ func _process(dt: float) -> void:
 
 ## Theme the floor: retexture World's ground/wall materials and spawn decoration +
 ## stairs billboards. Mirrors applyTileTheme + applyPropTheme from render.ts.
-func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = []) -> void:
+func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = [], portals: Array = []) -> void:
 	clear()
 	if not THEMES.has(theme):
 		# Unknown theme: leave World on its flat fallback colours, no props.
@@ -116,6 +120,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array
 
 	# 1) Ground + wall tiles (render.ts applyTileTheme) + per-theme color/mood palette.
 	var tiles := _load_tiles(theme)
+	_hazard_wall_tex = tiles.get("wall")
 	if world != null:
 		world.set_ground_texture(tiles.get("floor"))
 		world.set_wall_texture(tiles.get("wall"))
@@ -164,6 +169,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array
 	# 5) Atmosphere: torch light-pools along walls + grime decals on the floor.
 	_place_atmosphere()
 	_place_hazards(hazards)
+	_place_portals(portals)
 
 func set_live_props(ents: Array) -> void:
 	if ents.is_empty():
@@ -200,6 +206,10 @@ func clear() -> void:
 		if is_instance_valid(h):
 			h.queue_free()
 	_hazard_nodes.clear()
+	for p in _portal_nodes:
+		if is_instance_valid(p):
+			p.queue_free()
+	_portal_nodes.clear()
 	if is_instance_valid(stairs_sprite):
 		stairs_sprite.queue_free()
 	stairs_sprite = null
@@ -232,6 +242,46 @@ func _make_billboard(tex: Texture2D, wx: float, wy: float, wz: float, size_px: f
 	return sprite
 
 
+# --- portals ---------------------------------------------------------------
+
+func _place_portals(portals: Array) -> void:
+	for p in portals:
+		if typeof(p) != TYPE_DICTIONARY:
+			continue
+		var portal: Dictionary = p
+		var x := float(portal.get("x", 0.0))
+		var y := float(portal.get("y", 0.0))
+		var r := float(portal.get("r", 64.0))
+		var color := Color(0.22, 0.74, 0.98, 0.72)
+		var core := Color(0.55, 0.91, 1.0, 0.72)
+		var node := Node3D.new()
+		node.position = Vector3(x, _gh(x, y), y)
+		node.set_meta("dcc_portal_hue", float(portal.get("hue", 0.0)))
+		add_child(node)
+		_portal_nodes.append(node)
+		var disk := _cylinder_mesh(r * 0.82, 4.0, Color(core.r, core.g, core.b, 0.24))
+		disk.position = Vector3(0.0, 6.0, 0.0)
+		node.add_child(disk)
+		var ring := _cylinder_mesh(r, 5.0, color)
+		ring.position = Vector3(0.0, 9.0, 0.0)
+		node.add_child(ring)
+		var pillar := _cylinder_mesh(r * 0.28, 110.0, Color(core.r, core.g, core.b, 0.34))
+		pillar.position = Vector3(0.0, 55.0, 0.0)
+		node.add_child(pillar)
+
+func _update_portals(dt: float) -> void:
+	var now := float(Time.get_ticks_msec())
+	for node in _portal_nodes:
+		if not is_instance_valid(node):
+			continue
+		node.rotate_y(dt * 1.8)
+		var hue := float(node.get_meta("dcc_portal_hue", 0.0))
+		var pulse := 0.5 + 0.5 * sin(now / 260.0 + hue * TAU)
+		for child in node.get_children():
+			if child is GeometryInstance3D:
+				(child as GeometryInstance3D).transparency = 0.12 + 0.42 * (1.0 - pulse)
+
+
 # --- hazards ---------------------------------------------------------------
 
 func _place_hazards(hazards: Array) -> void:
@@ -245,6 +295,8 @@ func _place_hazards(hazards: Array) -> void:
 			color = Color(1.0, 0.32, 0.08, 0.78)
 		elif kind == "acid_pit":
 			color = Color(0.45, 1.0, 0.27, 0.78)
+		elif kind == "wall_crusher":
+			color = Color(0.6, 0.64, 0.68, 0.95)
 		var node := Node3D.new()
 		node.set_meta("dcc_hazard", hz)
 		add_child(node)
@@ -268,6 +320,20 @@ func _place_hazards(hazards: Array) -> void:
 				spike.position = Vector3(x + cos(a) * rr, gh + 21.0, y + sin(a) * rr)
 				spike.rotate_y(PI * 0.25)
 				node.add_child(spike)
+		elif kind == "wall_crusher":
+			var dir := int(hz.get("dir", 0))
+			var length := float(hz.get("length", hz.get("r", 160.0)))
+			var width := float(hz.get("width", hz.get("r", 90.0)))
+			var warn_size := Vector3(width, 5.0, length) if dir == 0 else Vector3(length, 5.0, width)
+			var warning := _box_mesh(warn_size, Color(1.0, 0.82, 0.3, 0.22))
+			warning.position = Vector3(x, gh + 5.0, y)
+			node.add_child(warning)
+			var plate_size := Vector3(28.0, 88.0, length) if dir == 0 else Vector3(length, 88.0, 28.0)
+			for side in [-1, 1]:
+				var plate := _box_mesh(plate_size, color, _hazard_wall_tex)
+				plate.set_meta("dcc_crusher_side", side)
+				plate.position = Vector3(x + (float(side) * width * 0.5 if dir == 0 else 0.0), gh + 44.0, y + (float(side) * width * 0.5 if dir == 1 else 0.0))
+				node.add_child(plate)
 		else:
 			var dir := int(hz.get("dir", 0))
 			var angle := 0.0
@@ -298,6 +364,14 @@ func _update_hazards() -> void:
 		for child in node.get_children():
 			if child is GeometryInstance3D:
 				var gi := child as GeometryInstance3D
+				if str(hz.get("kind", "")) == "wall_crusher" and gi.has_meta("dcc_crusher_side"):
+					var width := float(hz.get("width", hz.get("r", 90.0)))
+					var d := 16.0 if active else width * 0.5
+					var side := float(int(gi.get_meta("dcc_crusher_side", 1)))
+					if int(hz.get("dir", 0)) == 0:
+						gi.position.x = float(hz.get("x", 0.0)) + side * d
+					else:
+						gi.position.z = float(hz.get("y", 0.0)) + side * d
 				gi.transparency = 0.0 if active else 0.68
 				if str(hz.get("kind", "")) == "floor_spikes":
 					gi.position.y = (21.0 + _gh(gi.position.x, gi.position.z)) if active else (8.0 + _gh(gi.position.x, gi.position.z))
@@ -311,9 +385,10 @@ func _hazard_active(hz: Dictionary, now: float) -> bool:
 		return true
 	return fmod(now + float(hz.get("phaseMs", 0.0)), period) < active
 
-func _hazard_mat(color: Color) -> StandardMaterial3D:
+func _hazard_mat(color: Color, tex: Texture2D = null) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
+	mat.albedo_color = Color.WHITE if tex != null else color
+	mat.albedo_texture = tex
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD if color.a < 0.85 else BaseMaterial3D.BLEND_MODE_MIX
@@ -342,11 +417,11 @@ func _cone_mesh(radius: float, height: float, color: Color) -> MeshInstance3D:
 	mi.mesh = mesh
 	return mi
 
-func _box_mesh(size: Vector3, color: Color) -> MeshInstance3D:
+func _box_mesh(size: Vector3, color: Color, tex: Texture2D = null) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var mesh := BoxMesh.new()
 	mesh.size = size
-	mesh.material = _hazard_mat(color)
+	mesh.material = _hazard_mat(color, tex)
 	mi.mesh = mesh
 	return mi
 

@@ -150,14 +150,20 @@ export const BOSS_PROJ_DMG = Math.round((MONSTER_KINDS.ranged.ranged?.projDmg ??
 export const BOSS_PROJ_LIFE = 4.5; // seconds before a stray bolt despawns
 export const BOSS_PROJ_SPREAD = 0.2; // radians between bolts in a volley
 export const BOSS_PROJ_RADIUS = 30; // collision radius vs players
-export const FIRST_BOSS_NAME = "Iron Jailor";
+export const JAILOR_BOSS_NAME = "Iron Jailor";
 export const BOSS_NAME = "Slime Guardian";
 export const BRIAR_REVENANT_BOSS_NAME = "Briar Revenant";
 export const PRIMAL_CONFLUX_BOSS_NAME = "Primal Conflux";
 export const JUGGERNAUT_BOSS_NAME = "Juggernaut";
-export const BOSS_NAMES = [BRIAR_REVENANT_BOSS_NAME, PRIMAL_CONFLUX_BOSS_NAME, JUGGERNAUT_BOSS_NAME, BOSS_NAME] as const;
-export function bossNameForDepth(depth: number): string {
-  if (depth <= 1) return FIRST_BOSS_NAME;
-  return BOSS_NAMES[(depth - 2) % BOSS_NAMES.length];
+export const TERRORBOT_BOSS_NAME = "TerrorBot";
+export const BOSS_NAMES = [JAILOR_BOSS_NAME, BRIAR_REVENANT_BOSS_NAME, PRIMAL_CONFLUX_BOSS_NAME, JUGGERNAUT_BOSS_NAME, TERRORBOT_BOSS_NAME, BOSS_NAME] as const;
+export function bossNameForDepth(depth: number, seed = 0): string {
+  let x = (seed ^ Math.imul(depth, 0x9e3779b1)) >>> 0;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x7feb352d) >>> 0;
+  x ^= x >>> 15;
+  x = Math.imul(x, 0x846ca68b) >>> 0;
+  x ^= x >>> 16;
+  return BOSS_NAMES[x % BOSS_NAMES.length]!;
 }
 export const BOSS_BOLT_SPRITE = 99; // EntityDTO.sprite marker so the client styles boss bolts
