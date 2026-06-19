@@ -65,6 +65,10 @@ var _boss_present_was := false # tracks boss presence for the combat-music layer
 var _trail_frame := 0          # throttles projectile trail dots
 var _key_light: DirectionalLight3D
 var _dash_ready_at := 0.0      # client-side dodge cooldown gate (ms)
+var _decor_vis_cell := -1
+var _decor_live_props_key := ""
+var _decor_live_props_tick := -1
+var _decor_cached_live_props_key := ""
 
 func _ready() -> void:
 	# Dev overrides: DCC_WS points at a server (e.g. ws://127.0.0.1:8787/ws for local
@@ -454,6 +458,10 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, stairs)
+	_decor_vis_cell = -1
+	_decor_live_props_key = ""
+	_decor_live_props_tick = -1
+	_decor_cached_live_props_key = ""
 	var st: Dictionary = stairs
 	_stairs = Vector2(float(st.get("x", 0.0)), float(st.get("y", 0.0)))
 	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
@@ -680,12 +688,18 @@ func _grab_shot() -> void:
 func _update_decor_visibility(x: float, y: float) -> void:
 	if _world == null or _world.grid.is_empty() or _decor == null:
 		return
-	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
-	_decor.set_live_props(_net.ents)
 	# Quantize the sight center to the player's CELL CENTER so the LoS result is stable while
 	# you move within a tile — otherwise the ray grazes wall corners as the smoothed camera
 	# drifts and props strobe on/off every frame. (Walls already recompute only per-cell.)
 	var cell: float = _world.grid["cell"]
+	var cell_id := int(floor(y / cell)) * int(_world.grid["w"]) + int(floor(x / cell))
+	var live_props_key := _cached_live_props_key()
+	if cell_id == _decor_vis_cell and live_props_key == _decor_live_props_key:
+		return
+	_decor_vis_cell = cell_id
+	_decor_live_props_key = live_props_key
+	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
+	_decor.set_live_props(_net.ents)
 	var qx: float = (floor(x / cell) + 0.5) * cell
 	var qy: float = (floor(y / cell) + 0.5) * cell
 	_set_static_sprite_visibility(_decor.stairs_sprite, qx, qy, vision_sq)
@@ -693,6 +707,25 @@ func _update_decor_visibility(x: float, y: float) -> void:
 		_set_static_sprite_visibility(sprite, qx, qy, vision_sq)
 	for a in _decor.atmo_sprites:  # torch glow-pools / flames / decals — fog-culled like decor
 		_set_static_sprite_visibility(a, qx, qy, vision_sq)
+
+func _cached_live_props_key() -> String:
+	var tick := -1
+	if _net != null:
+		tick = int(_net.cur.get("tick", -1))
+	if tick == _decor_live_props_tick:
+		return _decor_cached_live_props_key
+	_decor_live_props_tick = tick
+	_decor_cached_live_props_key = _live_props_key(_net.ents)
+	return _decor_cached_live_props_key
+
+func _live_props_key(ents: Array) -> String:
+	var ids: Array[String] = []
+	for e in ents:
+		if typeof(e) != TYPE_DICTIONARY or str(e.get("kind", "")) != "prop":
+			continue
+		ids.append(str(e.get("id", "")))
+	ids.sort()
+	return "|".join(ids)
 
 func _set_static_sprite_visibility(sprite: Node3D, x: float, y: float, vision_sq: float) -> void:
 	if sprite == null or not is_instance_valid(sprite):

@@ -1720,6 +1720,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       ents.push({ id: pr.id, kind: "proj", x: r(pr.x), y: r(pr.y), aim: r2(Math.atan2(pr.vy, pr.vx)), sprite: pr.sprite ?? pr.ability, proj: pr.proj });
     }
 
+    const entsJson = JSON.stringify(ents);
+    const eventsJson = JSON.stringify(this.events);
     for (const p of this.players.values()) {
       if (p.linkdead) continue; // no live socket to send to
       // Live consumable count on any hotbar potion slot so the HUD shows "N left".
@@ -1750,7 +1752,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         bestFloor: this.lb.get(p.id)?.floor ?? 0,
         kills: this.lb.get(p.id)?.kills ?? 0,
       };
-      this.send(p.ws, { t: "state", tick: this.now, ack: p.lastSeq, ents, events: this.events, self });
+      this.sendRaw(
+        p.ws,
+        `{"t":"state","tick":${this.now},"ack":${p.lastSeq},"ents":${entsJson},"events":${eventsJson},"self":${JSON.stringify(self)}}`,
+      );
     }
   }
 
@@ -1818,6 +1823,14 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private send(ws: WebSocket, msg: ServerMsg) {
     try {
       ws.send(JSON.stringify(msg));
+    } catch {
+      /* socket closing */
+    }
+  }
+
+  private sendRaw(ws: WebSocket, msg: string) {
+    try {
+      ws.send(msg);
     } catch {
       /* socket closing */
     }

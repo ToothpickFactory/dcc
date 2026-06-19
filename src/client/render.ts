@@ -147,6 +147,7 @@ export class Renderer {
   private hazards: THREE.Object3D[] = [];
   private portals: THREE.Object3D[] = [];
   private livePropIds = new Set<string>();
+  private livePropKey = "";
   private propsSeen = false;
   private floatingTexts: FloatingText[] = [];
   private statusTextureSources = new Map<StatusEffect, THREE.Texture | null>();
@@ -171,6 +172,8 @@ export class Renderer {
   private wallVisData = new Uint8Array(1);
   private visScratch = new Uint8Array(1); // visible-open-cell scratch for the recompute
   private lastVisCell = -1;
+  private lastStaticVisCell = -1;
+  private lastStaticLivePropKey = "";
   private fog = {
     uPlayer: { value: new THREE.Vector2(0, 0) },
     uGrid: { value: this.fogGridTex },
@@ -384,6 +387,9 @@ export class Renderer {
     this.decorations = [];
     this.propsSeen = false;
     this.livePropIds = new Set();
+    this.livePropKey = "";
+    this.lastStaticVisCell = -1;
+    this.lastStaticLivePropKey = "";
   }
 
   private setHazards(floor: FloorDescriptor): void {
@@ -1149,7 +1155,11 @@ export class Renderer {
         this.updateStatusOverlay(e.id, wx, wy, h, s.sprite.visible && !e.dead, now);
       }
     }
-    if (ents.length > 0) { this.propsSeen = true; this.livePropIds = propIds; }
+    if (ents.length > 0) {
+      this.propsSeen = true;
+      this.livePropIds = propIds;
+      this.livePropKey = [...propIds].sort().join("|");
+    }
     for (const [id, s] of this.sprites) {
       if (!seen.has(id)) {
         this.scene.remove(s.sprite);
@@ -1220,6 +1230,8 @@ export class Renderer {
     this.wallVisTex.needsUpdate = true;
     this.fog.uWallVis.value = this.wallVisTex;
     this.lastVisCell = -1;
+    this.lastStaticVisCell = -1;
+    this.lastStaticLivePropKey = "";
     let wallCount = 0;
     for (const value of grid.solid) wallCount += value;
     const wallH = 220; // tall, cliff-like walls (matches the Godot client's World.WALL_H)
@@ -1279,10 +1291,16 @@ export class Renderer {
     this.fog.uPlayer.value.set(x, y);
     const grid = this.collision;
     if (!grid) return;
-    this.updateStaticVisibility(x, y);
     // Recompute the wall mask only on cell change — stable (no flicker) within a tile.
     const cell = grid.cell;
     const here = Math.floor(y / cell) * grid.w + Math.floor(x / cell);
+    if (here !== this.lastStaticVisCell || this.livePropKey !== this.lastStaticLivePropKey) {
+      this.lastStaticVisCell = here;
+      this.lastStaticLivePropKey = this.livePropKey;
+      const qx = (Math.floor(x / cell) + 0.5) * cell;
+      const qy = (Math.floor(y / cell) + 0.5) * cell;
+      this.updateStaticVisibility(qx, qy);
+    }
     if (here === this.lastVisCell) return;
     this.lastVisCell = here;
     this.computeWallVis(x, y);
