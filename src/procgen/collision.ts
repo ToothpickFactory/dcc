@@ -1,4 +1,4 @@
-import { WALKABLE_DELTA } from "../shared/constants";
+import { WALKABLE_DELTA, WALKABLE_SLOPE_DELTA } from "../shared/constants";
 import type { CollisionGrid } from "./types";
 
 export function blocked(grid: CollisionGrid, x: number, y: number): boolean {
@@ -45,12 +45,41 @@ export function heightAt(grid: CollisionGrid, x: number, y: number): number {
   return grid.ground[cy * grid.w + cx]!;
 }
 
+// Bilinear terrain height at a world position, matching Godot's Geo.ground_height().
+// This is for movement feel only; heightAt() stays the deterministic cell sampler
+// used by the strict parity gate and procgen reachability checks.
+export function smoothHeightAt(grid: CollisionGrid, x: number, y: number): number {
+  if (!grid.ground) return 0;
+  const gx = x / grid.cell - 0.5;
+  const gy = y / grid.cell - 0.5;
+  let x0 = Math.floor(gx);
+  let y0 = Math.floor(gy);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const x1 = clamp(x0 + 1, 0, grid.w - 1);
+  const y1 = clamp(y0 + 1, 0, grid.h - 1);
+  x0 = clamp(x0, 0, grid.w - 1);
+  y0 = clamp(y0, 0, grid.h - 1);
+  const h00 = grid.ground[y0 * grid.w + x0]!;
+  const h10 = grid.ground[y0 * grid.w + x1]!;
+  const h01 = grid.ground[y1 * grid.w + x0]!;
+  const h11 = grid.ground[y1 * grid.w + x1]!;
+  return lerp(lerp(h00, h10, fx), lerp(h01, h11, fx), fy);
+}
+
 // Heightfield 2.5D step-up gate: a move between two points is allowed only if the NEAREST-CELL
 // ground heights differ by <= WALKABLE_DELTA. Pure integer math (heightAt) so GDScript's
 // Geo.can_step reproduces it bit-for-bit — no float drift, no rubber-band. A cliff face (delta >
 // cap, e.g. a plateau edge) acts like a wall; the procgen ramp keeps every region reachable.
 export function canStep(grid: CollisionGrid, fromX: number, fromY: number, toX: number, toY: number): boolean {
   return Math.abs(heightAt(grid, toX, toY) - heightAt(grid, fromX, fromY)) <= WALKABLE_DELTA;
+}
+
+export function canTraverseSlope(grid: CollisionGrid, fromX: number, fromY: number, toX: number, toY: number): boolean {
+  if (!grid.ground) return true;
+  if (canStep(grid, fromX, fromY, toX, toY)) return true;
+  if (Math.abs(heightAt(grid, toX, toY) - heightAt(grid, fromX, fromY)) > WALKABLE_SLOPE_DELTA) return false;
+  return Math.abs(smoothHeightAt(grid, toX, toY) - smoothHeightAt(grid, fromX, fromY)) <= WALKABLE_DELTA;
 }
 
 export function moveWithCollisions(
@@ -66,6 +95,20 @@ export function moveWithCollisions(
   const ny = position.y + dy;
   // Y step measured from the POST-X position so a diagonal can't climb a cliff one axis at a time.
   if (canOccupy(grid, position.x, ny, radius) && canStep(grid, position.x, position.y, position.x, ny)) position.y = ny;
+}
+
+export function moveWithSmoothTerrainCollisions(
+  grid: CollisionGrid,
+  position: { x: number; y: number },
+  dx: number,
+  dy: number,
+  radius: number,
+): void {
+  const nx = position.x + dx;
+  if (canOccupy(grid, nx, position.y, radius) && canTraverseSlope(grid, position.x, position.y, nx, position.y)) position.x = nx;
+
+  const ny = position.y + dy;
+  if (canOccupy(grid, position.x, ny, radius) && canTraverseSlope(grid, position.x, position.y, position.x, ny)) position.y = ny;
 }
 
 export function randomWalkablePosition(
@@ -93,4 +136,8 @@ export function randomWalkablePosition(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { PLAYER_RADIUS, WALKABLE_DELTA } from "../shared/constants.ts";
-import { canOccupy, canStep } from "./collision.ts";
+import { canOccupy, canStep, canTraverseSlope } from "./collision.ts";
 import type { CollisionGrid } from "./types.ts";
 import { generateFloor } from "./index.ts";
 
@@ -22,6 +22,9 @@ import { generateFloor } from "./index.ts";
   assert.equal(canStep(gold, cc(1), cc(1), cc(3), cc(1)), true, "|0-24|=24 == 24 inclusive");
   assert.equal(canStep(gold, cc(3), cc(1), cc(3), cc(0)), false, "|24-100|=76 > 24");
   assert.equal(canStep(gold, cc(2), cc(2), cc(3), cc(2)), false, "Int16 extremes -> huge");
+  assert.equal(canTraverseSlope(gold, cc(1), cc(0), cc(2), cc(0)), false, "cell-centre 32px jump still blocks");
+  assert.equal(canTraverseSlope(gold, 1.0 * CELL, 0.5 * CELL, 1.15 * CELL, 0.5 * CELL), true, "smooth hill edge is climbable");
+  assert.equal(canTraverseSlope(gold, 2.95 * CELL, 0.5 * CELL, 3.1 * CELL, 0.5 * CELL), false, "large cliff face still blocks");
 }
 
 {

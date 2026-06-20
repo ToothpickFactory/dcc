@@ -1,4 +1,4 @@
-import { moveWithCollisions } from "../procgen/collision";
+import { moveWithSmoothTerrainCollisions } from "../procgen/collision";
 import type { CollisionGrid } from "../procgen/types";
 import { PLAYER_RADIUS, PLAYER_SPEED } from "../shared/constants";
 import type { Net } from "./net";
@@ -24,7 +24,7 @@ export class Predictor {
     if (len > 0) {
       const dx = (mv[0] / len) * PLAYER_SPEED * dt;
       const dy = (mv[1] / len) * PLAYER_SPEED * dt;
-      if (this.collision) moveWithCollisions(this.collision, this, dx, dy, PLAYER_RADIUS);
+      if (this.collision) moveWithSmoothTerrainCollisions(this.collision, this, dx, dy, PLAYER_RADIUS);
       else {
         this.x += dx;
         this.y += dy;

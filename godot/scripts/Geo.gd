@@ -106,6 +106,19 @@ static func can_occupy(grid: Dictionary, x: float, y: float, radius: float) -> b
 static func can_step(grid: Dictionary, fx: float, fy: float, tx: float, ty: float) -> bool:
 	return abs(ground_step(grid, tx, ty) - ground_step(grid, fx, fy)) <= DccConst.WALKABLE_DELTA
 
+## Smoother player traversal gate: the strict nearest-cell gate catches true cliffs,
+## but rendered hills are bilinear. Let movement follow that smooth surface unless
+## the underlying cell jump is large enough to read as a sheer face.
+static func can_traverse_slope(grid: Dictionary, fx: float, fy: float, tx: float, ty: float) -> bool:
+	var ground: PackedInt32Array = grid.get("ground", PackedInt32Array())
+	if ground.is_empty():
+		return true
+	if can_step(grid, fx, fy, tx, ty):
+		return true
+	if abs(ground_step(grid, tx, ty) - ground_step(grid, fx, fy)) > DccConst.WALKABLE_SLOPE_DELTA:
+		return false
+	return absf(Geo.ground_height(grid, tx, ty) - Geo.ground_height(grid, fx, fy)) <= DccConst.WALKABLE_DELTA
+
 ## Axis-separated swept move: X first, then Y. (collision.ts: moveWithCollisions)
 static func move_with_collisions(grid: Dictionary, pos: Vector2, dx: float, dy: float, radius: float) -> Vector2:
 	var out := pos

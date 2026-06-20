@@ -90,6 +90,9 @@ export const SLOW_FACTOR = 0.5; // movement multiplier while a slow (e.g. frost)
 // AND it is the threshold the v2 step-up movement gate uses. One constant, both sides — mirror
 // into godot/scripts/DccConst.gd. (Visual-only today; gates collision only in v2.)
 export const WALKABLE_DELTA = 24;
+// Movement uses smooth terrain sampling so pretty rolling hills do not feel like
+// invisible stairs. This cap still blocks truly sheer height jumps and plateau faces.
+export const WALKABLE_SLOPE_DELTA = 64;
 
 // Dodge/dash (Champions-of-Norrath-style evade): a short high-speed burst with brief
 // invulnerability, on a cooldown. The defensive tool every class shares.

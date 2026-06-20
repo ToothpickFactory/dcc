@@ -118,6 +118,10 @@ func test_can_step_gate_matches_golden() -> void:
 	assert_bool(Geo.can_step(g, _c(1), _c(1), _c(3), _c(1))).is_true()   # |0-24|=24 == 24 (inclusive)
 	assert_bool(Geo.can_step(g, _c(3), _c(1), _c(3), _c(0))).is_false()  # |24-100|=76 > 24
 	assert_bool(Geo.can_step(g, _c(2), _c(2), _c(3), _c(2))).is_false()  # Int16 extremes -> huge
+	assert_bool(Geo.can_traverse_slope(g, _c(1), _c(0), _c(2), _c(0))).is_false() # cell-centre 32px jump still blocks
+	assert_bool(Geo.can_traverse_slope(g, 1.0 * CELL, 0.5 * CELL, 1.15 * CELL, 0.5 * CELL)).is_true() # smooth hill edge is climbable
+	assert_bool(Geo.can_traverse_slope(g, 2.95 * CELL, 0.5 * CELL, 3.1 * CELL, 0.5 * CELL)).is_false() # large cliff face still blocks
 	# absent height layer -> always walkable (flat)
 	var flat := Geo.decode(FIXTURE_B64, GW, GH, CELL)
 	assert_bool(Geo.can_step(flat, _c(0), _c(0), _c(3), _c(2))).is_true()
+	assert_bool(Geo.can_traverse_slope(flat, _c(0), _c(0), _c(3), _c(2))).is_true()
