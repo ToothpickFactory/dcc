@@ -14,6 +14,8 @@ signal shop_received(msg)
 signal events_received(events)
 signal closed
 
+const WS_BUFFER_SIZE := 1024 * 1024
+
 var you := ""
 var token := ""
 var self_dto: Dictionary = {}
@@ -28,12 +30,20 @@ var last_shop: Dictionary = {}     # last `shop` message (items + rerollCost) â€
 
 var _ws := WebSocketPeer.new()
 var _was_open := false
+var _closed_reported := false
 var _url := DccConst.DEFAULT_WS_URL
 var _name := "GodotHero"
 
 func start(url: String, player_name: String) -> void:
+	_ws = WebSocketPeer.new()
+	_was_open = false
+	_closed_reported = false
 	_url = url
 	_name = player_name
+	# Floor geometry can exceed Godot's 64 KiB default WebSocket inbound buffer on
+	# deeper floors. Give the JSON protocol enough room before starting the handshake.
+	_ws.inbound_buffer_size = WS_BUFFER_SIZE
+	_ws.outbound_buffer_size = WS_BUFFER_SIZE
 	# Dev hook: rebind to an existing character by signed token (e.g. to inspect a
 	# leveled save). Mirrors the web client's stored identity token.
 	var tok := OS.get_environment("DCC_TOKEN")
@@ -58,8 +68,12 @@ func _process(_delta: float) -> void:
 			var msg: Variant = JSON.parse_string(txt)
 			if msg is Dictionary:
 				_handle(msg)
-	elif st == WebSocketPeer.STATE_CLOSED and _was_open:
-		_was_open = false
+	elif st == WebSocketPeer.STATE_CLOSED and not _closed_reported:
+		_closed_reported = true
+		if _was_open:
+			_was_open = false
+		else:
+			push_warning("WS connect failed: code=%d reason=%s url=%s" % [_ws.get_close_code(), _ws.get_close_reason(), _url])
 		closed.emit()
 
 func _handle(m: Dictionary) -> void:

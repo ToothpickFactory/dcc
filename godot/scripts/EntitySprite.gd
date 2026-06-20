@@ -718,7 +718,7 @@ func _ensure_model_for_entity() -> void:
 		label = "Hero"
 		scene = _load_model_scene(model_path, label)
 	if scene == null:
-		push_warning("%s model failed to load: %s" % [label, model_path])
+		_warn_model_failed_once(model_path, "%s model failed to load: %s" % [label, model_path])
 		return
 	var inst := scene.instantiate()
 	if not (inst is Node3D):
@@ -748,17 +748,24 @@ func _ensure_model_for_entity() -> void:
 	_play_model_anim("idle")
 
 static var _failed_models := {}  # paths that failed once — don't retry (avoids per-frame load spam)
+static var _model_failure_warnings := {}
+
+static func _warn_model_failed_once(model_path: String, message: String) -> void:
+	if _model_failure_warnings.has(model_path):
+		return
+	_model_failure_warnings[model_path] = true
+	push_warning(message)
 
 func _load_model_scene(model_path: String, label: String) -> PackedScene:
 	if _failed_models.has(model_path):
+		return null
+	if not ResourceLoader.exists(model_path) and not FileAccess.file_exists(model_path):
+		_failed_models[model_path] = true
 		return null
 	var imported := load(model_path)
 	if imported is PackedScene:
 		return imported
 
-	if not FileAccess.file_exists(model_path):
-		_failed_models[model_path] = true
-		return null
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
 	var err := doc.append_from_file(model_path, state)
