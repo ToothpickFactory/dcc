@@ -30,6 +30,7 @@ export const SCHEMA: string[] = [
      talents TEXT NOT NULL DEFAULT '{}',
      talent_points INTEGER NOT NULL DEFAULT 0,
      attr_points INTEGER NOT NULL DEFAULT 0,
+     auto_attack INTEGER NOT NULL DEFAULT 1,
      last_seen INTEGER NOT NULL
    )`,
   `CREATE TABLE IF NOT EXISTS floor_record (
@@ -62,6 +63,7 @@ export const MIGRATIONS: string[] = [
   "ALTER TABLE player_record ADD COLUMN talents TEXT NOT NULL DEFAULT '{}'",
   "ALTER TABLE player_record ADD COLUMN talent_points INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE player_record ADD COLUMN attr_points INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE player_record ADD COLUMN auto_attack INTEGER NOT NULL DEFAULT 1",
   "ALTER TABLE run_state ADD COLUMN pvp INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE run_state ADD COLUMN pvp_exit_open INTEGER NOT NULL DEFAULT 1",
 ];

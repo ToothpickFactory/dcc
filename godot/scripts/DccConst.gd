@@ -17,5 +17,5 @@ const DASH_CD := 1400.0        # cooldown between dashes
 const SLOW_FACTOR := 0.5        # movement multiplier while slowed (frost) — mirror src/shared/constants.ts
 const WALKABLE_DELTA := 24      # max ground-height step (px) between adjacent open cells (heightfield 2.5D) — mirror src/shared/constants.ts
 const WALKABLE_SLOPE_DELTA := 64 # smooth movement cap: hills climb, sheer plateau faces still block
-const PROTOCOL_VERSION := 22  # v22: floor geometry includes paired map portals
+const PROTOCOL_VERSION := 23  # v23: player auto-attack preference
 const DEFAULT_WS_URL := "wss://young-frost-2be4.austin-bb5.workers.dev/ws"

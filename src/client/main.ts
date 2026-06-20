@@ -81,7 +81,13 @@ net.onWelcome = () => {
     /* storage unavailable (private mode) — identity just won't survive reload */
   }
   loginEl.style.display = "none";
-  hud = new Hud((i) => input.queueCast(i));
+  hud = new Hud(
+    (i) => input.queueCast(i),
+    (enabled) => {
+      net.send({ t: "setAutoAttack", enabled });
+      showToast(enabled ? "Auto attack on" : "Auto attack off", enabled ? "#ffd34d" : "#9fb0d0");
+    },
+  );
   invUI.showButton();
   skillsUI.showButton();
 };

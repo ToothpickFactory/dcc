@@ -11,7 +11,7 @@ import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, P
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
 import type { HazardSpec, PortalSpec } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 22; // was 21 - floor geometry includes paired map portals
+export const PROTOCOL_VERSION = 23; // was 22 - player auto-attack preference
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -19,6 +19,7 @@ export type ClientMsg =
   | { t: "input"; seq: number; mv: [number, number]; aim: number } // mv = move vec; aim = radians
   | { t: "cast"; seq: number; ability: number; aim: number } // fire ability N in aim direction
   | { t: "dash"; seq: number; dir: [number, number] } // dodge/evade burst in dir (move vec or aim)
+  | { t: "setAutoAttack"; enabled: boolean } // toggle server-side slot-1 auto-cast
   // ---- inventory / gear (character screen) ----
   | { t: "equip"; item: string } // equip a carried item (auto-slots)
   | { t: "unequip"; slot: EquipSlot } // move equipped gear back to carry
@@ -113,6 +114,7 @@ export interface SelfDTO {
   lifetimeXp?: number; // all-time XP across runs (durable; backs the leaderboard)
   bestFloor?: number; // deepest floor ever reached (all-time)
   kills?: number; // all-time kills (all-time)
+  autoAttack?: boolean; // whether the server auto-casts slot 1 at nearby enemies
 }
 
 export type GameEvent =

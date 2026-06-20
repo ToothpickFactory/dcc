@@ -146,6 +146,7 @@ func _ready() -> void:
 
 	_hud = Hud.new()
 	add_child(_hud)
+	_hud.auto_attack_toggled.connect(_on_auto_attack_toggled)
 
 	_inv = InventoryUI.new()
 	add_child(_inv)
@@ -349,6 +350,10 @@ func _on_loot(grant) -> void:
 	_sfx.play("loot")
 	if rarity == "epic" or rarity == "legendary":
 		_shake = 0.6  # a little screen pop for the big ones
+
+func _on_auto_attack_toggled(enabled: bool) -> void:
+	_net.send_msg({"t": "setAutoAttack", "enabled": enabled})
+	_hud.toast("Auto attack on" if enabled else "Auto attack off", Color8(0xff, 0xd3, 0x4d) if enabled else Color8(0x9f, 0xb0, 0xd0))
 
 func _rarity_color(r: String) -> Color:
 	match r:

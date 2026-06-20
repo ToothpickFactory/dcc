@@ -4,7 +4,7 @@ import type { Net } from "./net";
 
 // Action bar + status line + boss banner. The bar is now DRIVEN BY THE SERVER
 // (self.abilities) — it rebuilds when the slot contents change (loot, swaps) and
-// shows live cooldowns + ammo. Slot 1 is the auto-cast slot (marked AUTO).
+// shows live cooldowns + ammo. Slot 1 can auto-cast when enabled.
 // Slots are tappable for mobile (onCast).
 export class Hud {
   private bar: HTMLDivElement;
@@ -13,12 +13,14 @@ export class Hud {
   private bossname: HTMLElement;
   private bossfill: HTMLElement;
   private onCast: (i: number) => void;
+  private onAutoAttack: (enabled: boolean) => void;
   private cds: HTMLDivElement[] = [];
   private ammos: (HTMLDivElement | null)[] = [];
   private barKey = "";
 
-  constructor(onCast: (i: number) => void) {
+  constructor(onCast: (i: number) => void, onAutoAttack: (enabled: boolean) => void) {
     this.onCast = onCast;
+    this.onAutoAttack = onAutoAttack;
     this.status = document.getElementById("status") as HTMLDivElement;
     this.bar = document.getElementById("abilities") as HTMLDivElement;
     this.bossbar = document.getElementById("bossbar") as HTMLElement;
@@ -26,7 +28,7 @@ export class Hud {
     this.bossfill = document.getElementById("bossfill") as HTMLElement;
   }
 
-  private rebuild(abilities: Ability[]): void {
+  private rebuild(abilities: Ability[], autoAttack: boolean): void {
     this.bar.innerHTML = "";
     this.cds = [];
     this.ammos = [];
@@ -35,7 +37,7 @@ export class Hud {
       slot.className = "slot";
       slot.innerHTML =
         `<div class="key">${i + 1}</div>` +
-        (i === 0 ? `<div class="auto">AUTO</div>` : "") +
+        (i === 0 ? `<button class="auto ${autoAttack ? "" : "off"}" type="button" title="Toggle auto attack">${autoAttack ? "AUTO" : "MANUAL"}</button>` : "") +
         `<div class="icon">${a.icon ?? "?"}</div>` +
         `<div class="name">${a.name}</div>` +
         (a.ammo !== undefined ? `<div class="ammo"></div>` : "") +
@@ -49,6 +51,19 @@ export class Hud {
       };
       slot.addEventListener("touchstart", fire, { passive: false });
       slot.addEventListener("click", fire);
+      if (i === 0) {
+        const auto = slot.querySelector(".auto") as HTMLButtonElement | null;
+        auto?.addEventListener("touchstart", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.onAutoAttack(!autoAttack);
+        }, { passive: false });
+        auto?.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.onAutoAttack(!autoAttack);
+        });
+      }
     });
   }
 
@@ -58,10 +73,11 @@ export class Hud {
     // The HUD bar shows ONLY the hotbar — the first HOTBAR_SIZE slots (the rest are
     // your benched collection, managed from the character screen).
     const abilities = (self.abilities ?? []).slice(0, HOTBAR_SIZE);
-    const key = abilities.map((a) => a.id).join(",") + ":" + abilities.length;
+    const autoAttack = self.autoAttack !== false;
+    const key = abilities.map((a) => a.id).join(",") + ":" + abilities.length + ":" + (autoAttack ? 1 : 0);
     if (key !== this.barKey) {
       this.barKey = key;
-      this.rebuild(abilities);
+      this.rebuild(abilities, autoAttack);
     }
     const cdMult = self.derived?.cdMult ?? 1;
     abilities.forEach((a, i) => {

@@ -19,6 +19,7 @@ export interface PlayerState {
   cds: Record<number, number>;
   lastSeq: number; // last processed input seq (echoed as ack)
   abilities: Ability[];
+  autoAttack: boolean; // server-side slot-1 auto-cast preference
   charXp: number; // total character XP (from kills); drives character level + passive bonuses
   // ---- WoW-style class & talents (RPG Phase 2) ----
   chosenClass: Klass | null; // picked at the first level-up; drives main-stat scaling + talent tree

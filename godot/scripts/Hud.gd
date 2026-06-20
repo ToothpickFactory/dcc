@@ -1,5 +1,6 @@
 class_name Hud
 extends CanvasLayer
+signal auto_attack_toggled(enabled: bool)
 ## 2D overlay HUD, ported 1:1 from src/client/hud.ts + the toast / waiting-room
 ## banner in src/client/main.ts + the overlay structure in public/index.html.
 ## Built ENTIRELY in code (no .tscn) per the Godot port rules.
@@ -8,7 +9,7 @@ extends CanvasLayer
 ##   - top-left status line (RichTextLabel): ALIVE/SPECTATING/RUN OVER, HP, class,
 ##     floor + theme, countdown timer, player count.
 ##   - bottom-center ability bar (HBoxContainer of slots): icon + key (1-4) + name +
-##     cooldown overlay (fills bottom-up) + ammo + AUTO badge on slot 1.
+##     cooldown overlay (fills bottom-up) + ammo + AUTO/MANUAL toggle on slot 1.
 ##   - top-center boss bar (shown only when a boss entity is present).
 ##   - center toast Label with a fade Tween.
 ##   - waiting-room / spectating banner.
@@ -81,6 +82,7 @@ var _slots: Array = []        # the slot Control roots
 var _cd_overlays: Array = []  # ColorRect cooldown overlays (fill bottom-up)
 var _ammo_labels: Array = []  # Label or null per slot
 var _bar_key := ""
+var _auto_attack := true
 
 # ---- floor / run state (fed by Main; not on the frozen Net) ----
 var _floor_depth := -1
@@ -368,6 +370,7 @@ func update(net) -> void:
 	# benched collection, managed from the character screen.
 	var all_abilities: Array = self_dto.get("abilities", [])
 	var abilities: Array = all_abilities.slice(0, DccConst.HOTBAR_SIZE)
+	_auto_attack = bool(self_dto.get("autoAttack", true))
 
 	# Rebuild the bar only when its contents change (loot / swaps), like barKey.
 	var key := _bar_key_of(abilities)
@@ -389,7 +392,7 @@ func _bar_key_of(abilities: Array) -> String:
 	for a in abilities:
 		if a is Dictionary:
 			ids.append(str(a.get("id", "")))
-	return ",".join(ids) + ":" + str(abilities.size())
+	return ",".join(ids) + ":" + str(abilities.size()) + ":" + ("1" if _auto_attack else "0")
 
 
 func _rebuild_bar(abilities: Array) -> void:
@@ -468,16 +471,20 @@ func _make_slot(i: int, a: Dictionary) -> void:
 
 	# AUTO badge on slot 1 (top-right).
 	if i == 0:
-		var auto := Label.new()
-		auto.text = "AUTO"
+		var auto := Button.new()
+		auto.text = "AUTO" if _auto_attack else "MANUAL"
+		auto.flat = true
+		auto.focus_mode = Control.FOCUS_NONE
 		auto.add_theme_font_size_override("font_size", 8)
-		auto.add_theme_color_override("font_color", COL_AUTO)
+		auto.add_theme_color_override("font_color", COL_AUTO if _auto_attack else COL_MUTED)
 		auto.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-		auto.offset_left = -34
+		auto.offset_left = -44
 		auto.offset_top = 2
 		auto.offset_right = -3
-		auto.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		auto.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		auto.offset_bottom = 18
+		auto.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		auto.mouse_filter = Control.MOUSE_FILTER_STOP
+		auto.pressed.connect(func(): auto_attack_toggled.emit(not _auto_attack))
 		inner.add_child(auto)
 
 	# Ammo (bottom-right) only when the ability tracks ammo.

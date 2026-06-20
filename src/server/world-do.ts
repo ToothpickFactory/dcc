@@ -625,6 +625,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           talents: {},
           talentPoints: 0,
           attrPoints: 0,
+          autoAttack: p.autoAttack,
           lastSeen: Date.now(),
         });
       }
@@ -961,6 +962,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       cds: {},
       lastSeq: 0,
       abilities: (rec?.abilities?.length ? rec.abilities : starterAbilities()).map((a) => ({ ...a })),
+      autoAttack: rec?.autoAttack ?? true,
       charXp: rec?.charXp ?? 0,
       chosenClass: rec?.chosenClass ?? null,
       talents: rec?.talents ?? {},
@@ -1019,6 +1021,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private handleInput(player: PlayerState, ws: WebSocket, msg: ClientMsg) {
     if (msg.t === "ping") {
       this.send(ws, { t: "pong", ts: msg.ts });
+      return;
+    }
+    if (msg.t === "setAutoAttack") {
+      player.autoAttack = msg.enabled !== false;
+      this.persistPlayer(player);
       return;
     }
     if (player.status !== "alive") return; // spectators send no game input
@@ -1540,6 +1547,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       cls: this.profiles.classOf(p.id),
       profile: this.profiles.get(p.id),
       abilities: p.abilities,
+      autoAttack: p.autoAttack,
       base: p.base,
       inv: p.inv,
       gold: p.gold,
@@ -1613,6 +1621,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // foe in its range whenever it's off cooldown (and has ammo). Targets monsters
   // and the boss only — never allies.
   private autoCast(p: PlayerState): void {
+    if (!p.autoAttack) return;
     const ab = p.abilities[0];
     if (!ab) return;
     if (ab.usesItem) return; // never auto-drink a consumable parked in the auto slot
@@ -1738,6 +1747,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         profile: this.profiles.get(p.id),
         derived: p.derived,
         abilities: p.abilities,
+        autoAttack: p.autoAttack,
         charXp: p.charXp,
         chosenClass: p.chosenClass,
         talents: p.talents,
