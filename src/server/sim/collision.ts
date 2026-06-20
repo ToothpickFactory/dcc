@@ -1,4 +1,4 @@
-import { canOccupy, canStep, canTraverseSlope } from "../../procgen/collision";
+import { canOccupy, canStep } from "../../procgen/collision";
 import type { PropState, WorldCtx } from "../state";
 
 export function propBlocking(ctx: WorldCtx, x: number, y: number, radius: number, ignore?: PropState): PropState | null {
@@ -39,10 +39,11 @@ export function movePlayerWithWorldCollisions(
   dy: number,
   radius: number,
 ): void {
-  const grid = ctx.floor.collision;
   const nx = position.x + dx;
-  if (canOccupyWorld(ctx, nx, position.y, radius) && canTraverseSlope(grid, position.x, position.y, nx, position.y)) position.x = nx;
+  // Player movement collides with walls and live props only. The heightfield is a
+  // visual ground surface, so hills cannot desync prediction or trap the player.
+  if (canOccupyWorld(ctx, nx, position.y, radius)) position.x = nx;
 
   const ny = position.y + dy;
-  if (canOccupyWorld(ctx, position.x, ny, radius) && canTraverseSlope(grid, position.x, position.y, position.x, ny)) position.y = ny;
+  if (canOccupyWorld(ctx, position.x, ny, radius)) position.y = ny;
 }

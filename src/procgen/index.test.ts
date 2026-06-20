@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { PLAYER_RADIUS, WALKABLE_DELTA } from "../shared/constants.ts";
-import { canOccupy, canStep, canTraverseSlope } from "./collision.ts";
+import { canOccupy, canStep, canTraverseSlope, moveWithSmoothTerrainCollisions } from "./collision.ts";
 import type { CollisionGrid } from "./types.ts";
 import { generateFloor } from "./index.ts";
 
@@ -25,6 +25,9 @@ import { generateFloor } from "./index.ts";
   assert.equal(canTraverseSlope(gold, cc(1), cc(0), cc(2), cc(0)), false, "cell-centre 32px jump still blocks");
   assert.equal(canTraverseSlope(gold, 1.0 * CELL, 0.5 * CELL, 1.15 * CELL, 0.5 * CELL), true, "smooth hill edge is climbable");
   assert.equal(canTraverseSlope(gold, 2.95 * CELL, 0.5 * CELL, 3.1 * CELL, 0.5 * CELL), false, "large cliff face still blocks");
+  const player = { x: cc(2), y: cc(0) };
+  moveWithSmoothTerrainCollisions(gold, player, CELL, 0, PLAYER_RADIUS);
+  assert.equal(player.x, cc(3), "player movement ignores height cliffs; walls/props are the blockers");
 }
 
 {

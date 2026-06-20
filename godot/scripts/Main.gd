@@ -416,6 +416,7 @@ func _on_events(events: Array) -> void:
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
 				else:
+					_mark_exit_on_minimap()
 					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
 
 # Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
@@ -458,6 +459,8 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, stairs)
+	if not stairs.is_empty():
+		_mark_exit_on_minimap()
 	_decor_vis_cell = -1
 	_decor_live_props_key = ""
 	_decor_live_props_tick = -1
@@ -474,6 +477,11 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
 		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", geometry.get("stairs", {}))
+
+func _mark_exit_on_minimap() -> void:
+	if _minimap == null:
+		return
+	_minimap.highlight_stairs()
 
 func _process(dt: float) -> void:
 	# Hit-stop: a brief global slow-mo on a nearby kill makes blows land (see _on_events).

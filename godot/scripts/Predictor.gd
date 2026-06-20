@@ -32,15 +32,15 @@ func _occupy(nx: float, ny: float, radius: float) -> bool:
 			return false
 	return true
 
-# Axis-separated swept move against walls + props + the smoothed player heightfield gate (mirrors
-# server movePlayerWithWorldCollisions). The hard cap still blocks sheer faces, while hills climb.
+# Axis-separated swept move against walls + props (mirrors server
+# movePlayerWithWorldCollisions). The heightfield is visual terrain for players,
+# so hills never become invisible stairs or snag points.
 func _move(px: float, py: float, dx: float, dy: float, radius: float) -> Vector2:
 	var ox := px
 	var oy := py
-	if _occupy(ox + dx, oy, radius) and Geo.can_traverse_slope(_grid, ox, oy, ox + dx, oy):
+	if _occupy(ox + dx, oy, radius):
 		ox += dx
-	# Y step measured from the POST-X position (mirrors the server) so a diagonal can't climb a cliff.
-	if _occupy(ox, oy + dy, radius) and Geo.can_traverse_slope(_grid, ox, oy, ox, oy + dy):
+	if _occupy(ox, oy + dy, radius):
 		oy += dy
 	return Vector2(ox, oy)
 

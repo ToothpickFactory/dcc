@@ -11,6 +11,7 @@ extends Control
 
 const SIZE := 210.0      # panel px (square); also multiplied by Main's UI content scale
 const REDRAW_MS := 80    # ~12 fps is plenty for a minimap
+const STAIRS_HIGHLIGHT_MS := 15000.0
 
 var _grid: Dictionary = {}
 var _stairs: Dictionary = {}
@@ -18,6 +19,7 @@ var _discovered: Dictionary = {}   # used as a Set: {cell_index: true}
 var _scale := 1.0                  # world px -> minimap px
 var _last_cell := -1               # recompute discovery only when the player's cell changes
 var _next_draw := 0.0
+var _stairs_highlight_until := 0.0
 
 # Latest draw state (update_map stashes these; _draw consumes them).
 var _px := 0.0
@@ -42,10 +44,23 @@ func set_floor(grid: Dictionary, stairs: Dictionary) -> void:
 	_stairs = stairs
 	_discovered.clear()
 	_last_cell = -1
+	_stairs_highlight_until = 0.0
 	var w: int = grid["w"]
 	var cell: float = grid["cell"]
 	_scale = SIZE / (float(w) * cell)
 	visible = true
+	queue_redraw()
+
+func highlight_stairs() -> void:
+	if _grid.is_empty() or _stairs.is_empty():
+		return
+	var cell: float = _grid["cell"]
+	var w: int = _grid["w"]
+	var sx := int(floor(float(_stairs.get("x", 0.0)) / cell))
+	var sy := int(floor(float(_stairs.get("y", 0.0)) / cell))
+	_discovered[sy * w + sx] = true
+	_stairs_highlight_until = float(Time.get_ticks_msec()) + STAIRS_HIGHLIGHT_MS
+	_next_draw = 0.0
 	queue_redraw()
 
 ## px/py = local player world pos (for the "you" dot + LoS reveal). in_play=false
@@ -123,6 +138,9 @@ func _draw() -> void:
 		var sy := int(floor(sty / cell))
 		if _discovered.has(sy * w + sx):
 			draw_circle(Vector2(stx * s, sty * s), 3.0, Color8(0x5d, 0xff, 0x9b))
+			if float(Time.get_ticks_msec()) < _stairs_highlight_until:
+				var pulse := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.012)
+				draw_arc(Vector2(stx * s, sty * s), 7.0 + pulse * 4.0, 0.0, TAU, 28, Color8(0xff, 0xd3, 0x4d), 2.0)
 
 	# Living teammates (always shown for co-op awareness).
 	var ally_col := Color8(0x4f, 0x8c, 0xff)

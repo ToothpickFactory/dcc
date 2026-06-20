@@ -105,10 +105,12 @@ export function moveWithSmoothTerrainCollisions(
   radius: number,
 ): void {
   const nx = position.x + dx;
-  if (canOccupy(grid, nx, position.y, radius) && canTraverseSlope(grid, position.x, position.y, nx, position.y)) position.x = nx;
+  // Player traversal treats the heightfield as visual terrain. Walls still block,
+  // but rolling hills must never feel like invisible stairs or snag points.
+  if (canOccupy(grid, nx, position.y, radius)) position.x = nx;
 
   const ny = position.y + dy;
-  if (canOccupy(grid, position.x, ny, radius) && canTraverseSlope(grid, position.x, position.y, position.x, ny)) position.y = ny;
+  if (canOccupy(grid, position.x, ny, radius)) position.y = ny;
 }
 
 export function randomWalkablePosition(
