@@ -16,22 +16,22 @@ godot/
   scenes/Main.tscn           # entry scene (root has Main.gd)
   shaders/fog.gdshader       # spatial line-of-sight fog (ground per-pixel + wall per-cell mask)
   scripts/
-    DccConst.gd              # constants mirrored from src/shared/constants.ts
-    Geo.gd                   # geometry decode + collision + line-of-sight (1:1 TS port)   ✅ unit-tested
-    Net.gd                   # WebSocketPeer transport (welcome/floor/state/run/inv/bag)
-    Predictor.gd             # client prediction (predicts at derived.moveSpeed)
-    World.gd                 # wall MultiMesh + ground from server geometry (+ fog hooks)
-    Fog.gd                   # per-cell wall-vis mask + applies the fog shader
-    WorldDecor.gd            # themed tile/prop textures + decoration billboards
-    Atlas.gd                 # loads <clip>/atlas.json + spritesheet.png -> frame rects
-    EntitySprite.gd          # one billboard Sprite3D: frame stepping + facing + actions
-    SpriteLayer.gd           # syncs the entity snapshot -> EntitySprites (interp remotes)
-    InputCtl.gd              # move vec + camera-ray aim + cast queue (+ gamepad)
-    Hud.gd                   # status line, ability bar/cooldowns, boss bar, toast, banner
-    InventoryUI.gd           # character screen: equip/unequip/drop/sell + loot panel
-    Minimap.gd               # discovery minimap (LoS reveal, you/allies/stairs)
-    Spectate.gd              # reached/dead spectate camera (follow/cycle + free-pan)
-    Main.gd                  # frame loop wiring everything + follow camera
+	DccConst.gd              # constants mirrored from src/shared/constants.ts
+	Geo.gd                   # geometry decode + collision + line-of-sight (1:1 TS port)   ✅ unit-tested
+	Net.gd                   # WebSocketPeer transport (welcome/floor/state/run/inv/bag)
+	Predictor.gd             # client prediction (predicts at derived.moveSpeed)
+	World.gd                 # wall MultiMesh + ground from server geometry (+ fog hooks)
+	Fog.gd                   # per-cell wall-vis mask + applies the fog shader
+	WorldDecor.gd            # themed tile/prop textures + decoration billboards
+	Atlas.gd                 # loads <clip>/atlas.json + spritesheet.png -> frame rects
+	EntitySprite.gd          # one billboard Sprite3D: frame stepping + facing + actions
+	SpriteLayer.gd           # syncs the entity snapshot -> EntitySprites (interp remotes)
+	InputCtl.gd              # move vec + camera-ray aim + cast queue (+ gamepad)
+	Hud.gd                   # status line, ability bar/cooldowns, boss bar, toast, banner
+	InventoryUI.gd           # character screen: equip/unequip/drop/sell + loot panel
+	Minimap.gd               # discovery minimap (LoS reveal, you/allies/stairs)
+	Spectate.gd              # reached/dead spectate camera (follow/cycle + free-pan)
+	Main.gd                  # frame loop wiring everything + follow camera
   test/geo_test.gd           # GdUnit4 suite for the High-risk pure-logic ports
 ```
 

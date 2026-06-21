@@ -22,16 +22,31 @@ uniform vec4 u_albedo : source_color = vec4(0.086, 0.114, 0.180, 1.0); // flat f
 uniform sampler2D u_tex : source_color, filter_nearest, repeat_enable; // optional theme tile
 uniform bool u_has_tex = false;                                  // sample u_tex when true
 uniform vec2 u_uv_scale = vec2(1.0, 1.0);                        // tile repeats across floor
+uniform bool u_use_tile_sheet = false;                           // sample a 4x4 tile sheet
+uniform float u_tile_start = 0.0;                                // first valid tile index
+uniform float u_tile_count = 1.0;                                // number of valid tiles
+uniform float u_top_tile_start = 0.0;                            // optional top-face tile range
+uniform float u_top_tile_count = 1.0;
 uniform float u_fog_soft = 0.7;                                  // shadow-edge penumbra width, in cells (0 = hard edge)
 uniform vec3 u_tint = vec3(1.0, 1.0, 1.0);                       // per-theme albedo multiply (mood)
 uniform vec3 u_bg = vec3(0.043, 0.055, 0.078);                   // per-theme fog/background color
 
 varying vec3 v_world;
+varying vec3 v_world_normal;
 
 // Cheap per-cell hash (0..1) — drives per-tile rotation/mirror/brightness so the floor
 // reads as varied stone instead of one tile stamped on a grid. No art needed.
 float dcc_hash(vec2 c) {
 	return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+vec3 dcc_tile_sheet_sample(vec2 cell, vec2 local_uv, float tile_start, float tile_count) {
+	float pick = floor(dcc_hash(cell + vec2(19.7, 43.1)) * tile_count);
+	float tile = tile_start + clamp(pick, 0.0, max(0.0, tile_count - 1.0));
+	float col = mod(tile, 4.0);
+	float row = floor(tile / 4.0);
+	vec2 uv = (vec2(col, row) + fract(local_uv)) * 0.25;
+	return texture(u_tex, uv).rgb;
 }
 
 // Per-pixel line-of-sight: 1.0 if no wall lies between `from` and `to`. Mirrors the
@@ -77,6 +92,7 @@ float dcc_los_soft(vec2 from, vec2 to) {
 
 void vertex() {
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	v_world_normal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void fragment() {
@@ -92,8 +108,18 @@ void fragment() {
 		if (dist <= u_vision) {
 			vis_flag = texture(u_wall_vis, (dcc_cell + 0.5) / u_grid_size).r;
 		}
-		base = u_has_tex ? texture(u_tex, UV * u_uv_scale).rgb : u_albedo.rgb;
-		base *= mix(0.80, 1.12, dcc_hash(dcc_cell)); // per-wall brightness so a run of wall isn't uniform
+		bool top_face = v_world_normal.y > 0.5;
+		base = u_has_tex ? (u_use_tile_sheet ? dcc_tile_sheet_sample(dcc_cell, UV * u_uv_scale, top_face ? u_top_tile_start : u_tile_start, top_face ? u_top_tile_count : u_tile_count) : texture(u_tex, UV * u_uv_scale).rgb) : u_albedo.rgb;
+		float wall_noise = dcc_hash(dcc_cell);
+		base *= mix(0.82, 1.10, wall_noise); // per-wall brightness so a run of wall isn't uniform
+		if (top_face) {
+			base *= 0.72; // top of wall is intentionally a bit darker than the side.
+		} else {
+			// Vertical wall sides need to read from the angled camera. Add directional side
+			// shading and a mild warm lift so they separate from both floor and wall tops.
+			float side_light = 0.88 + 0.42 * clamp(dot(normalize(v_world_normal.xz), normalize(vec2(-0.65, 0.76))), 0.0, 1.0);
+			base = mix(base * 1.28, vec3(0.50, 0.55, 0.64), 0.18) * side_light;
+		}
 	} else {
 		// Ground: gate the costly per-pixel LoS march to within-vision pixels (far pixels are
 		// fully fogged anyway). GDScript shaders forbid `return` in fragment(), hence the guard.
@@ -113,7 +139,7 @@ void fragment() {
 		else if (rot == 3) { f = vec2(f.y, -f.x); }
 		if (dcc_hash(cellc + vec2(7.3, 1.7)) > 0.5) { f.x = -f.x; } // random mirror
 		f += 0.5;
-		base = u_has_tex ? texture(u_tex, cellc + f).rgb : u_albedo.rgb;
+		base = u_has_tex ? (u_use_tile_sheet ? dcc_tile_sheet_sample(cellc, f, u_tile_start, u_tile_count) : texture(u_tex, cellc + f).rgb) : u_albedo.rgb;
 		base *= mix(0.82, 1.10, dcc_hash(cellc + vec2(3.1, 9.2))); // per-tile brightness
 		// Contact shadow (cheap AO): darken the floor where it meets a wall, so walls read as
 		// grounded instead of pasted on. Sample the 4 neighbour cells; shadow ramps in from each

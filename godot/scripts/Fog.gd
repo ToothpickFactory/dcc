@@ -80,9 +80,11 @@ func set_ground_texture(tex: Texture2D) -> void:
 		return
 	if tex == null:
 		_ground_mat.set_shader_parameter("u_has_tex", false)
+		_ground_mat.set_shader_parameter("u_use_tile_sheet", false)
 		return
 	_ground_mat.set_shader_parameter("u_tex", tex)
 	_ground_mat.set_shader_parameter("u_has_tex", true)
+	_set_tile_sheet_params(_ground_mat, tex)
 
 ## Per-theme palette: an albedo tint (color cast) + the fog/background color. Gives each
 ## theme a distinct mood. Called by World.set_theme_palette when fog is attached.
@@ -102,9 +104,11 @@ func set_wall_texture(tex: Texture2D) -> void:
 		return
 	if tex == null:
 		_wall_mat.set_shader_parameter("u_has_tex", false)
+		_wall_mat.set_shader_parameter("u_use_tile_sheet", false)
 		return
 	_wall_mat.set_shader_parameter("u_tex", tex)
 	_wall_mat.set_shader_parameter("u_has_tex", true)
+	_set_tile_sheet_params(_wall_mat, tex)
 
 # --- internals ---------------------------------------------------------------
 
@@ -148,6 +152,11 @@ func _ensure_materials() -> void:
 	_ground_mat.set_shader_parameter("u_albedo", _world.ground_color())
 	_ground_mat.set_shader_parameter("u_has_tex", false)
 	_ground_mat.set_shader_parameter("u_uv_scale", Vector2.ONE * _world.ground_uv_repeat())
+	_ground_mat.set_shader_parameter("u_use_tile_sheet", false)
+	_ground_mat.set_shader_parameter("u_tile_start", 0.0)
+	_ground_mat.set_shader_parameter("u_tile_count", 1.0)
+	_ground_mat.set_shader_parameter("u_top_tile_start", 0.0)
+	_ground_mat.set_shader_parameter("u_top_tile_count", 1.0)
 	_ground_mat.set_shader_parameter("u_player", Vector2.ZERO)
 
 	_wall_mat = ShaderMaterial.new()
@@ -161,7 +170,26 @@ func _ensure_materials() -> void:
 	_wall_mat.set_shader_parameter("u_albedo", _world.wall_color())
 	_wall_mat.set_shader_parameter("u_has_tex", false)
 	_wall_mat.set_shader_parameter("u_uv_scale", Vector2.ONE)
+	_wall_mat.set_shader_parameter("u_use_tile_sheet", false)
+	_wall_mat.set_shader_parameter("u_tile_start", 0.0)
+	_wall_mat.set_shader_parameter("u_tile_count", 1.0)
+	_wall_mat.set_shader_parameter("u_top_tile_start", 0.0)
+	_wall_mat.set_shader_parameter("u_top_tile_count", 1.0)
 	_wall_mat.set_shader_parameter("u_player", Vector2.ZERO)
+
+func _set_tile_sheet_params(mat: ShaderMaterial, tex: Texture2D) -> void:
+	var use_sheet := bool(tex.get_meta("dcc_tile_sheet", false))
+	mat.set_shader_parameter("u_use_tile_sheet", use_sheet)
+	if not use_sheet:
+		mat.set_shader_parameter("u_tile_start", 0.0)
+		mat.set_shader_parameter("u_tile_count", 1.0)
+		mat.set_shader_parameter("u_top_tile_start", 0.0)
+		mat.set_shader_parameter("u_top_tile_count", 1.0)
+		return
+	mat.set_shader_parameter("u_tile_start", float(int(tex.get_meta("dcc_tile_start", 0))))
+	mat.set_shader_parameter("u_tile_count", float(int(tex.get_meta("dcc_tile_count", 1))))
+	mat.set_shader_parameter("u_top_tile_start", float(int(tex.get_meta("dcc_top_tile_start", tex.get_meta("dcc_tile_start", 0)))))
+	mat.set_shader_parameter("u_top_tile_count", float(int(tex.get_meta("dcc_top_tile_count", tex.get_meta("dcc_tile_count", 1)))))
 
 func _apply_materials() -> void:
 	var g := _world.ground_instance()
