@@ -37,7 +37,7 @@ const ICE_PROJECTILE_SPRITE := 96
 const FIREBALL_PROJECTILE_SPRITE := 97
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan", "Ent"]
 
 var _sprites: Dictionary = {}   # id -> EntitySprite
 var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, for facing delta)
@@ -96,8 +96,13 @@ func status_at(x: float, y: float, status: String, radius: float = 90.0) -> void
 func _nearest_sprite_id_at(x: float, y: float, radius: float) -> String:
 	var best_id := ""
 	var best_sq := radius * radius
-	for id in _last_pos.keys():
-		var p: Vector2 = _last_pos[id]
+	for id in _sprites.keys():
+		var p: Vector2
+		if _last_pos.has(id):
+			p = _last_pos[id]
+		else:
+			var spr: EntitySprite = _sprites[id]
+			p = Vector2(spr.global_position.x, spr.global_position.z)
 		var dsq := (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y)
 		if dsq <= best_sq:
 			best_sq = dsq

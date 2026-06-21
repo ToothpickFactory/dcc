@@ -62,6 +62,7 @@ if ($Ver -and -not (Test-Path $Tpl)) {
 
 $App = Join-Path $Root "godot\build\windows\DCC.exe"
 $NeedBuild = $false
+$LocalWsUrl = "ws://127.0.0.1:8787/ws"
 
 # Update check: fast-forward main only if the working tree is clean and behind.
 if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path ".git")) {
@@ -105,7 +106,7 @@ if ((Test-Path $App) -and -not $NeedBuild) {
 if ($NeedBuild) {
   # Overlay any new or updated art assets into existing installs.
   if (Test-Path "godot/assets") {
-    Copy-Item -Recurse -Force "public/assets/*" "godot/assets/" -ErrorAction SilentlyContinue
+    Copy-Item -Recurse -Force "assets/*" "godot/assets/" -ErrorAction SilentlyContinue
   }
   Write-Host "==> Building the latest client (~20s)..."
   & $Godot --headless --path godot --import 2>$null
@@ -119,4 +120,27 @@ if ($NeedBuild) {
 }
 
 Write-Host "==> Launching DCC..."
+$WsOverride = $env:DCC_WS
+if (-not $WsOverride) {
+  $WranglerProc = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*wrangler*dev*" -or $_.CommandLine -like "*npm*run*dev*" } |
+    Select-Object -First 1
+  try {
+    $LocalHealth = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:8787/" -TimeoutSec 1 -ErrorAction Stop
+    if ($LocalHealth.StatusCode -ge 200 -and $LocalHealth.StatusCode -lt 500) {
+      $env:DCC_WS = $LocalWsUrl
+      Write-Host "    Local wrangler dev detected; using $LocalWsUrl"
+    }
+  } catch {
+    if ($WranglerProc) {
+      $env:DCC_WS = $LocalWsUrl
+      Write-Host "    Wrangler dev appears to be starting/running, but 127.0.0.1:8787 did not respond yet."
+      Write-Host "    Using $LocalWsUrl; if connect fails, restart npm run dev and wait for 'Ready'."
+    } else {
+      Write-Host "    No local wrangler dev detected; using the default deployed server."
+    }
+  }
+} else {
+  Write-Host "    Using DCC_WS=$WsOverride"
+}
 & $App

@@ -32,10 +32,10 @@ if (Test-Path "godot/addons/gdUnit4/plugin.cfg") {
     Remove-Item -Recurse -Force $tmp
 }
 
-# 3b. Art assets (gitignored; source of truth is public/assets).
-Write-Host "==> Copying art assets (public/assets -> godot/assets)..."
+# 3b. Art assets (gitignored; source of truth is assets).
+Write-Host "==> Copying art assets (assets -> godot/assets)..."
 if (Test-Path "godot/assets") { Remove-Item -Recurse -Force "godot/assets" }
-Copy-Item -Recurse -Force "public/assets" "godot/assets"
+Copy-Item -Recurse -Force "assets" "godot/assets"
 
 # 3c. Import (texture .import files + class cache).
 if ($Godot) {

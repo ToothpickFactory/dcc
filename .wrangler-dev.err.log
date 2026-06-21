@@ -1,0 +1,16 @@
+
+  public\client.js  636.1kb
+
+Done in 178ms
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mTOKEN_SIGNING_KEY missing or <16 chars; using an ephemeral key — identities will NOT persist across restarts. Set the secret in production.[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mAssets directory watcher encountered an error and has been disabled.[0m
+
+  Hot-reloading will not reflect changes to files in C:\Users\Dallas\Project\dcc\public.
+  Watcher error: EPERM: operation not permitted, watch
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mTOKEN_SIGNING_KEY missing or <16 chars; using an ephemeral key — identities will NOT persist across restarts. Set the secret in production.[0m
+
+

@@ -20,7 +20,7 @@ const ACTION_FRAME_SPEED := 1.25
 const MOVEMENT_HOLD_MS := 150
 const MODEL_HIT_MS := 360.0
 const MODEL_DEATH_MS := 1400.0
-const STATUS_EFFECT_MS := 3000.0
+const STATUS_EFFECT_MS := 2000.0
 const STATUS_EFFECT_FRAMES := 16
 const STATUS_EFFECT_COLS := 4
 const STATUS_EFFECT_SIZE := 112.0
@@ -29,6 +29,17 @@ const STATUS_EFFECT_PATHS := {
 	"frost": "res://assets/StatusEffects/Frost/Frost-spritesheet.png",
 	"poison": "res://assets/StatusEffects/Poison/Poison-spritesheet.png",
 }
+const STATUS_EFFECT_MODEL_PATHS := {
+	"bleed": "res://assets/StatusEffects/Bleed/Bleed.glb",
+	"dark": "res://assets/StatusEffects/Dark/Dark.glb",
+	"fire": "res://assets/StatusEffects/Fire/Fire.glb",
+	"frost": "res://assets/StatusEffects/Frost/Frost.glb",
+	"holy": "res://assets/StatusEffects/Holy/Holy.glb",
+	"poison": "res://assets/StatusEffects/Poison/Poison.glb",
+	"stun": "res://assets/StatusEffects/Stun/Stun.glb",
+}
+const STATUS_EFFECT_MODEL_SCALE := 0.0153
+const STATUS_EFFECT_MODEL_Y := 0.08
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin-3d-animated.glb"
@@ -38,7 +49,23 @@ const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animat
 const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
 const PALADIN_MODEL_PATH := "res://assets/Heroes/Paladin/Paladin-3d-animated.glb"
 const RANGER_MODEL_PATH := "res://assets/Heroes/Ranger/Ranger-3d-animated.glb"
-const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue-3d-animated.glb"
+const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue.glb"
+const ROGUE_MODEL_SCALE := 42.0
+const ROGUE_ANIM_ALIASES := {
+	"idle": ["Sneaky_Walk"],
+	"run": ["Running", "Walking", "Sneaky_Walk"],
+	"slash_a": ["Thrust_Slash", "Counterstrike", "Punch_Combo_3"],
+	"slash_b": ["Counterstrike", "Thrust_Slash", "Punch_Combo_3"],
+	"slash_c": ["Punch_Combo_3", "Jumping_Punch", "Thrust_Slash"],
+	"strike": ["Thrust_Slash", "Counterstrike", "Punch_Combo_3"],
+	"punch": ["Punch_Combo_3", "Jumping_Punch", "Counterstrike"],
+	"kick": ["Jumping_Punch", "Punch_Combo_3", "Counterstrike"],
+	"cast": ["baseball_pitching", "Jumping_Punch", "Counterstrike"],
+	"bolt": ["baseball_pitching", "Jumping_Punch", "Counterstrike"],
+	"hit": ["Hit_Reaction_1"],
+	"hurt": ["Hit_Reaction_1"],
+	"death": ["Dead"],
+}
 const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
 const HERO_CLASS_IDS := ["warrior", "mage", "priest", "hunter", "rogue"]
 const BOSS_ROOT := "res://assets/Bosses/Slime"
@@ -53,7 +80,41 @@ const PRIMAL_CONFLUX_MODEL_PATH := "res://assets/Bosses/PrimalConflux/Primal Con
 const JUGGERNAUT_NAME := "Juggernaut"
 const JUGGERNAUT_MODEL_PATH := "res://assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb"
 const TERRORBOT_NAME := "TerrorBot"
-const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot-3d-animated.glb"
+const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot.glb"
+const TERRORBOT_MODEL_SCALE := 297.0
+const TERRORBOT_ANIM_ALIASES := {
+	"idle": ["Walking"],
+	"run": ["Running", "Run_and_Shoot", "Walking"],
+	"slash_a": ["Axe_Spin_Attack", "Charged_Upward_Slash"],
+	"slash_b": ["Charged_Upward_Slash", "Axe_Spin_Attack"],
+	"slash_c": ["Axe_Spin_Attack", "Charged_Upward_Slash"],
+	"strike": ["Axe_Spin_Attack", "Charged_Upward_Slash"],
+	"punch": ["Axe_Spin_Attack", "Charged_Upward_Slash"],
+	"kick": ["Axe_Spin_Attack", "Charged_Upward_Slash"],
+	"cast": ["Draw_and_Shoot_Left", "Run_and_Shoot"],
+	"bolt": ["Draw_and_Shoot_Left", "Run_and_Shoot"],
+	"hit": ["Hit_Reaction_1"],
+	"hurt": ["Hit_Reaction_1"],
+	"death": ["Dead"],
+}
+const ENT_MODEL_PATH := "res://assets/Enemies/Ent/Ent.glb"
+const ENT_MODEL_SCALE := 84.0
+const ENT_LIGHT_ENERGY := 1.7
+const ENT_ANIM_ALIASES := {
+	"idle": ["Walking"],
+	"run": ["Running", "Walking"],
+	"slash_a": ["Attack", "Angry_Ground_Stomp_2"],
+	"slash_b": ["Angry_Ground_Stomp_2", "Attack"],
+	"slash_c": ["Attack", "Angry_Ground_Stomp_2"],
+	"strike": ["Attack", "Angry_Ground_Stomp_2"],
+	"punch": ["Angry_Ground_Stomp_2", "Attack"],
+	"kick": ["Angry_Ground_Stomp_2", "Attack"],
+	"cast": ["Angry_Ground_Stomp_2", "Attack"],
+	"bolt": ["Angry_Ground_Stomp_2", "Attack"],
+	"hit": ["Hit_Reaction_1"],
+	"hurt": ["Hit_Reaction_1"],
+	"death": ["Dead"],
+}
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
@@ -81,7 +142,7 @@ const WRAITH_LIGHT_ENERGY := 1.7
 const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie", "Ent"]
 const POISON_PROJECTILE_SPRITE := 95 # src/shared/constants.ts POISON_PROJECTILE_SPRITE
 const POISON_MODEL_PATH := "res://assets/Projectiles/Poisonball/Poisonball.glb"
 const POISON_MODEL_SCALE := 36.0
@@ -96,6 +157,11 @@ const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 const LOOT_MODEL_PATH := "res://assets/Props/loot.glb"
 const LOOT_MODEL_SCALE := 42.0
 const LOOT_LIGHT_ENERGY := 1.8
+const HERO_WEAPON_SCENE_PATH := "res://scenes/weapons/flail.tscn"
+const HERO_WEAPON_MODEL_SCALE := 1.0
+const HERO_WEAPON_HAND_BONES := ["RightHand", "mixamorig:RightHand", "right_hand", "hand.R"]
+const HERO_WEAPON_OFFSET := Vector3(0.0, 0.12, 0.0)
+const HERO_WEAPON_ROTATION_DEGREES := Vector3(0.0, 0.0, 0.0)
 
 # Fallback fill colors (render.ts `C` + per-kind). Used when no clip is loaded yet, and as
 # the modulate tint for non-animated kinds (proj / lootbag).
@@ -248,6 +314,8 @@ var _model_debug_logged := false
 var _projectile_render := ""
 var _monster_kind := ""
 var _model_slash_index := 0
+var _weapon_attachment: BoneAttachment3D
+var _weapon_inst: Node3D
 var _dead_until := 0.0
 var _is_dead_body := false
 var _death_freeze_at := 0.0
@@ -257,6 +325,10 @@ var _status_atlas: AtlasTexture
 var _status_until := 0.0
 var _status_started_at := 0.0
 var _status_kind := ""
+var _status_effects: StatusEffects
+var _status_effect_nodes := {}
+var _status_effect_until := {}
+var _cc_effect := ""
 
 # ---- hit flash (juice): brief overbright/red tint on taking damage ----
 const FLASH_MS := 110.0
@@ -294,12 +366,11 @@ func flash_hit(now_ms: float, hurt: bool = false, reaction: String = "hit") -> v
 		_play_model_anim("hit")
 
 func play_status_fx(kind_name: String, now_ms: float) -> void:
-	kind_name = kind_name.strip_edges().to_lower()
-	if not STATUS_EFFECT_PATHS.has(kind_name):
-		return
-	var tex: Texture2D = load(str(STATUS_EFFECT_PATHS[kind_name]))
-	if tex == null:
-		return
+	kind_name = _normalize_status_effect(kind_name)
+	_show_model_status_effect(kind_name, now_ms)
+	var tex: Texture2D = null
+	if STATUS_EFFECT_PATHS.has(kind_name):
+		tex = load(str(STATUS_EFFECT_PATHS[kind_name]))
 	if _status_sprite == null:
 		_status_sprite = Sprite3D.new()
 		_status_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -311,8 +382,14 @@ func play_status_fx(kind_name: String, now_ms: float) -> void:
 	if _status_atlas == null:
 		_status_atlas = AtlasTexture.new()
 		_status_atlas.filter_clip = true
-	_status_atlas.atlas = tex
-	_status_sprite.texture = _status_atlas
+	if tex != null:
+		_status_atlas.atlas = tex
+		_status_sprite.texture = _status_atlas
+		_status_sprite.modulate = Color.WHITE
+	else:
+		_ensure_status_fallback_texture()
+		_status_sprite.texture = _status_fallback_tex
+		_status_sprite.modulate = _status_color(kind_name)
 	_status_sprite.visible = true
 	_status_started_at = now_ms
 	_status_until = now_ms + STATUS_EFFECT_MS
@@ -320,6 +397,7 @@ func play_status_fx(kind_name: String, now_ms: float) -> void:
 	_update_status_fx(now_ms)
 
 func _update_status_fx(now_ms: float) -> void:
+	_update_model_status_effects(now_ms)
 	if _status_sprite == null:
 		return
 	if _is_dead_body or now_ms >= _status_until:
@@ -330,11 +408,130 @@ func _update_status_fx(now_ms: float) -> void:
 	var col := frame % STATUS_EFFECT_COLS
 	var row := frame / STATUS_EFFECT_COLS
 	var frame_px := 128.0
-	_status_atlas.region = Rect2(float(col) * frame_px, float(row) * frame_px, frame_px, frame_px)
-	_status_sprite.position = Vector3(0.0, 42.0, 0.0)
-	var s := STATUS_EFFECT_SIZE / frame_px
+	if _status_sprite.texture == _status_atlas:
+		_status_atlas.region = Rect2(float(col) * frame_px, float(row) * frame_px, frame_px, frame_px)
+	_status_sprite.position = Vector3(0.0, 88.0 + sin(now_ms * 0.012) * 5.0, 0.0)
+	var pulse := 1.0 + 0.18 * sin(now_ms * 0.018)
+	var s := (STATUS_EFFECT_SIZE / frame_px) * pulse
 	_status_sprite.scale = Vector3(s, s, s)
 	_status_sprite.visible = true
+
+static var _status_fallback_tex: Texture2D
+func _ensure_status_fallback_texture() -> void:
+	if _status_fallback_tex != null:
+		return
+	var size := 64
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var center := Vector2(size * 0.5, size * 0.5)
+	for y in size:
+		for x in size:
+			var d := Vector2(x, y).distance_to(center) / (size * 0.5)
+			var ring := smoothstep(0.98, 0.68, d) * smoothstep(0.35, 0.62, d)
+			var core := smoothstep(0.24, 0.0, d) * 0.35
+			img.set_pixel(x, y, Color(1, 1, 1, clampf(ring + core, 0.0, 1.0)))
+	_status_fallback_tex = ImageTexture.create_from_image(img)
+
+func _status_color(kind_name: String) -> Color:
+	match kind_name:
+		"bleed": return Color(1.0, 0.05, 0.03, 0.9)
+		"dark": return Color(0.55, 0.12, 1.0, 0.9)
+		"fire": return Color(1.0, 0.36, 0.05, 0.9)
+		"frost": return Color(0.35, 0.85, 1.0, 0.9)
+		"holy": return Color(1.0, 0.86, 0.28, 0.9)
+		"poison": return Color(0.35, 1.0, 0.12, 0.9)
+		"stun": return Color(1.0, 0.95, 0.18, 0.9)
+		_: return Color(1.0, 1.0, 1.0, 0.9)
+
+func _show_model_status_effect(kind_name: String, now_ms: float) -> bool:
+	kind_name = _normalize_status_effect(kind_name)
+	if not STATUS_EFFECT_MODEL_PATHS.has(kind_name):
+		return false
+	if _is_dead_body:
+		return true
+	if _ensure_status_effect(kind_name):
+		_status_effect_until[kind_name] = now_ms + STATUS_EFFECT_MS
+		_status_effects.show_effect(kind_name)
+		return true
+	return false
+
+func _normalize_status_effect(kind_name: String) -> String:
+	var key := kind_name.strip_edges().to_lower()
+	match key:
+		"ice", "freeze", "frozen":
+			return "frost"
+		"burn", "burning":
+			return "fire"
+		"venom", "toxic":
+			return "poison"
+		_:
+			return key
+
+func _update_model_status_effects(now_ms: float) -> void:
+	if _status_effects == null:
+		return
+	if _is_dead_body:
+		_status_effects.hide_all()
+		_status_effect_until.clear()
+		_cc_effect = ""
+		return
+	var current_cc := _effect_for_cc()
+	if current_cc != _cc_effect:
+		if _cc_effect != "" and not _status_effect_until.has(_cc_effect):
+			_status_effects.hide_effect(_cc_effect)
+		_cc_effect = current_cc
+		if _cc_effect != "" and _ensure_status_effect(_cc_effect):
+			_status_effects.show_effect(_cc_effect)
+	for effect_name in _status_effect_until.keys().duplicate():
+		if now_ms >= float(_status_effect_until[effect_name]):
+			_status_effect_until.erase(effect_name)
+			if str(effect_name) != _cc_effect:
+				_status_effects.hide_effect(str(effect_name))
+
+func _effect_for_cc() -> String:
+	match _cc:
+		"stun":
+			return "stun"
+		"freeze":
+			return "frost"
+		"root":
+			return "poison"
+		_:
+			return ""
+
+func _ensure_status_effect(kind_name: String) -> bool:
+	if _model_root == null:
+		_ensure_model_for_entity()
+	if _model_root == null:
+		return false
+	if _status_effects == null:
+		_status_effects = StatusEffects.new()
+		_status_effects.name = "StatusEffects"
+		_model_root.add_child(_status_effects)
+	if _status_effect_nodes.has(kind_name):
+		return true
+	var model_path := str(STATUS_EFFECT_MODEL_PATHS.get(kind_name, ""))
+	var scene := _load_model_scene(model_path, "Status effect %s" % kind_name)
+	if scene == null:
+		_warn_model_failed_once(model_path, "Status effect model failed to load: %s" % model_path)
+		return false
+	var inst := scene.instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		push_warning("Status effect model root is not Node3D: %s" % model_path)
+		return false
+	var effect_root := inst as Node3D
+	effect_root.name = "%s_status_effect" % kind_name.capitalize()
+	effect_root.scale = Vector3.ONE * STATUS_EFFECT_MODEL_SCALE
+	effect_root.position = Vector3(0.0, STATUS_EFFECT_MODEL_Y, 0.0)
+	_status_effects.add_child(effect_root)
+	var mesh := _first_mesh(effect_root)
+	if mesh == null:
+		push_warning("Status effect model has no MeshInstance3D: %s" % model_path)
+		effect_root.queue_free()
+		return false
+	_status_effect_nodes[kind_name] = effect_root
+	_status_effects.register_effect_root(kind_name, effect_root)
+	return true
 
 func is_waiting_for_death_anim(now_ms: float) -> bool:
 	return _dead_until > now_ms
@@ -447,6 +644,12 @@ func set_chosen_class(klass: String) -> void:
 		_model_anim = null
 		_model_anim_name = ""
 		_model_profile = {}
+		_weapon_attachment = null
+		_weapon_inst = null
+		_status_effects = null
+		_status_effect_nodes.clear()
+		_status_effect_until.clear()
+		_cc_effect = ""
 		_model_debug_logged = false
 	_ensure_model_for_entity()
 
@@ -488,6 +691,8 @@ func _model_profile_for_entity() -> Dictionary:
 	if kind == "player":
 		var model_path := HERO_MODEL_PATH
 		var label := "Kevin"
+		var anim_aliases: Dictionary = {}
+		var model_scale := HERO_MODEL_SCALE
 		match _chosen_class:
 			"warrior":
 				model_path = BARBARIAN_MODEL_PATH
@@ -504,10 +709,14 @@ func _model_profile_for_entity() -> Dictionary:
 			"rogue":
 				model_path = ROGUE_MODEL_PATH
 				label = "Rogue"
+				anim_aliases = ROGUE_ANIM_ALIASES
+				model_scale = ROGUE_MODEL_SCALE
 		var profile := {
 			"label": label,
 			"path": model_path,
-			"scale": HERO_MODEL_SCALE,
+			"anim_aliases": anim_aliases,
+			"weapon_path": HERO_WEAPON_SCENE_PATH,
+			"scale": model_scale,
 			"model_y": 60.0,
 			"light_energy": HERO_LIGHT_ENERGY,
 			"light_range": 260.0,
@@ -566,6 +775,19 @@ func _model_profile_for_entity() -> Dictionary:
 		}
 	if kind == "monster":
 		var root := _enemy_root()
+		if root.ends_with("/Ent"):
+			return {
+				"label": "Ent",
+				"path": ENT_MODEL_PATH,
+				"anim_aliases": ENT_ANIM_ALIASES,
+				"scale": ENT_MODEL_SCALE,
+				"model_y": 78.0,
+				"light_energy": ENT_LIGHT_ENERGY,
+				"light_range": 340.0,
+				"light_y": 130.0,
+				"contrast": 1.25,
+				"saturation": 1.15,
+			}
 		if root.ends_with("/Ghoul"):
 			return {
 				"label": "Ghoul",
@@ -676,6 +898,8 @@ func _model_profile_for_entity() -> Dictionary:
 			}
 	if kind == "boss":
 		var boss_model_path := ""
+		var boss_model_scale := JAILOR_MODEL_SCALE
+		var boss_anim_aliases: Dictionary = {}
 		if _entity_name == JAILOR_NAME:
 			boss_model_path = JAILOR_MODEL_PATH
 		elif _entity_name == BRIAR_REVENANT_NAME:
@@ -686,11 +910,14 @@ func _model_profile_for_entity() -> Dictionary:
 			boss_model_path = JUGGERNAUT_MODEL_PATH
 		elif _entity_name == TERRORBOT_NAME:
 			boss_model_path = TERRORBOT_MODEL_PATH
+			boss_model_scale = TERRORBOT_MODEL_SCALE
+			boss_anim_aliases = TERRORBOT_ANIM_ALIASES
 		if boss_model_path != "":
 			return {
 				"label": _entity_name,
 				"path": boss_model_path,
-				"scale": JAILOR_MODEL_SCALE,
+				"anim_aliases": boss_anim_aliases,
+				"scale": boss_model_scale,
 				"model_y": 200.0,
 				"light_energy": JAILOR_LIGHT_ENERGY,
 				"light_range": 520.0,
@@ -742,6 +969,7 @@ func _ensure_model_for_entity() -> void:
 		_model_debug_logged = true
 	_model_anim = _find_animation_player(_model_root)
 	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))
+	_attach_weapon_to_model(profile)
 	_add_model_light(profile)
 	texture = null
 	modulate.a = 0.0
@@ -792,6 +1020,71 @@ func _find_animation_player(node: Node) -> AnimationPlayer:
 			return found
 	return null
 
+func _find_skeleton(node: Node) -> Skeleton3D:
+	if node is Skeleton3D:
+		return node
+	for child in node.get_children():
+		var found := _find_skeleton(child)
+		if found != null:
+			return found
+	return null
+
+func _first_mesh(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D:
+		return node
+	for child in node.get_children():
+		var found := _first_mesh(child)
+		if found != null:
+			return found
+	return null
+
+func _attach_weapon_to_model(profile: Dictionary) -> void:
+	var weapon_path := str(profile.get("weapon_path", ""))
+	if weapon_path == "" or _model_inst == null:
+		return
+	var skeleton := _find_skeleton(_model_inst)
+	if skeleton == null:
+		push_warning("Weapon attachment skipped: no Skeleton3D found for %s" % str(profile.get("label", "model")))
+		return
+	var bone_name := _hand_bone_name(skeleton)
+	if bone_name == "":
+		push_warning("Weapon attachment skipped: no right-hand bone found for %s" % str(profile.get("label", "model")))
+		return
+	var scene := _load_model_scene(weapon_path, "Weapon")
+	if scene == null:
+		_warn_model_failed_once(weapon_path, "Weapon model failed to load: %s" % weapon_path)
+		return
+	var inst := scene.instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		push_warning("Weapon model root is not Node3D: %s" % weapon_path)
+		return
+	var attachment := BoneAttachment3D.new()
+	attachment.bone_name = bone_name
+	skeleton.add_child(attachment)
+	var weapon := inst as Node3D
+	weapon.scale = Vector3.ONE * HERO_WEAPON_MODEL_SCALE
+	weapon.position = HERO_WEAPON_OFFSET
+	weapon.rotation_degrees = HERO_WEAPON_ROTATION_DEGREES
+	attachment.add_child(weapon)
+	_weapon_attachment = attachment
+	_weapon_inst = weapon
+	if weapon.has_method("attach_to_skeleton"):
+		weapon.call("attach_to_skeleton", skeleton, bone_name)
+	_brighten_model(weapon, 1.08, 1.1)
+
+func _hand_bone_name(skeleton: Skeleton3D) -> String:
+	for candidate in HERO_WEAPON_HAND_BONES:
+		if skeleton.find_bone(str(candidate)) >= 0:
+			return str(candidate)
+	var count := skeleton.get_bone_count()
+	for i in count:
+		var bone := skeleton.get_bone_name(i)
+		var lower := bone.to_lower()
+		if lower.contains("righthand") or lower.contains("right_hand") or lower.ends_with(":righthand"):
+			return bone
+	return ""
+
 func _brighten_model(node: Node, contrast: float, saturation: float) -> void:
 	if node is MeshInstance3D:
 		var mesh_instance := node as MeshInstance3D
@@ -834,32 +1127,12 @@ func _play_model_anim(intent: String) -> void:
 	var names := _model_anim.get_animation_list()
 	if names.is_empty():
 		return
-	var needles: Array[String] = []
-	match intent:
-		"run":
-			needles = _movement_anim_needles()
-		"slash_a":
-			needles = ["slash a", "slash_a", "slasha", "slash 1", "slash_1", "attack a", "attack_a", "attack 1"]
-		"slash_b":
-			needles = ["slash b", "slash_b", "slashb", "slash 2", "slash_2", "attack b", "attack_b", "attack 2"]
-		"slash_c":
-			needles = ["slash c", "slash_c", "slashc", "slash 3", "slash_3", "attack c", "attack_c", "attack 3"]
-		"strike", "punch", "kick":
-			needles = ["attack", "strike", "punch", "slash", "hit"]
-		"cast", "bolt":
-			needles = ["cast", "spell", "attack", "strike"]
-		"hit", "hurt":
-			needles = ["hit", "hurt", "damage", "impact", "react"]
-		"death":
-			needles = ["death", "die", "dead"]
-		_:
-			needles = ["idle"]
+	var needles := _profile_anim_needles(intent, _base_anim_needles(intent))
 	var chosen := String(names[0])
 	var matched := false
 	for anim_name in names:
-		var lower := String(anim_name).to_lower()
 		for needle in needles:
-			if lower.contains(needle):
+			if _anim_name_matches(String(anim_name), needle):
 				chosen = String(anim_name)
 				matched = true
 				break
@@ -867,9 +1140,8 @@ func _play_model_anim(intent: String) -> void:
 			break
 	if not matched and intent.begins_with("slash_"):
 		for anim_name in names:
-			var lower := String(anim_name).to_lower()
-			for needle in ["slash", "attack", "strike"]:
-				if lower.contains(needle):
+			for needle in _profile_anim_needles("strike", ["slash", "attack", "strike"]):
+				if _anim_name_matches(String(anim_name), needle):
 					chosen = String(anim_name)
 					matched = true
 					break
@@ -901,22 +1173,57 @@ func _model_anim_name_for_intent(intent: String) -> String:
 	var names := _model_anim.get_animation_list()
 	if names.is_empty():
 		return ""
-	var needles: Array[String] = []
-	match intent:
-		"death":
-			needles = ["death", "die", "dead"]
-		"hit", "hurt":
-			needles = ["hit", "hurt", "damage", "impact", "react"]
-		"run":
-			needles = _movement_anim_needles()
-		_:
-			needles = ["idle"]
+	var needles := _profile_anim_needles(intent, _base_anim_needles(intent))
 	for anim_name in names:
-		var lower := String(anim_name).to_lower()
 		for needle in needles:
-			if lower.contains(needle):
+			if _anim_name_matches(String(anim_name), needle):
 				return String(anim_name)
 	return String(names[0])
+
+func _base_anim_needles(intent: String) -> Array[String]:
+	match intent:
+		"run":
+			return _movement_anim_needles()
+		"slash_a":
+			return ["slash a", "slash_a", "slasha", "slash 1", "slash_1", "attack a", "attack_a", "attack 1"]
+		"slash_b":
+			return ["slash b", "slash_b", "slashb", "slash 2", "slash_2", "attack b", "attack_b", "attack 2"]
+		"slash_c":
+			return ["slash c", "slash_c", "slashc", "slash 3", "slash_3", "attack c", "attack_c", "attack 3"]
+		"strike", "punch", "kick":
+			return ["attack", "strike", "punch", "slash", "hit"]
+		"cast", "bolt":
+			return ["cast", "spell", "throw", "pitch", "attack", "strike"]
+		"hit", "hurt":
+			return ["hit", "hurt", "damage", "impact", "react"]
+		"death":
+			return ["death", "die", "dead"]
+	return ["idle"]
+
+func _profile_anim_needles(intent: String, base_needles: Array[String]) -> Array[String]:
+	var merged: Array[String] = []
+	var aliases: Dictionary = _model_profile.get("anim_aliases", {})
+	if aliases.has(intent):
+		for alias in aliases[intent]:
+			merged.append(str(alias))
+	for needle in base_needles:
+		merged.append(needle)
+	return merged
+
+func _anim_name_matches(anim_name: String, needle: String) -> bool:
+	var lower := anim_name.to_lower()
+	var lower_needle := needle.to_lower()
+	if lower.contains(lower_needle):
+		return true
+	return _normalize_anim_name(lower).contains(_normalize_anim_name(lower_needle))
+
+func _normalize_anim_name(value: String) -> String:
+	var normalized := value
+	for ch in ["_", "-", ".", "|", "/", "\\", ":"]:
+		normalized = normalized.replace(ch, " ")
+	while normalized.contains("  "):
+		normalized = normalized.replace("  ", " ")
+	return normalized.strip_edges()
 
 func _movement_anim_needles() -> Array[String]:
 	if kind == "player":
@@ -1030,6 +1337,8 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 		_action = model_action
 		_action_until = now_ms + 650.0
 		_play_model_anim(model_action)
+		if action == "strike" and _weapon_inst != null and _weapon_inst.has_method("swing"):
+			_weapon_inst.call("swing")
 		return
 	_action_frame_start = frame_start
 	_action_frame_count = frame_count
@@ -1295,6 +1604,12 @@ func set_monster_kind(v: String) -> void:
 		_model_anim = null
 		_model_anim_name = ""
 		_model_profile = {}
+		_weapon_attachment = null
+		_weapon_inst = null
+		_status_effects = null
+		_status_effect_nodes.clear()
+		_status_effect_until.clear()
+		_cc_effect = ""
 		_model_debug_logged = false
 	_ensure_model_for_entity()
 

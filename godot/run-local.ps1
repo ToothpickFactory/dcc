@@ -53,14 +53,14 @@ $GodotExe = Find-Godot
 Write-Host "==> Using Godot: $GodotExe"
 
 if (-not $SkipAssetCopy) {
-  Write-Host "==> Copying assets: public/assets -> godot/assets"
-  if (-not (Test-Path "public/assets")) {
-    throw "public/assets does not exist. Run npm run build:client first."
+  Write-Host "==> Copying assets: assets -> godot/assets"
+  if (-not (Test-Path "assets")) {
+    throw "assets does not exist."
   }
   if (Test-Path "godot/assets") {
     Remove-Item -Recurse -Force "godot/assets"
   }
-  Copy-Item -Recurse -Force "public/assets" "godot/assets"
+  Copy-Item -Recurse -Force "assets" "godot/assets"
 }
 
 if ($Import) {

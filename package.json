@@ -9,7 +9,7 @@
     "predeploy": "npm run build:client",
     "deploy": "wrangler deploy",
     "predev": "npm run build:client",
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
     "start": "npm run dev",
     "gen:art": "node scripts/gen-art.mjs",
     "typecheck": "tsc --noEmit",

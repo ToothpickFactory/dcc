@@ -11,6 +11,7 @@ const copyPairs = [
   [join(root, "assets", "Heroes"), join(outRoot, "Heroes")],
   [join(root, "assets", "Enemies"), join(outRoot, "Enemies")],
   [join(root, "assets", "Bosses"), join(outRoot, "Bosses")],
+  [join(root, "assets", "Weapons"), join(outRoot, "Weapons")],
   [join(root, "assets", "Tiles"), join(outRoot, "Tiles")],
   [join(root, "assets", "Props"), join(outRoot, "Props")],
   [join(root, "assets", "StatusEffects"), join(outRoot, "StatusEffects")],
@@ -18,7 +19,14 @@ const copyPairs = [
 
 for (const [src, dst] of copyPairs) {
   if (!existsSync(src)) continue;
-  cpSync(src, dst, { recursive: true, force: true });
+  cpSync(src, dst, {
+    recursive: true,
+    force: true,
+    filter: (path) => {
+      const normalized = path.replaceAll("\\", "/");
+      return !/\/StatusEffects\/[^/]+\/[^/]+\.glb$/i.test(normalized);
+    },
+  });
 }
 
 console.log("Synced sprite atlases to public/assets");

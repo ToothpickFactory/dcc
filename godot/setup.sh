@@ -32,10 +32,10 @@ else
   rm -rf "$TMP"
 fi
 
-# 3b. Art assets (gitignored; source of truth is public/assets).
-echo "==> Copying art assets (public/assets -> godot/assets)..."
+# 3b. Art assets (gitignored; source of truth is assets).
+echo "==> Copying art assets (assets -> godot/assets)..."
 rm -rf godot/assets
-cp -R public/assets godot/assets
+cp -R assets godot/assets
 
 # 3c. Import (texture .import files + class cache).
 if [ -n "$GODOT" ]; then

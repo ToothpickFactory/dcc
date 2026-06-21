@@ -85,9 +85,9 @@ if [ "$NEED_BUILD" = "1" ]; then
     echo "!! Godot not found. Install Godot 4.6 or set GODOT=/path/to/Godot, then re-run."
     read -r -p "Press enter to close..." _; exit 1
   fi
-  # Overlay any new/updated art assets (gitignored godot/assets is sourced from public/assets) so
+  # Overlay any new/updated art assets (gitignored godot/assets is sourced from assets) so
   # newly added models — e.g. the per-class hero skins — sync into existing installs, not just fresh ones.
-  if [ -d godot/assets ]; then cp -R public/assets/. godot/assets/ 2>/dev/null || true; fi
+  if [ -d godot/assets ]; then cp -R assets/. godot/assets/ 2>/dev/null || true; fi
   echo "==> Building the latest client (~20s)..."
   "$GODOT" --headless --path godot --import >/dev/null 2>&1
   mkdir -p "$(dirname "$APP")"

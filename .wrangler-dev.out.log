@@ -1,0 +1,36 @@
+
+> young-frost-2be4@0.0.0 predev
+> npm run build:client
+
+
+> young-frost-2be4@0.0.0 build:client
+> npm run sync:assets && esbuild src/client/main.ts --bundle --minify --format=iife --outfile=public/client.js
+
+
+> young-frost-2be4@0.0.0 sync:assets
+> node scripts/sync-atlases.mjs
+
+Synced sprite atlases to public/assets
+
+> young-frost-2be4@0.0.0 dev
+> wrangler dev --ip 127.0.0.1 --port 8787
+
+
+ ⛅️ wrangler 4.100.0 (update available 4.103.0)
+───────────────────────────────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                      Resource                  Mode
+env.MY_DURABLE_OBJECT (MyDurableObject)      Durable Object            local
+env.ASSETS                                   Assets                    local
+env.ADMIN_OPEN ("true")                      Environment Variable      local
+env.ADMIN_TOKEN ("(hidden)")                 Environment Variable      local
+
+❓ Your types might be out of date. Re-run `wrangler types` to ensure your types are correct.
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8787
+NOSENTRY SQLite alarm handler canceled with requestScheduledAlarm.; scheduledTime = 1782016067.529s; localAlarmState.orDefault(kj::UNIX_EPOCH) = 1782018244.919s; actorId = 42eff3e9d8b6b3dfcdae8d898a5aa47b6b4167da2472fe9f197fdc44d2ff901c
+[wrangler:info] GET / 200 OK (26ms)
+⎔ Reloading local server...
+⎔ Local server updated and ready
+[wrangler:info] GET /ws 101 Switching Protocols (113ms)

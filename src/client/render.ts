@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE, ICE_PROJECTILE_SPRITE, POISON_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent, StatusEffect } from "../protocol";
@@ -25,7 +25,7 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   "Briar Revenant": "/assets/Bosses/BriarRevenant/Briar Revenant-3d-animated.glb",
   "Primal Conflux": "/assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb",
   Juggernaut: "/assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb",
-  TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot-3d-animated.glb",
+  TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot.glb",
 };
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const STATUS_EFFECT_MS = 3000;
@@ -53,7 +53,7 @@ const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   clockwork: "/assets/Props/clockwork-props.png",
   nightmare: "/assets/Props/nightmare-props.png",
 };
-const ENEMY_ROOTS = ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan"].map((n) => `/assets/Enemies/${n}`);
+const ENEMY_ROOTS = ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan", "Ent"].map((n) => `/assets/Enemies/${n}`);
 const MOVE_ANIM_NAMES = [
   "iso_idle_up_right",
   "iso_idle_right_right",
@@ -624,10 +624,10 @@ export class Renderer {
   private ensureLootModel(): Promise<THREE.Object3D | null> {
     if (this.lootModelSource) return Promise.resolve(this.lootModelSource);
     if (this.lootModelPromise) return this.lootModelPromise;
-    this.lootModelPromise = this.gltfLoader.loadAsync(LOOT_MODEL_PATH)
-      .then((gltf) => {
+    const p: Promise<THREE.Object3D | null> = this.gltfLoader.loadAsync(LOOT_MODEL_PATH)
+      .then((gltf: GLTF) => {
         const source = gltf.scene;
-        source.traverse((obj) => {
+        source.traverse((obj: THREE.Object3D) => {
           if (!(obj instanceof THREE.Mesh)) return;
           obj.frustumCulled = false;
           const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -640,7 +640,8 @@ export class Renderer {
       .finally(() => {
         this.lootModelPromise = null;
       });
-    return this.lootModelPromise;
+    this.lootModelPromise = p;
+    return p;
   }
 
   private ensureBossModel(name?: string): Promise<THREE.Object3D | null> {
@@ -651,9 +652,9 @@ export class Renderer {
     const inFlight = this.bossModelPromises.get(name);
     if (inFlight) return inFlight;
     const p = this.gltfLoader.loadAsync(path)
-      .then((gltf) => {
+      .then((gltf: GLTF) => {
         const source = gltf.scene;
-        source.traverse((obj) => {
+        source.traverse((obj: THREE.Object3D) => {
           if (!(obj instanceof THREE.Mesh)) return;
           obj.frustumCulled = false;
           const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
