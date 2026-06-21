@@ -34,3 +34,9 @@ NOSENTRY SQLite alarm handler canceled with requestScheduledAlarm.; scheduledTim
 ⎔ Reloading local server...
 ⎔ Local server updated and ready
 [wrangler:info] GET /ws 101 Switching Protocols (113ms)
+[wrangler:info] GET /ws 101 Switching Protocols (5ms)
+[wrangler:info] GET /ws 101 Switching Protocols (5ms)
+[wrangler:info] GET /ws 101 Switching Protocols (6ms)
+[wrangler:info] GET /ws 101 Switching Protocols (6ms)
+[wrangler:info] GET /ws 101 Switching Protocols (3ms)
+[wrangler:info] GET /ws 101 Switching Protocols (5ms)
