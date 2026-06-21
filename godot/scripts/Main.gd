@@ -25,6 +25,15 @@ const TEST_RANDOM_HIT_STATUS_EFFECTS := ["bleed", "dark", "fire", "frost", "holy
 @export var cam_height := DEFAULT_CAMERA_HEIGHT
 @export var cam_back := DEFAULT_CAMERA_BACK_OFFSET
 @export var cam_fov := 60.0
+@export var cam_zoom_min := 0.62
+@export var cam_zoom_max := 1.45
+@export var cam_zoom_step := 0.10
+@export var cam_zoom_smooth := 12.0
+@export var cam_yaw_deg := 0.0
+@export var cam_tilt_deg := 0.0
+@export var cam_tilt_min_deg := 34.0
+@export var cam_tilt_max_deg := 72.0
+@export var cam_drag_sensitivity := 0.18
 
 var _net                       # Net (Node)
 var _world: World
@@ -70,6 +79,9 @@ var _decor_vis_cell := -1
 var _decor_live_props_key := ""
 var _decor_live_props_tick := -1
 var _decor_cached_live_props_key := ""
+var _cam_zoom := 1.0
+var _cam_zoom_target := 1.0
+var _cam_dragging := false
 
 func _ready() -> void:
 	randomize()
@@ -96,6 +108,13 @@ func _ready() -> void:
 		if p.size() >= 1 and p[0] != "": cam_height = float(p[0])
 		if p.size() >= 2 and p[1] != "": cam_back = float(p[1])
 		if p.size() >= 3 and p[2] != "": cam_fov = float(p[2])
+	cam_zoom_min = maxf(0.1, cam_zoom_min)
+	cam_zoom_max = maxf(cam_zoom_min, cam_zoom_max)
+	_cam_zoom = clampf(_cam_zoom, cam_zoom_min, cam_zoom_max)
+	_cam_zoom_target = _cam_zoom
+	if cam_tilt_deg <= 0.0:
+		cam_tilt_deg = rad_to_deg(atan2(cam_height, cam_back))
+	cam_tilt_deg = clampf(cam_tilt_deg, cam_tilt_min_deg, cam_tilt_max_deg)
 
 	# Scale all 2D/UI relative to the actual window pixel size so the HUD/minimap
 	# aren't tiny on a big hi-DPI window, while the 3D scene keeps native resolution.
@@ -555,7 +574,15 @@ func _process(dt: float) -> void:
 	# Heightfield 2.5D: lift the camera + its look target by the focus point's ground height so the
 	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
-	_cam.position = Vector3(cx, cam_height + fgz, cy + cam_back)
+	_cam_zoom = lerpf(_cam_zoom, _cam_zoom_target, clampf(dt * cam_zoom_smooth, 0.0, 1.0))
+	var base_dist := sqrt(cam_height * cam_height + cam_back * cam_back) * _cam_zoom
+	var tilt := deg_to_rad(clampf(cam_tilt_deg, cam_tilt_min_deg, cam_tilt_max_deg))
+	var yaw := deg_to_rad(cam_yaw_deg)
+	var zoom_height := sin(tilt) * base_dist
+	var zoom_back := cos(tilt) * base_dist
+	var orbit_x := sin(yaw) * zoom_back
+	var orbit_z := cos(yaw) * zoom_back
+	_cam.position = Vector3(cx + orbit_x, zoom_height + fgz, cy + orbit_z)
 	_cam.look_at(Vector3(cx, fgz, cy), Vector3.UP)
 	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
@@ -760,6 +787,24 @@ func _set_static_sprite_visibility(sprite: Node3D, x: float, y: float, vision_sq
 	sprite.visible = dsq <= NEAR_SQ or (dsq <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y))
 
 func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed:
+		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_cam_zoom_target = clampf(_cam_zoom_target - cam_zoom_step, cam_zoom_min, cam_zoom_max)
+			get_viewport().set_input_as_handled()
+			return
+		if e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_cam_zoom_target = clampf(_cam_zoom_target + cam_zoom_step, cam_zoom_min, cam_zoom_max)
+			get_viewport().set_input_as_handled()
+			return
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_MIDDLE:
+		_cam_dragging = e.pressed
+		get_viewport().set_input_as_handled()
+		return
+	if e is InputEventMouseMotion and _cam_dragging:
+		cam_yaw_deg = wrapf(cam_yaw_deg - e.relative.x * cam_drag_sensitivity, -180.0, 180.0)
+		cam_tilt_deg = clampf(cam_tilt_deg - e.relative.y * cam_drag_sensitivity, cam_tilt_min_deg, cam_tilt_max_deg)
+		get_viewport().set_input_as_handled()
+		return
 	if e is InputEventKey and e.pressed and not e.echo:
 		match e.keycode:
 			KEY_I:

@@ -4,5 +4,5 @@
 
 [node name="Flail" type="Node3D"]
 script = ExtResource("1_flail")
-chain_length = 9
+chain_length = 3
 swing_force = 10.0
