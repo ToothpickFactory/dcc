@@ -38,9 +38,11 @@ const FIREBALL_PROJECTILE_SPRITE := 97
 const BOSS_BOLT_SPRITE := 99
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan", "Ent"]
+const TEST_RANDOM_HIT_STATUS_EFFECTS := ["bleed", "dark", "fire", "frost", "holy", "poison", "stun"]
 
 var _sprites: Dictionary = {}   # id -> EntitySprite
 var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, for facing delta)
+var _last_hp: Dictionary = {}   # id -> hp from previous snapshot; direct "took damage" trigger
 var _net                        # Net node (prev/cur snapshots); set via set_net
 var _grid: Dictionary = {}      # collision grid for canSee()
 var _you_class := ""            # local player's chosen Klass; drives hero model selection
@@ -133,6 +135,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 				stale.queue_free()
 				_sprites.erase(id)
 				_last_pos.erase(id)
+				_last_hp.erase(id)
 			continue
 		var is_self := id == you_id
 		var player_class := _player_class_from_dto(d, is_self)
@@ -175,6 +178,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.set_ally_status(float(d.get("hp", 0.0)), float(d.get("maxHp", 0.0)), player_class)
 		spr.set_cc(str(d.get("cc", ""))) # hard CC status tint (stun/root/freeze)
 		spr.set_dead_body(bool(d.get("dead", false)), now_ms)
+		_trigger_damage_status_if_hp_dropped(id, d, spr, now_ms)
 
 		# Facing delta = movement since the last displayed frame (render.ts dx/dy).
 		var prev: Variant = _last_pos.get(id)
@@ -211,6 +215,19 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.queue_free()
 			_sprites.erase(id)
 			_last_pos.erase(id)
+			_last_hp.erase(id)
+
+func _trigger_damage_status_if_hp_dropped(id: String, d: Dictionary, spr: EntitySprite, now_ms: float) -> void:
+	if not d.has("hp"):
+		_last_hp.erase(id)
+		return
+	var hp := float(d.get("hp", 0.0))
+	if _last_hp.has(id):
+		var prev_hp := float(_last_hp[id])
+		if hp < prev_hp - 0.01 and not bool(d.get("dead", false)):
+			var status := str(TEST_RANDOM_HIT_STATUS_EFFECTS[randi() % TEST_RANDOM_HIT_STATUS_EFFECTS.size()])
+			spr.play_status_fx(status, now_ms)
+	_last_hp[id] = hp
 
 # ---------------------------------------------------------------------------
 # Events -> action one-shots. Port of render.ts handleEvents(). Called by Main when a

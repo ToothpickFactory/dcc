@@ -38,8 +38,8 @@ const STATUS_EFFECT_MODEL_PATHS := {
 	"poison": "res://assets/StatusEffects/Poison/Poison.glb",
 	"stun": "res://assets/StatusEffects/Stun/Stun.glb",
 }
-const STATUS_EFFECT_MODEL_SCALE := 0.0153
-const STATUS_EFFECT_MODEL_Y := 0.08
+const STATUS_EFFECT_NORMAL_HEIGHT := 260.0
+const STATUS_EFFECT_BOSS_HEIGHT := 520.0
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
 const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin-3d-animated.glb"
@@ -499,14 +499,10 @@ func _effect_for_cc() -> String:
 			return ""
 
 func _ensure_status_effect(kind_name: String) -> bool:
-	if _model_root == null:
-		_ensure_model_for_entity()
-	if _model_root == null:
-		return false
 	if _status_effects == null:
 		_status_effects = StatusEffects.new()
 		_status_effects.name = "StatusEffects"
-		_model_root.add_child(_status_effects)
+		add_child(_status_effects)
 	if _status_effect_nodes.has(kind_name):
 		return true
 	var model_path := str(STATUS_EFFECT_MODEL_PATHS.get(kind_name, ""))
@@ -519,10 +515,11 @@ func _ensure_status_effect(kind_name: String) -> bool:
 		inst.queue_free()
 		push_warning("Status effect model root is not Node3D: %s" % model_path)
 		return false
-	var effect_root := inst as Node3D
+	var model := inst as Node3D
+	var effect_root := Node3D.new()
 	effect_root.name = "%s_status_effect" % kind_name.capitalize()
-	effect_root.scale = Vector3.ONE * STATUS_EFFECT_MODEL_SCALE
-	effect_root.position = Vector3(0.0, STATUS_EFFECT_MODEL_Y, 0.0)
+	effect_root.add_child(model)
+	_fit_status_effect_model(effect_root, model)
 	_status_effects.add_child(effect_root)
 	var mesh := _first_mesh(effect_root)
 	if mesh == null:
@@ -532,6 +529,53 @@ func _ensure_status_effect(kind_name: String) -> bool:
 	_status_effect_nodes[kind_name] = effect_root
 	_status_effects.register_effect_root(kind_name, effect_root)
 	return true
+
+func _fit_status_effect_model(effect_root: Node3D, model: Node3D) -> void:
+	var bounds: Array = [false, Vector3.ZERO, Vector3.ZERO]
+	_collect_node_bounds(model, Transform3D.IDENTITY, bounds)
+	if not bool(bounds[0]):
+		effect_root.scale = Vector3.ONE
+		return
+	var min_v: Vector3 = bounds[1]
+	var max_v: Vector3 = bounds[2]
+	var size := max_v - min_v
+	var source_height := maxf(size.y, 0.001)
+	var desired_world_height := STATUS_EFFECT_BOSS_HEIGHT if kind == "boss" else STATUS_EFFECT_NORMAL_HEIGHT
+	effect_root.position = Vector3.ZERO
+	effect_root.scale = Vector3.ONE * (desired_world_height / source_height)
+	model.position -= Vector3((min_v.x + max_v.x) * 0.5, min_v.y, (min_v.z + max_v.z) * 0.5)
+	_configure_status_effect_visuals(model)
+
+func _collect_node_bounds(node: Node, to_root: Transform3D, result: Array) -> void:
+	if node is MeshInstance3D:
+		var mesh_node := node as MeshInstance3D
+		var aabb := mesh_node.get_aabb()
+		var p := aabb.position
+		var e := aabb.position + aabb.size
+		for x in [p.x, e.x]:
+			for y in [p.y, e.y]:
+				for z in [p.z, e.z]:
+					var point: Vector3 = to_root * Vector3(x, y, z)
+					if not bool(result[0]):
+						result[0] = true
+						result[1] = point
+						result[2] = point
+					else:
+						result[1] = (result[1] as Vector3).min(point)
+						result[2] = (result[2] as Vector3).max(point)
+	for child in node.get_children():
+		if child is Node3D:
+			var child3d := child as Node3D
+			_collect_node_bounds(child3d, to_root * child3d.transform, result)
+
+func _configure_status_effect_visuals(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mesh_node := node as MeshInstance3D
+		mesh_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mesh_node.transparency = 0.0
+		mesh_node.visible = true
+	for child in node.get_children():
+		_configure_status_effect_visuals(child)
 
 func is_waiting_for_death_anim(now_ms: float) -> bool:
 	return _dead_until > now_ms

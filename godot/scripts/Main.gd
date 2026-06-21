@@ -404,7 +404,7 @@ func _on_events(events: Array) -> void:
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
 				var status := str(TEST_RANDOM_HIT_STATUS_EFFECTS[randi() % TEST_RANDOM_HIT_STATUS_EFFECTS.size()])
-				_sprites.status_at(vp.x, vp.y, status, 180.0)
+				_sprites.status_at(vp.x, vp.y, status, 320.0)
 				if self_hit:
 					_shake = 1.0
 					_sfx.play("hurt")

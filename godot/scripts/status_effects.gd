@@ -10,6 +10,7 @@ extends Node3D
 @export var dark_mesh: MeshInstance3D
 
 const EFFECT_NAMES := ["fire", "frost", "poison", "bleed", "stun", "holy", "dark"]
+const FORCE_OPAQUE_DEBUG := true
 
 const EFFECT_SHADERS := {
 	"fire": preload("res://shaders/status_effects/fire.gdshader"),
@@ -105,9 +106,33 @@ func _ensure_materials() -> void:
 	if not _materials.is_empty():
 		return
 	for effect_name in EFFECT_NAMES:
-		var material := ShaderMaterial.new()
-		material.shader = EFFECT_SHADERS[effect_name]
+		var material: Material
+		if FORCE_OPAQUE_DEBUG:
+			var debug_material := StandardMaterial3D.new()
+			debug_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			debug_material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+			debug_material.albedo_color = _debug_color(effect_name)
+			debug_material.emission_enabled = true
+			debug_material.emission = _debug_color(effect_name)
+			debug_material.emission_energy_multiplier = 1.25
+			debug_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+			material = debug_material
+		else:
+			var shader_material := ShaderMaterial.new()
+			shader_material.shader = EFFECT_SHADERS[effect_name]
+			material = shader_material
 		_materials[effect_name] = material
+
+func _debug_color(effect_name: String) -> Color:
+	match effect_name:
+		"bleed": return Color(1.0, 0.0, 0.0, 1.0)
+		"dark": return Color(0.45, 0.0, 1.0, 1.0)
+		"fire": return Color(1.0, 0.38, 0.0, 1.0)
+		"frost": return Color(0.28, 0.85, 1.0, 1.0)
+		"holy": return Color(1.0, 0.88, 0.18, 1.0)
+		"poison": return Color(0.2, 1.0, 0.0, 1.0)
+		"stun": return Color(1.0, 1.0, 0.0, 1.0)
+		_: return Color.WHITE
 
 func _apply_effect_material(effect_name: String, mesh: MeshInstance3D) -> void:
 	_ensure_materials()
