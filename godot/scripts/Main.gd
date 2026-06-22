@@ -17,7 +17,6 @@ const KEY_LIGHT_RIGHT_OFFSET := 520.0
 const KEY_LIGHT_BACK_OFFSET := 620.0
 const KEY_LIGHT_ENERGY := 1.45
 const AMBIENT_LIGHT_ENERGY := 0.72
-const TEST_RANDOM_HIT_STATUS_EFFECTS := ["bleed", "dark", "fire", "frost", "holy", "poison", "stun"]
 
 # Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
 # live in the editor. height = how far above; back = how far behind (lower back = more
@@ -403,8 +402,7 @@ func _on_events(events: Array) -> void:
 				var vp := Vector2(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)))
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
-				var status := str(TEST_RANDOM_HIT_STATUS_EFFECTS[randi() % TEST_RANDOM_HIT_STATUS_EFFECTS.size()])
-				_sprites.status_at(vp.x, vp.y, status, 320.0)
+				_fx.spawn_status_glb(vp.x, vp.y)
 				if self_hit:
 					_shake = 1.0
 					_sfx.play("hurt")

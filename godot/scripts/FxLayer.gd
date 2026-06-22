@@ -130,6 +130,124 @@ func _impact(e: Dictionary) -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(lbl.queue_free)
 
+# ---- Hit status-effect GLBs: random animated shader overlay at the impact point for 2 s ----
+const STATUS_GLB_EFFECTS := {
+	"bleed":  "res://assets/StatusEffects/Bleed/Bleed.glb",
+	"dark":   "res://assets/StatusEffects/Dark/Dark.glb",
+	"fire":   "res://assets/StatusEffects/Fire/Fire.glb",
+	"frost":  "res://assets/StatusEffects/Frost/Frost.glb",
+	"holy":   "res://assets/StatusEffects/Holy/Holy.glb",
+	"poison": "res://assets/StatusEffects/Poison/Poison.glb",
+	"stun":   "res://assets/StatusEffects/Stun/Stun.glb",
+}
+const STATUS_GLB_SHADER_PATHS := {
+	"bleed":  "res://shaders/status_effects/bleed.gdshader",
+	"dark":   "res://shaders/status_effects/dark.gdshader",
+	"fire":   "res://shaders/status_effects/fire.gdshader",
+	"frost":  "res://shaders/status_effects/frost.gdshader",
+	"holy":   "res://shaders/status_effects/holy.gdshader",
+	"poison": "res://shaders/status_effects/poison.gdshader",
+	"stun":   "res://shaders/status_effects/stun.gdshader",
+}
+static var _failed_status_glbs: Dictionary = {}
+static var _status_shader_mats: Dictionary = {}
+var _active_status_glb: Node3D = null
+var _status_glb_index: int = 0
+
+const STATUS_GLB_SCALE := 200.0  # world-unit height of each spawned effect; tune to taste
+
+func spawn_status_glb(x: float, y: float) -> void:
+	if is_instance_valid(_active_status_glb):
+		return
+	var keys := STATUS_GLB_EFFECTS.keys()
+	var effect_name := str(keys[_status_glb_index % keys.size()])
+	_status_glb_index += 1
+	var glb_path := str(STATUS_GLB_EFFECTS[effect_name])
+	var scene := _load_status_glb(glb_path)
+	if scene == null:
+		return
+	var inst := scene.instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		return
+	var root := inst as Node3D
+	root.scale = Vector3.ONE * STATUS_GLB_SCALE
+	root.position = Vector3(x, 22.0, y)
+	_apply_status_shader(root, effect_name)
+	add_child(root)
+	_active_status_glb = root
+	_play_all_anims(root)
+	var tw := create_tween()
+	tw.tween_interval(2.0)
+	tw.tween_callback(func():
+		if is_instance_valid(root):
+			root.queue_free()
+		_active_status_glb = null
+	)
+
+func _get_status_mat(effect_name: String) -> ShaderMaterial:
+	if _status_shader_mats.has(effect_name):
+		return _status_shader_mats[effect_name] as ShaderMaterial
+	var shader_path := str(STATUS_GLB_SHADER_PATHS.get(effect_name, ""))
+	if shader_path == "" or not ResourceLoader.exists(shader_path):
+		_status_shader_mats[effect_name] = null
+		return null
+	var shader := load(shader_path) as Shader
+	if shader == null:
+		_status_shader_mats[effect_name] = null
+		return null
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	_status_shader_mats[effect_name] = mat
+	return mat
+
+func _apply_status_shader(node: Node, effect_name: String) -> void:
+	var mat := _get_status_mat(effect_name)
+	if mat == null:
+		return
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh != null:
+			for i in mi.mesh.get_surface_count():
+				mi.set_surface_override_material(i, mat)
+	for child in node.get_children():
+		_apply_status_shader(child, effect_name)
+
+static func _load_status_glb(path: String) -> PackedScene:
+	if _failed_status_glbs.has(path):
+		return null
+	if not ResourceLoader.exists(path) and not FileAccess.file_exists(path):
+		_failed_status_glbs[path] = true
+		return null
+	var res := load(path)
+	if res is PackedScene:
+		return res as PackedScene
+	var doc := GLTFDocument.new()
+	var state := GLTFState.new()
+	if doc.append_from_file(path, state) != OK:
+		_failed_status_glbs[path] = true
+		return null
+	var node := doc.generate_scene(state)
+	if node == null:
+		_failed_status_glbs[path] = true
+		return null
+	var packed := PackedScene.new()
+	var err := packed.pack(node)
+	node.queue_free()
+	if err != OK:
+		_failed_status_glbs[path] = true
+		return null
+	return packed
+
+func _play_all_anims(node: Node) -> void:
+	if node is AnimationPlayer:
+		var ap := node as AnimationPlayer
+		var anims := ap.get_animation_list()
+		if anims.size() > 0:
+			ap.play(str(anims[0]))
+	for child in node.get_children():
+		_play_all_anims(child)
+
 # Enemy death: a bright core burst plus a few sparks flying outward, so kills land.
 func _poof(e: Dictionary) -> void:
 	var x := float(e.get("x", 0.0))
