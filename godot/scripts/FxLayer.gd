@@ -152,11 +152,18 @@ const STATUS_GLB_SHADER_PATHS := {
 static var _failed_status_glbs: Dictionary = {}
 static var _status_shader_mats: Dictionary = {}
 var _active_status_glb: Node3D = null
+var _active_status_target: Node3D = null
 var _status_glb_index: int = 0
 
-const STATUS_GLB_SCALE := 200.0  # world-unit height of each spawned effect; tune to taste
+# The GLB scale is set to sprite_px * this factor, so the effect envelops the character.
+# Increase to make effects larger relative to the character; 1.35 = 35% taller than the sprite.
+const STATUS_GLB_SCALE_FACTOR := 1.35
 
-func spawn_status_glb(x: float, y: float) -> void:
+func _process(_delta: float) -> void:
+	if is_instance_valid(_active_status_glb) and is_instance_valid(_active_status_target):
+		_active_status_glb.global_position = _active_status_target.global_position
+
+func spawn_status_glb(x: float, y: float, target: Node3D = null) -> void:
 	if is_instance_valid(_active_status_glb):
 		return
 	var keys := STATUS_GLB_EFFECTS.keys()
@@ -171,11 +178,19 @@ func spawn_status_glb(x: float, y: float) -> void:
 		inst.queue_free()
 		return
 	var root := inst as Node3D
-	root.scale = Vector3.ONE * STATUS_GLB_SCALE
+	var sprite_px: float = 84.0
+	if target != null:
+		var v = target.get("world_sprite_px")
+		if v != null:
+			sprite_px = float(v)
+	root.scale = Vector3.ONE * (sprite_px * STATUS_GLB_SCALE_FACTOR)
 	root.position = Vector3(x, 22.0, y)
 	_apply_status_shader(root, effect_name)
 	add_child(root)
+	if target != null and is_instance_valid(target):
+		root.global_position = target.global_position
 	_active_status_glb = root
+	_active_status_target = target
 	_play_all_anims(root)
 	var tw := create_tween()
 	tw.tween_interval(2.0)
@@ -183,6 +198,7 @@ func spawn_status_glb(x: float, y: float) -> void:
 		if is_instance_valid(root):
 			root.queue_free()
 		_active_status_glb = null
+		_active_status_target = null
 	)
 
 func _get_status_mat(effect_name: String) -> ShaderMaterial:

@@ -302,6 +302,7 @@ func _update_loot_lock() -> void:
 var ent_id := ""
 var kind := ""
 var is_self := false
+var world_sprite_px: float = 84.0
 var _entity_name := ""
 var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue"|"hunter")
 var _model_root: Node3D
@@ -1661,6 +1662,7 @@ func set_monster_kind(v: String) -> void:
 # render.ts sets sprite.scale to the pixel size directly; with pixel_size=1 a 128px frame
 # is 128 world-units, so scale = sprite_px / 128. Fallback (no texture) uses a unit quad.
 func _apply_size(sprite_px: float) -> void:
+	world_sprite_px = sprite_px
 	if texture != null:
 		var th := texture.get_height()
 		var s := sprite_px / float(th if th > 0 else 128)

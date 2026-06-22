@@ -85,6 +85,12 @@ func flash_at(x: float, y: float, radius: float = 70.0, hurt: bool = false, reac
 	if best_id != "":
 		flash_id(best_id, hurt, reaction)
 
+func nearest_sprite_at(x: float, y: float, radius: float = 90.0) -> EntitySprite:
+	var best_id := _nearest_sprite_id_at(x, y, radius)
+	if best_id == "":
+		return null
+	return _sprites.get(best_id)
+
 func status_at(x: float, y: float, status: String, radius: float = 90.0) -> void:
 	var best_id := _nearest_sprite_id_at(x, y, radius)
 	if best_id == "":
