@@ -59,3 +59,4 @@ NOSENTRY SQLite alarm handler canceled with requestScheduledAlarm.; scheduledTim
 [wrangler:info] GET /ws 101 Switching Protocols (3ms)
 [wrangler:info] GET /ws 101 Switching Protocols (5ms)
 [wrangler:info] GET /ws 101 Switching Protocols (5ms)
+[wrangler:info] GET /ws 101 Switching Protocols (4ms)
