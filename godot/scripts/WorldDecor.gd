@@ -51,6 +51,10 @@ const CAMPFIRE_SMOKE_Y := 105.0
 const CAMPFIRE_SPARK_Y := 92.0
 const MAX_CAMPFIRES := 4
 const CAMPFIRE_MIN_SPACING := 760.0
+const ICE_STAIRS_SCENE := "res://assets/Props/IceDungeonStairs.glb"
+const ICE_STAIRS_TARGET_FOOTPRINT := 150.0
+const ICE_STAIRS_TARGET_H := 125.0
+const ICE_STAIRS_SINK := 34.0
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"]
@@ -95,6 +99,8 @@ static var _campfire_flame_tex: Texture2D
 static var _campfire_smoke_tex: Texture2D
 static var _campfire_spark_tex: Texture2D
 static var _campfire_scene: PackedScene
+static var _ice_stairs_hole_tex: Texture2D
+static var _ice_stairs_scene: PackedScene
 
 # theme -> { "floor": Texture2D, "wall": Texture2D } where each texture carries
 # metadata telling the fog shader which half of the 4x4 sheet to randomize across.
@@ -185,15 +191,18 @@ func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array
 	if not stairs.is_empty():
 		var sx := float(stairs.get("x", 0.0))
 		var sy := float(stairs.get("y", 0.0))
-		var stairs_tex: Texture2D = props[0] if props.size() > 0 else null
-		stairs_sprite = _make_billboard(stairs_tex, sx, STAIRS_Y + _gh(sx, sy), sy, 120.0)
-		_stairs_tex_h = float(stairs_tex.get_height()) if (stairs_tex != null and stairs_tex.get_height() > 0) else 64.0
-		if stairs_tex == null:
-			stairs_sprite.modulate = STAIRS_FALLBACK
-			_stairs_base = STAIRS_FALLBACK
+		if theme == "icedungeon":
+			_place_ice_stairs(sx, sy)
 		else:
-			_stairs_base = Color.WHITE
-		add_child(stairs_sprite)
+			var stairs_tex: Texture2D = props[0] if props.size() > 0 else null
+			stairs_sprite = _make_billboard(stairs_tex, sx, STAIRS_Y + _gh(sx, sy), sy, 120.0)
+			_stairs_tex_h = float(stairs_tex.get_height()) if (stairs_tex != null and stairs_tex.get_height() > 0) else 64.0
+			if stairs_tex == null:
+				stairs_sprite.modulate = STAIRS_FALLBACK
+				_stairs_base = STAIRS_FALLBACK
+			else:
+				_stairs_base = Color.WHITE
+			add_child(stairs_sprite)
 
 	# 4) Decorations (render.ts setDecorations). variant indexes the prop sheet,
 	#    fallback to index 1 (render.ts: textures[variant] ?? textures[1]).
@@ -542,6 +551,51 @@ func _place_campfire() -> void:
 	for pos in _campfire_spots():
 		_spawn_campfire(scene, pos)
 
+func _place_ice_stairs(x: float, y: float) -> void:
+	if world == null or world.grid.is_empty():
+		return
+	var grid: Dictionary = world.grid
+	var cell: float = grid["cell"]
+	var gh := _gh(x, y)
+	var normal := _ground_normal(x, y)
+	var pos := Vector2(x, y)
+
+	var hole := _floor_quad(_ice_stairs_hole_texture(), x, gh + 1.5, y, cell * 2.0, Color(0.68, 0.9, 1.0, 1.0), false, normal)
+	hole.name = "IceDungeonStairsHole"
+	hole.set_meta("dcc_world", pos)
+	atmo_sprites.append(hole)
+
+	var scene := _load_ice_stairs_scene()
+	if scene == null:
+		return
+	var holder := Node3D.new()
+	holder.name = "IceDungeonStairs"
+	holder.position = Vector3(x, gh - ICE_STAIRS_SINK, y)
+	holder.set_meta("dcc_world", pos)
+	add_child(holder)
+	atmo_sprites.append(holder)
+
+	var model := scene.instantiate() as Node3D
+	if model == null:
+		holder.queue_free()
+		atmo_sprites.erase(holder)
+		return
+	holder.add_child(model)
+	var bounds := _visual_aabb(model)
+	var max_footprint := maxf(bounds.size.x, bounds.size.z)
+	var model_scale := 1.0
+	if max_footprint > 0.001:
+		model_scale = ICE_STAIRS_TARGET_FOOTPRINT / max_footprint
+	if bounds.size.y > 0.001:
+		model_scale = minf(model_scale, ICE_STAIRS_TARGET_H / bounds.size.y)
+	model_scale = clampf(model_scale, 0.01, 80.0)
+	model.scale = Vector3.ONE * model_scale
+	model.position = Vector3(
+		-(bounds.position.x + bounds.size.x * 0.5) * model_scale,
+		-bounds.position.y * model_scale,
+		-(bounds.position.z + bounds.size.z * 0.5) * model_scale
+	)
+
 func _spawn_campfire(scene: PackedScene, pos: Vector2) -> void:
 	var gh := _gh(pos.x, pos.y)
 	var normal := _ground_normal(pos.x, pos.y)
@@ -784,6 +838,16 @@ func _load_campfire_scene() -> PackedScene:
 	_campfire_scene = load(CAMPFIRE_SCENE) as PackedScene
 	return _campfire_scene
 
+func _load_ice_stairs_scene() -> PackedScene:
+	if _ice_stairs_scene != null:
+		return _ice_stairs_scene
+	var loaded := load(ICE_STAIRS_SCENE)
+	if not (loaded is PackedScene):
+		push_warning("WorldDecor: ice dungeon stairs scene missing: %s" % ICE_STAIRS_SCENE)
+		return null
+	_ice_stairs_scene = loaded as PackedScene
+	return _ice_stairs_scene
+
 func _tune_campfire_materials(root: Node3D) -> void:
 	for child in root.get_children():
 		if child is Node3D:
@@ -899,6 +963,24 @@ static func _glow_texture() -> Texture2D:
 			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, a))
 	_glow_tex = ImageTexture.create_from_image(img)
 	return _glow_tex
+
+static func _ice_stairs_hole_texture() -> Texture2D:
+	if _ice_stairs_hole_tex != null:
+		return _ice_stairs_hole_tex
+	var n := 96
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var c := (n - 1) * 0.5
+	for y in n:
+		for x in n:
+			var uv := Vector2((float(x) - c) / c, (float(y) - c) / c)
+			var edge := maxf(absf(uv.x), absf(uv.y))
+			var frost := smoothstep(0.68, 1.0, edge)
+			var crack := 0.5 + 0.5 * sin(float(x) * 0.41 + float(y) * 0.17)
+			var core := Color(0.012, 0.022, 0.04, 1.0)
+			var rim := Color(0.40 + 0.12 * crack, 0.70 + 0.10 * crack, 0.95, 1.0)
+			img.set_pixel(x, y, core.lerp(rim, frost))
+	_ice_stairs_hole_tex = ImageTexture.create_from_image(img)
+	return _ice_stairs_hole_tex
 
 ## Dark grime splotch (soft-edged, irregular) for floor decals.
 static func _decal_texture() -> Texture2D:
