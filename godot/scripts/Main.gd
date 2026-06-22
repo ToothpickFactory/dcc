@@ -479,9 +479,13 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
 	_fog.attach(_world)
+	var theme := str(info.get("theme", "fantasy"))
+	var forced_theme := OS.get_environment("DCC_FORCE_THEME")
+	if forced_theme != "":
+		theme = forced_theme
 	var stairs: Dictionary = geometry.get("stairs", {}) if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
-	_decor.apply(str(info.get("theme", "fantasy")), geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
+	_decor.apply(theme, geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, stairs)
 	if not stairs.is_empty():
@@ -492,9 +496,9 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	_decor_cached_live_props_key = ""
 	var st: Dictionary = stairs
 	_stairs = Vector2(float(st.get("x", 0.0)), float(st.get("y", 0.0)))
-	_hud.set_floor(int(info.get("depth", 1)), str(info.get("theme", "")), float(_net.floor_state.get("endsAt", 0.0)))
-	_music.set_theme(str(info.get("theme", "fantasy")))
-	_hud.floor_title(int(info.get("depth", 1)), str(info.get("theme", "")))  # "Floor N · Theme" card
+	_hud.set_floor(int(info.get("depth", 1)), theme, float(_net.floor_state.get("endsAt", 0.0)))
+	_music.set_theme(theme)
+	_hud.floor_title(int(info.get("depth", 1)), theme)  # "Floor N · Theme" card
 	_sfx.play("descent")
 	_char_level = -1  # re-sync level/xp baselines on floor/run change (avoids spurious toasts)
 	_char_xp = -1

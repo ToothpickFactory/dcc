@@ -53,7 +53,7 @@ const MAX_CAMPFIRES := 4
 const CAMPFIRE_MIN_SPACING := 760.0
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
-const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"]
+const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"]
 
 # Per-theme mood palette: `tint` casts the tile albedo, `bg` is the fog/background color the
 # unseen edges fade to. Gives each floor a distinct atmosphere instead of uniform grey.
@@ -64,6 +64,7 @@ const THEME_PALETTE := {
 	"pirate":    {"tint": Color(1.12, 1.0, 0.82),   "bg": Color(0.05, 0.06, 0.06)},
 	"clockwork": {"tint": Color(1.14, 1.0, 0.76),   "bg": Color(0.07, 0.055, 0.035)},
 	"nightmare": {"tint": Color(1.05, 0.78, 1.06),  "bg": Color(0.07, 0.03, 0.08)},
+	"icedungeon": {"tint": Color(0.84, 0.95, 1.16), "bg": Color(0.03, 0.06, 0.10)},
 }
 
 @export var tiles_dir := "res://assets/Tiles"
@@ -1020,6 +1021,8 @@ func _load_props(theme: String) -> Array:
 	if _prop_cache.has(theme):
 		return _prop_cache[theme]
 	var sheet := _load_sheet("%s/%s-props.png" % [props_dir, theme])
+	if sheet == null and theme == "icedungeon":
+		sheet = _load_sheet("%s/nightmare-props.png" % [props_dir])
 	var textures: Array = []
 	if sheet != null:
 		for i in PROP_COUNT:

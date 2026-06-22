@@ -3,7 +3,7 @@ import type { MonsterKind, Theme } from "../shared/types";
 import type { CollisionGrid, FloorDescriptor, HazardSpec, PortalSpec } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
 
-const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
+const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"];
 
 const CELL = 80; // px per grid cell
 const BASE_GRID = 38; // floor-1 grid size (cells)
@@ -112,7 +112,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   }));
   const decorations = [...prefabDecor, ...scatterDecor];
 
-  const theme = THEMES[Math.floor(random() * THEMES.length)]!;
+  const theme = depth === 1 ? "icedungeon" : THEMES[Math.floor(random() * THEMES.length)]!;
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
   const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
