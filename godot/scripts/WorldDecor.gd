@@ -1012,9 +1012,6 @@ func _load_tiles(theme: String) -> Dictionary:
 	return result
 
 func _tile_sheet_path(theme: String) -> String:
-	var dungeon_path := "%s/%s" % [tiles_dir, DUNGEON_TILE_SHEET]
-	if ResourceLoader.exists(dungeon_path) or FileAccess.file_exists(dungeon_path):
-		return dungeon_path
 	return "%s/%s-tiles.png" % [tiles_dir, theme]
 
 
@@ -1045,10 +1042,15 @@ func _tile_from_sheet(sheet: Texture2D, tile_index: int) -> AtlasTexture:
 	return atlas
 
 func _tile_sheet_texture(sheet: Texture2D, tile_start: int, tile_count: int, top_tile_start: int = -1, top_tile_count: int = -1) -> Texture2D:
-	var tex: Texture2D = sheet
+	var tex: Texture2D
 	var img := sheet.get_image()
 	if img != null and not img.is_empty():
 		tex = ImageTexture.create_from_image(img)
+	else:
+		# CompressedTexture2D.get_image() returns null at runtime; duplicate() gives a
+		# separate resource instance so floor and wall can carry independent tile-range
+		# metadata without overwriting each other.
+		tex = sheet.duplicate() as Texture2D
 	tex.set_meta("dcc_tile_sheet", true)
 	tex.set_meta("dcc_tile_start", tile_start)
 	tex.set_meta("dcc_tile_count", tile_count)

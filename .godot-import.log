@@ -10,6 +10,11 @@ It was recognized that GdUnit4 is running in a test environment, therefore the G
 [  83% ] first_scan_filesystem | Starting file scan...
 [ DONE ] first_scan_filesystem
 
+[   0% ] update_scripts_classes | Started Registering global classes... (2 steps)
+[   0% ] update_scripts_classes | Fog
+[  33% ] update_scripts_classes | WorldDecor
+[ DONE ] update_scripts_classes
+
 [   0% ] loading_editor_layout | Started Loading editor (5 steps)
 [   0% ] loading_editor_layout | Loading editor layout...
 [  16% ] loading_editor_layout | Loading docks...
