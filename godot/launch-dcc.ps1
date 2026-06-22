@@ -144,10 +144,7 @@ if (-not $WsOverride) {
   Write-Host "    Using DCC_WS=$WsOverride"
 }
 
-if (-not $env:DCC_FORCE_THEME) {
-  $env:DCC_FORCE_THEME = "icedungeon"
-  Write-Host "    Forcing floor visuals to theme '$env:DCC_FORCE_THEME'"
-} else {
+if ($env:DCC_FORCE_THEME) {
   Write-Host "    Using DCC_FORCE_THEME=$env:DCC_FORCE_THEME"
 }
 

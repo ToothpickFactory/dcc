@@ -112,7 +112,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   }));
   const decorations = [...prefabDecor, ...scatterDecor];
 
-  const theme = depth === 1 ? "icedungeon" : THEMES[Math.floor(random() * THEMES.length)]!;
+  const theme = THEMES[Math.floor(random() * THEMES.length)]!;
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
   const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
