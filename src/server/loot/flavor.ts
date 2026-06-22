@@ -24,6 +24,7 @@ const THEME_ADJ: Record<Theme, string> = {
   pirate: "Saltworn",
   clockwork: "Geared",
   nightmare: "Dreadbound",
+  icedungeon: "Frostbound",
 };
 const RARITY_TWIST: Record<Rarity, string | undefined> = {
   common: undefined,

@@ -28,13 +28,13 @@
     "test:abilities": "esbuild src/shared/abilities.test.ts --bundle --platform=node --format=esm --outfile=.tmp/abil.test.mjs && node .tmp/abil.test.mjs"
   },
   "dependencies": {
-    "three": "^0.169.0"
+    "three": "^0.184.0"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3",
-    "@types/three": "^0.169.0",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.5.2",
-    "wrangler": "^4.100.0"
+    "@types/node": "^26.0.0",
+    "@types/three": "^0.184.1",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.103.0"
   }
 }

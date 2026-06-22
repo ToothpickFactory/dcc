@@ -143,4 +143,9 @@ if (-not $WsOverride) {
 } else {
   Write-Host "    Using DCC_WS=$WsOverride"
 }
+
+if ($env:DCC_FORCE_THEME) {
+  Write-Host "    Using DCC_FORCE_THEME=$env:DCC_FORCE_THEME"
+}
+
 & $App

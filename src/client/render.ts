@@ -26,6 +26,7 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   "Primal Conflux": "/assets/Bosses/PrimalConflux/Primal Conflux-3d-animated.glb",
   Juggernaut: "/assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb",
   TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot.glb",
+  "Ice Golem": "/assets/Bosses/IceGolem/IceGolem.glb",
 };
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const STATUS_EFFECT_MS = 3000;
@@ -44,6 +45,7 @@ const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   pirate: "/assets/Tiles/pirate-tiles.png",
   clockwork: "/assets/Tiles/clockwork-tiles.png",
   nightmare: "/assets/Tiles/nightmare-tiles.png",
+  icedungeon: "/assets/Tiles/icedungeon-tiles.png",
 };
 const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Props/fantasy-props.png",
@@ -52,6 +54,7 @@ const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   pirate: "/assets/Props/pirate-props.png",
   clockwork: "/assets/Props/clockwork-props.png",
   nightmare: "/assets/Props/nightmare-props.png",
+  icedungeon: "/assets/Props/nightmare-props.png",
 };
 const ENEMY_ROOTS = ["Goblin", "Ghoul", "Infernax", "Orc", "Skeleton", "Troll", "Wraith", "Zombie", "Pirate", "SharkMan", "Ent"].map((n) => `/assets/Enemies/${n}`);
 const MOVE_ANIM_NAMES = [

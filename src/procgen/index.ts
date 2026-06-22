@@ -3,7 +3,7 @@ import type { MonsterKind, Theme } from "../shared/types";
 import type { CollisionGrid, FloorDescriptor, HazardSpec, PortalSpec } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
 
-const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare"];
+const THEMES: Theme[] = ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"];
 
 const CELL = 80; // px per grid cell
 const BASE_GRID = 38; // floor-1 grid size (cells)
