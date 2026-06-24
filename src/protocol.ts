@@ -8,10 +8,10 @@
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
 import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
-import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item } from "./shared/items";
+import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 23; // was 22 - player auto-attack preference
+export const PROTOCOL_VERSION = 24; // was 23 - player weapon visual loadout
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -76,6 +76,7 @@ export interface EntityDTO {
   name?: string; // players + named bosses
   cls?: PlayerClass; // players only (emergent playstyle label)
   klass?: Klass; // players only: chosen WoW class (drives the ally nameplate icon)
+  weapons?: WeaponLoadoutDTO; // players only: compact held-weapon visuals
   monKind?: MonsterKind; // monsters only: server archetype, used by 3D clients for matching GLBs
   sprite?: number; // atlas frame id (kind-specific)
   proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
@@ -115,6 +116,15 @@ export interface SelfDTO {
   bestFloor?: number; // deepest floor ever reached (all-time)
   kills?: number; // all-time kills (all-time)
   autoAttack?: boolean; // whether the server auto-casts slot 1 at nearby enemies
+}
+
+export interface WeaponVisualDTO {
+  type: WeaponType;
+  rarity: WeaponVisualRarity;
+}
+export interface WeaponLoadoutDTO {
+  mainHand?: WeaponVisualDTO;
+  offHand?: WeaponVisualDTO;
 }
 
 export type GameEvent =

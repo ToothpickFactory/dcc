@@ -54,6 +54,42 @@ export const EQUIP_SLOTS: EquipSlot[] = ["helmet", "chest", "legs", "gloves", "m
 // hand; `ring` fits either ring slot; `bag` goes into a bag-equip slot;
 // `consumable` is never equipped (carried-only; drink it via the useItem message).
 export type ItemSlot = "helmet" | "chest" | "legs" | "gloves" | "weapon" | "ring" | "amulet" | "bag" | "consumable";
+export type WeaponType = "axe" | "flail" | "shield" | "sword";
+export type WeaponVisualRarity = "common" | "standard" | "rare" | "epic";
+export const WEAPON_TYPES: WeaponType[] = ["axe", "flail", "shield", "sword"];
+
+export function normalizeWeaponType(value: unknown): WeaponType | undefined {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return WEAPON_TYPES.includes(v as WeaponType) ? (v as WeaponType) : undefined;
+}
+
+export function weaponVisualRarity(rarity: Rarity): WeaponVisualRarity {
+  switch (rarity) {
+    case "common": return "common";
+    case "rare": return "rare";
+    case "epic":
+    case "legendary": return "epic";
+    case "uncommon":
+    default: return "standard";
+  }
+}
+
+export function normalizeWeaponVisualRarity(value: unknown): WeaponVisualRarity | undefined {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (v) {
+    case "common":
+    case "rare":
+    case "epic":
+    case "standard":
+      return v;
+    case "uncommon":
+      return "standard";
+    case "legendary":
+      return "epic";
+    default:
+      return undefined;
+  }
+}
 
 export interface Item {
   id: string;
@@ -63,6 +99,8 @@ export interface Item {
   attrs: Partial<Attributes>; // stat bonuses while equipped
   bagSlots?: number; // bags only: extra carry slots this container grants
   consumable?: { heal?: number; healPct?: number }; // consumables: effect on use (drink)
+  weaponType?: WeaponType; // weapons only: drives equip slot + held model
+  weaponRarity?: WeaponVisualRarity; // weapons only: maps existing rarities to GLB asset variants
   icon?: string;
   flavor?: string;
 }
@@ -103,7 +141,21 @@ function coerceItem<T>(it: T): T {
     const o = it as { attrs?: unknown };
     if (o.attrs && typeof o.attrs === "object") o.attrs = migrateAttrKeys(o.attrs as Record<string, unknown>);
   }
+  if (it && typeof it === "object" && (it as { slot?: unknown }).slot === "weapon") {
+    const o = it as Item;
+    o.weaponType = normalizeWeaponType((o as { weaponType?: unknown }).weaponType) ?? inferWeaponType(o) ?? "sword";
+    o.weaponRarity = normalizeWeaponVisualRarity((o as { weaponRarity?: unknown }).weaponRarity) ?? weaponVisualRarity(o.rarity);
+  }
   return it;
+}
+
+function inferWeaponType(item: Pick<Item, "name">): WeaponType | undefined {
+  const name = item.name.toLowerCase();
+  if (name.includes("axe")) return "axe";
+  if (name.includes("flail")) return "flail";
+  if (name.includes("shield")) return "shield";
+  if (name.includes("sword") || name.includes("blade")) return "sword";
+  return undefined;
 }
 export function coerceInventory(x: unknown): Inventory {
   if (!x || typeof x !== "object") return emptyInventory();
@@ -212,6 +264,14 @@ export function compatibleSlots(slot: ItemSlot): EquipSlot[] {
   }
 }
 
+export function compatibleItemSlots(item: Item): EquipSlot[] {
+  if (item.slot === "weapon") {
+    const type = normalizeWeaponType(item.weaponType) ?? inferWeaponType(item) ?? "sword";
+    return type === "shield" ? ["offHand"] : ["mainHand"];
+  }
+  return compatibleSlots(item.slot);
+}
+
 export function findCarried(inv: Inventory, itemId: string): number {
   return inv.carried.findIndex((i) => i.id === itemId);
 }
@@ -238,7 +298,8 @@ export function equip(inv: Inventory, itemId: string): InvResult {
     return { ok: true };
   }
 
-  const slots = compatibleSlots(item.slot);
+  coerceItem(item);
+  const slots = compatibleItemSlots(item);
   if (slots.length === 0) return { ok: false, error: "not equippable" };
   const target = slots.find((s) => !inv.equipped[s]) ?? slots[0];
   const prev = inv.equipped[target];

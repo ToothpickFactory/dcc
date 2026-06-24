@@ -9,6 +9,7 @@ import {
   coerceAttrs,
   coerceInventory,
   compatibleSlots,
+  compatibleItemSlots,
   deriveStats,
   emptyInventory,
   equip,
@@ -72,7 +73,7 @@ function item(slot: Item["slot"], attrs: Partial<Item["attrs"]> = {}, extra: Par
   check("coerceInventory migrates item attrs", aggregateAttrs(zeroAttrs(), inv).strength === 9, JSON.stringify(inv.equipped.mainHand?.attrs));
 }
 
-// ---- equip placement: rings + weapons fill both slots ----------------------
+// ---- equip placement: rings + typed weapons -------------------------------
 {
   const inv = emptyInventory();
   addItem(inv, item("ring"));
@@ -83,12 +84,13 @@ function item(slot: Item["slot"], attrs: Partial<Item["attrs"]> = {}, extra: Par
   check("two rings fill ring1 + ring2", inv.equipped.ring1?.id === r1 && inv.equipped.ring2?.id === r2);
 
   const inv2 = emptyInventory();
-  addItem(inv2, item("weapon"));
-  addItem(inv2, item("weapon"));
+  addItem(inv2, item("weapon", {}, { weaponType: "sword" }));
+  addItem(inv2, item("weapon", {}, { weaponType: "shield" }));
   const w1 = inv2.carried[0].id, w2 = inv2.carried[1].id;
   equip(inv2, w1);
   equip(inv2, w2);
-  check("two weapons fill mainHand + offHand", inv2.equipped.mainHand?.id === w1 && inv2.equipped.offHand?.id === w2);
+  check("main weapon fills mainHand and shield fills offHand", inv2.equipped.mainHand?.id === w1 && inv2.equipped.offHand?.id === w2);
+  check("shield is offhand-only", compatibleItemSlots(inv2.equipped.offHand!).join(",") === "offHand");
 }
 
 // ---- bags expand capacity --------------------------------------------------

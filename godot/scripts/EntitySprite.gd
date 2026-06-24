@@ -157,11 +157,21 @@ const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 const LOOT_MODEL_PATH := "res://assets/Props/loot.glb"
 const LOOT_MODEL_SCALE := 42.0
 const LOOT_LIGHT_ENERGY := 1.8
-const HERO_WEAPON_SCENE_PATH := "res://scenes/weapons/flail.tscn"
-const HERO_WEAPON_MODEL_SCALE := 1.0
-const HERO_WEAPON_HAND_BONES := ["RightHand", "mixamorig:RightHand", "right_hand", "hand.R"]
+const HERO_FLAIL_SCENE_PATH := "res://scenes/weapons/flail.tscn"
+const HERO_MAIN_HAND_BONES := ["RightHand", "mixamorig:RightHand", "right_hand", "hand.R"]
+const HERO_OFF_HAND_BONES := ["LeftHand", "mixamorig:LeftHand", "left_hand", "hand.L"]
 const HERO_WEAPON_OFFSET := Vector3(0.0, 0.12, 0.0)
+const HERO_OFFHAND_OFFSET := Vector3(0.0, 0.10, 0.0)
 const HERO_WEAPON_ROTATION_DEGREES := Vector3(0.0, 0.0, 0.0)
+const HERO_OFFHAND_ROTATION_DEGREES := Vector3(0.0, 180.0, 0.0)
+const WEAPON_ASSET_RARITY := {
+	"common": "Common",
+	"standard": "Standard",
+	"uncommon": "Standard",
+	"rare": "Rare",
+	"epic": "Epic",
+	"legendary": "Epic",
+}
 
 # Fallback fill colors (render.ts `C` + per-kind). Used when no clip is loaded yet, and as
 # the modulate tint for non-animated kinds (proj / lootbag).
@@ -315,8 +325,11 @@ var _model_debug_logged := false
 var _projectile_render := ""
 var _monster_kind := ""
 var _model_slash_index := 0
-var _weapon_attachment: BoneAttachment3D
+var _weapon_attachments: Array[BoneAttachment3D] = []
 var _weapon_inst: Node3D
+var _offhand_weapon_inst: Node3D
+var _equipped_weapons: Dictionary = {}
+var _weapon_signature := ""
 var _dead_until := 0.0
 var _is_dead_body := false
 var _death_freeze_at := 0.0
@@ -689,14 +702,25 @@ func set_chosen_class(klass: String) -> void:
 		_model_anim = null
 		_model_anim_name = ""
 		_model_profile = {}
-		_weapon_attachment = null
-		_weapon_inst = null
+		_clear_weapons()
 		_status_effects = null
 		_status_effect_nodes.clear()
 		_status_effect_until.clear()
 		_cc_effect = ""
 		_model_debug_logged = false
 	_ensure_model_for_entity()
+
+func set_weapon_loadout(loadout: Dictionary) -> void:
+	if kind != "player":
+		return
+	var sig := JSON.stringify(loadout)
+	if _weapon_signature == sig:
+		return
+	_weapon_signature = sig
+	_equipped_weapons = loadout.duplicate(true)
+	if _model_inst != null:
+		_clear_weapons()
+		_attach_weapon_to_model(_model_profile)
 
 # ---------------------------------------------------------------------------
 # FNV-1a (render.ts hash()) -> pick a stable enemy variant root per entity id.
@@ -760,7 +784,6 @@ func _model_profile_for_entity() -> Dictionary:
 			"label": label,
 			"path": model_path,
 			"anim_aliases": anim_aliases,
-			"weapon_path": HERO_WEAPON_SCENE_PATH,
 			"scale": model_scale,
 			"model_y": 60.0,
 			"light_energy": HERO_LIGHT_ENERGY,
@@ -1084,16 +1107,38 @@ func _first_mesh(node: Node) -> MeshInstance3D:
 	return null
 
 func _attach_weapon_to_model(profile: Dictionary) -> void:
-	var weapon_path := str(profile.get("weapon_path", ""))
-	if weapon_path == "" or _model_inst == null:
+	if kind != "player" or _model_inst == null:
 		return
 	var skeleton := _find_skeleton(_model_inst)
 	if skeleton == null:
 		push_warning("Weapon attachment skipped: no Skeleton3D found for %s" % str(profile.get("label", "model")))
 		return
-	var bone_name := _hand_bone_name(skeleton)
-	if bone_name == "":
+	var main_bone := _hand_bone_name(skeleton, false)
+	if main_bone == "":
 		push_warning("Weapon attachment skipped: no right-hand bone found for %s" % str(profile.get("label", "model")))
+		return
+	var main_item: Dictionary = _equipped_item("mainHand")
+	var main_spec := _weapon_spec_from_item(main_item, "flail", "rare")
+	if str(main_spec.get("type", "")) != "shield":
+		_attach_weapon_instance(skeleton, main_bone, main_spec, false)
+
+	var off_item: Dictionary = _equipped_item("offHand")
+	if off_item.is_empty():
+		return
+	var off_spec := _weapon_spec_from_item(off_item, "shield", "common")
+	var off_type := str(off_spec.get("type", ""))
+	if off_type == "":
+		return
+	var off_bone := _hand_bone_name(skeleton, true)
+	if off_bone == "":
+		push_warning("Offhand attachment skipped: no left-hand bone found for %s" % str(profile.get("label", "model")))
+		return
+	_attach_weapon_instance(skeleton, off_bone, off_spec, true)
+
+func _attach_weapon_instance(skeleton: Skeleton3D, bone_name: String, spec: Dictionary, offhand: bool) -> void:
+	var weapon_type := str(spec.get("type", ""))
+	var weapon_path := _weapon_path_for_spec(spec)
+	if weapon_path == "":
 		return
 	var scene := _load_model_scene(weapon_path, "Weapon")
 	if scene == null:
@@ -1108,25 +1153,98 @@ func _attach_weapon_to_model(profile: Dictionary) -> void:
 	attachment.bone_name = bone_name
 	skeleton.add_child(attachment)
 	var weapon := inst as Node3D
-	weapon.scale = Vector3.ONE * HERO_WEAPON_MODEL_SCALE
-	weapon.position = HERO_WEAPON_OFFSET
-	weapon.rotation_degrees = HERO_WEAPON_ROTATION_DEGREES
+	weapon.scale = Vector3.ONE * _weapon_scale_for(weapon_type)
+	weapon.position = HERO_OFFHAND_OFFSET if offhand else HERO_WEAPON_OFFSET
+	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else HERO_WEAPON_ROTATION_DEGREES
+	if weapon_type == "flail" and weapon.has_method("configure_ball_model"):
+		weapon.call("configure_ball_model", _flail_ball_path(str(spec.get("asset_rarity", "Rare"))))
 	attachment.add_child(weapon)
-	_weapon_attachment = attachment
-	_weapon_inst = weapon
+	_weapon_attachments.append(attachment)
+	if offhand:
+		_offhand_weapon_inst = weapon
+	else:
+		_weapon_inst = weapon
 	if weapon.has_method("attach_to_skeleton"):
 		weapon.call("attach_to_skeleton", skeleton, bone_name)
 	_brighten_model(weapon, 1.08, 1.1)
 
-func _hand_bone_name(skeleton: Skeleton3D) -> String:
-	for candidate in HERO_WEAPON_HAND_BONES:
+func _equipped_item(slot: String) -> Dictionary:
+	var v: Variant = _equipped_weapons.get(slot, {})
+	return v if v is Dictionary else {}
+
+func _weapon_spec_from_item(item: Dictionary, fallback_type: String, fallback_rarity: String) -> Dictionary:
+	var weapon_type := _weapon_type_from_item(item, fallback_type)
+	var asset_rarity := _weapon_asset_rarity(item, fallback_rarity)
+	return {"type": weapon_type, "asset_rarity": asset_rarity}
+
+func _weapon_type_from_item(item: Dictionary, fallback_type: String) -> String:
+	var raw := str(item.get("weaponType", item.get("type", ""))).strip_edges().to_lower()
+	if ["axe", "flail", "shield", "sword"].has(raw):
+		return raw
+	var name := str(item.get("name", "")).to_lower()
+	if name.contains("axe"):
+		return "axe"
+	if name.contains("flail"):
+		return "flail"
+	if name.contains("shield"):
+		return "shield"
+	if name.contains("sword") or name.contains("blade"):
+		return "sword"
+	return fallback_type
+
+func _weapon_asset_rarity(item: Dictionary, fallback_rarity: String) -> String:
+	var raw := str(item.get("weaponRarity", item.get("rarity", fallback_rarity))).strip_edges().to_lower()
+	return str(WEAPON_ASSET_RARITY.get(raw, WEAPON_ASSET_RARITY.get(fallback_rarity, "Rare")))
+
+func _weapon_path_for_spec(spec: Dictionary) -> String:
+	var weapon_type := str(spec.get("type", ""))
+	var rarity := str(spec.get("asset_rarity", "Rare"))
+	match weapon_type:
+		"axe":
+			return "res://assets/Weapons/Axe/%s.glb" % rarity
+		"flail":
+			return HERO_FLAIL_SCENE_PATH
+		"shield":
+			return "res://assets/Weapons/Shield/%s.glb" % rarity
+		"sword":
+			return "res://assets/Weapons/Sword/%s.glb" % rarity
+	return ""
+
+func _flail_ball_path(asset_rarity: String) -> String:
+	return "res://assets/Weapons/Flail/Ball/%s.glb" % asset_rarity
+
+func _weapon_scale_for(weapon_type: String) -> float:
+	match weapon_type:
+		"flail":
+			return 1.0
+		"shield":
+			return 0.72
+		"axe":
+			return 0.74
+		"sword":
+			return 0.74
+	return 1.0
+
+func _clear_weapons() -> void:
+	for attachment in _weapon_attachments:
+		if attachment != null and is_instance_valid(attachment):
+			attachment.queue_free()
+	_weapon_attachments.clear()
+	_weapon_inst = null
+	_offhand_weapon_inst = null
+
+func _hand_bone_name(skeleton: Skeleton3D, offhand: bool) -> String:
+	var candidates := HERO_OFF_HAND_BONES if offhand else HERO_MAIN_HAND_BONES
+	for candidate in candidates:
 		if skeleton.find_bone(str(candidate)) >= 0:
 			return str(candidate)
 	var count := skeleton.get_bone_count()
 	for i in count:
 		var bone := skeleton.get_bone_name(i)
 		var lower := bone.to_lower()
-		if lower.contains("righthand") or lower.contains("right_hand") or lower.ends_with(":righthand"):
+		if offhand and (lower.contains("lefthand") or lower.contains("left_hand") or lower.ends_with(":lefthand")):
+			return bone
+		if not offhand and (lower.contains("righthand") or lower.contains("right_hand") or lower.ends_with(":righthand")):
 			return bone
 	return ""
 
@@ -1649,8 +1767,7 @@ func set_monster_kind(v: String) -> void:
 		_model_anim = null
 		_model_anim_name = ""
 		_model_profile = {}
-		_weapon_attachment = null
-		_weapon_inst = null
+		_clear_weapons()
 		_status_effects = null
 		_status_effect_nodes.clear()
 		_status_effect_until.clear()
@@ -1683,4 +1800,3 @@ func _ensure_fallback_texture() -> void:
 		img.set_pixel(0, 0, Color.WHITE)
 		_white_tex = ImageTexture.create_from_image(img)
 	texture = _white_tex
-

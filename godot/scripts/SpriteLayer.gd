@@ -44,6 +44,7 @@ var _last_pos: Dictionary = {}  # id -> Vector2 (previous displayed world pos, f
 var _net                        # Net node (prev/cur snapshots); set via set_net
 var _grid: Dictionary = {}      # collision grid for canSee()
 var _you_class := ""            # local player's chosen Klass; drives hero model selection
+var _you_weapon_loadout: Dictionary = {}
 
 func set_net(net) -> void:
 	_net = net
@@ -60,6 +61,14 @@ func set_you_class(klass: String) -> void:
 		var spr: EntitySprite = _sprites[id]
 		if spr.is_self:
 			spr.set_chosen_class(klass)
+			break
+
+func set_you_weapon_loadout(loadout: Dictionary) -> void:
+	_you_weapon_loadout = loadout.duplicate(true)
+	for id in _sprites:
+		var spr: EntitySprite = _sprites[id]
+		if spr.is_self:
+			spr.set_weapon_loadout(_you_weapon_loadout)
 			break
 
 func _normalize_class(klass: String) -> String:
@@ -148,6 +157,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr = EntitySprite.new()
 			if k == "player":
 				spr.set_chosen_class(player_class)
+				spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 			elif k == "monster":
 				spr.set_monster_kind(str(d.get("monKind", "")))
 			spr.setup(id, k, is_self)
@@ -157,6 +167,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 				spr.spawn(now_ms)
 		elif k == "player":
 			spr.set_chosen_class(player_class)
+			spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 		elif k == "monster":
 			spr.set_monster_kind(str(d.get("monKind", "")))
 		spr.set_entity_name(str(d.get("name", "")))
@@ -287,6 +298,12 @@ func _player_class_from_dto(d: Dictionary, is_self: bool) -> String:
 	if is_self:
 		return _you_class if _you_class != "" else _normalize_class(str(d.get("klass", "")))
 	return _normalize_class(str(d.get("klass", "")))
+
+func _player_weapon_loadout_from_dto(d: Dictionary, is_self: bool) -> Dictionary:
+	if is_self and not _you_weapon_loadout.is_empty():
+		return _you_weapon_loadout
+	var v: Variant = d.get("weapons", {})
+	return v if v is Dictionary else {}
 
 func _interp_pos(id: String, cur_dto: Dictionary, alpha: float) -> Vector2:
 	var cur_pos := Vector2(float(cur_dto.get("x", 0.0)), float(cur_dto.get("y", 0.0)))

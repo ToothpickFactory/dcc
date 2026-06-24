@@ -39,12 +39,16 @@ import {
   findCarried,
   removeAnywhere,
   sellValue,
+  normalizeWeaponType,
+  normalizeWeaponVisualRarity,
   unequip,
   unequipBag,
+  weaponVisualRarity,
   zeroAttrs,
   type AttrKey,
   type InvResult,
   type Item,
+  type WeaponType,
 } from "../shared/items";
 import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
@@ -55,7 +59,7 @@ import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, 
 import { CLASS_KIT, CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent, pointsForLevel, talentSpent } from "../shared/talents";
 import { PROTOCOL_VERSION } from "../protocol";
-import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg } from "../protocol";
+import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, WeaponLoadoutDTO } from "../protocol";
 import { generateFloor, rng } from "../procgen";
 import { canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
@@ -1679,6 +1683,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           dead: true,
           name: p.name,
           cls: this.profiles.classOf(p.id),
+          weapons: weaponLoadout(p.inv.equipped),
         });
         continue;
       }
@@ -1694,6 +1699,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         name: p.name,
         cls: this.profiles.classOf(p.id),
         klass: p.chosenClass ?? undefined, // ally nameplate class icon
+        weapons: weaponLoadout(p.inv.equipped),
       });
     }
     for (const m of this.monsters) {
@@ -1871,6 +1877,32 @@ function bestRarity(items: Item[]): string {
     }
   }
   return best;
+}
+
+function weaponLoadout(equipped: Partial<Record<string, Item>>): WeaponLoadoutDTO | undefined {
+  const main = weaponVisual(equipped.mainHand);
+  const off = weaponVisual(equipped.offHand);
+  if (!main && !off) return undefined;
+  return { ...(main ? { mainHand: main } : {}), ...(off ? { offHand: off } : {}) };
+}
+
+function weaponVisual(item: Item | undefined) {
+  if (!item || item.slot !== "weapon") return undefined;
+  const type = normalizeWeaponType(item.weaponType) ?? inferWeaponType(item.name);
+  if (!type) return undefined;
+  return {
+    type,
+    rarity: normalizeWeaponVisualRarity(item.weaponRarity) ?? weaponVisualRarity(item.rarity),
+  };
+}
+
+function inferWeaponType(name: string): WeaponType | undefined {
+  const lower = name.toLowerCase();
+  if (lower.includes("axe")) return "axe";
+  if (lower.includes("flail")) return "flail";
+  if (lower.includes("shield")) return "shield";
+  if (lower.includes("sword") || lower.includes("blade")) return "sword";
+  return undefined;
 }
 
 const RUN_PHASES: readonly RunPhase[] = ["lobby", "running", "ended", "cooldown"];

@@ -1,4 +1,4 @@
-import type { AttrKey, Attributes, Item, ItemSlot } from "../../shared/items";
+import { WEAPON_TYPES, weaponVisualRarity, type AttrKey, type Attributes, type Item, type ItemSlot, type WeaponType } from "../../shared/items";
 import type { Rarity } from "../../shared/types";
 
 // Deterministic gear generator: a slot + an attribute budget scaled by depth and
@@ -14,7 +14,7 @@ const SLOT_NOUN: Record<ItemSlot, string> = {
   chest: "Cuirass",
   legs: "Greaves",
   gloves: "Gauntlets",
-  weapon: "Blade",
+  weapon: "Weapon",
   ring: "Band",
   amulet: "Pendant",
   bag: "Satchel",
@@ -36,6 +36,18 @@ const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
 // Slots the generic gear roller can produce. Consumables are minted only via
 // generatePotion(), so a routine gear drop never accidentally rolls a potion.
 const ALL_SLOTS: ItemSlot[] = ["helmet", "chest", "legs", "gloves", "weapon", "ring", "amulet", "bag"];
+const WEAPON_NOUN: Record<WeaponType, string> = {
+  axe: "Axe",
+  flail: "Flail",
+  shield: "Shield",
+  sword: "Sword",
+};
+const WEAPON_ICON: Record<WeaponType, string> = {
+  axe: "🪓",
+  flail: "⛓",
+  shield: "🛡️",
+  sword: "⚔️",
+};
 
 export function generateItem(depth: number, rarity: Rarity, rng: () => number, slot?: ItemSlot): Item {
   const s = slot ?? ALL_SLOTS[Math.floor(rng() * ALL_SLOTS.length)];
@@ -51,6 +63,12 @@ export function generateItem(depth: number, rarity: Rarity, rng: () => number, s
   if (s === "bag") {
     item.bagSlots = 2 + RARITY_RANK[rarity]; // 2..6 extra carry slots
     budget = Math.floor(budget / 2); // bags carry fewer combat stats
+  } else if (s === "weapon") {
+    const weaponType = WEAPON_TYPES[Math.floor(rng() * WEAPON_TYPES.length)];
+    item.weaponType = weaponType;
+    item.weaponRarity = weaponVisualRarity(rarity);
+    item.name = `${RARITY_ADJ[rarity]} ${WEAPON_NOUN[weaponType]}`;
+    item.icon = WEAPON_ICON[weaponType];
   }
 
   const keys = SLOT_ATTRS[s];

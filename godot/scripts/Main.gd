@@ -389,6 +389,25 @@ func _bag_present(id: String) -> bool:
 			return true
 	return false
 
+func _current_weapon_loadout() -> Dictionary:
+	if _net == null:
+		return {}
+	var inv_msg: Variant = _net.get("last_inv")
+	if not (inv_msg is Dictionary):
+		return {}
+	var inv: Variant = (inv_msg as Dictionary).get("inv", {})
+	if not (inv is Dictionary):
+		return {}
+	var equipped: Variant = (inv as Dictionary).get("equipped", {})
+	if not (equipped is Dictionary):
+		return {}
+	var out := {}
+	for slot in ["mainHand", "offHand"]:
+		var item: Variant = (equipped as Dictionary).get(slot, null)
+		if item is Dictionary:
+			out[slot] = item
+	return out
+
 func _on_events(events: Array) -> void:
 	_sprites.handle_events(events, _net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_fx.handle_events(events, _net.you)
@@ -634,6 +653,7 @@ func _process(dt: float) -> void:
 
 	# Render + UI.
 	_sprites.set_you_class(str(_net.self_dto.get("chosenClass", "")))
+	_sprites.set_you_weapon_loadout(_current_weapon_loadout())
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_minimap.update_map(_pred.x, _pred.y, _net.ents, _net.you, alive)
 	_hud.update(_net)

@@ -4,10 +4,10 @@ extends Node3D
 @export var hand_bone: BoneAttachment3D
 @export var chain_length: int = 3
 @export var swing_force: float = 10.0
+@export var ball_model: String = "res://assets/Weapons/Flail/Ball/Rare.glb"
 
-const HANDLE_MODEL := "res://assets/Weapons/Flail/Rare/Handle.glb"
-const CHAIN_MODEL := "res://assets/Weapons/Flail/Rare/Chain.glb"
-const BALL_MODEL := "res://assets/Weapons/Flail/Rare/Ball.glb"
+const HANDLE_MODEL := "res://assets/Weapons/Flail/HandleChain/Handle.glb"
+const CHAIN_MODEL := "res://assets/Weapons/Flail/HandleChain/Chain.glb"
 const HANDLE_SCALE := 0.12
 const LINK_SCALE := 0.067
 const BALL_SCALE := 0.13
@@ -51,6 +51,11 @@ func attach_to_skeleton(skeleton: Skeleton3D, bone_name: String) -> void:
 	position = Vector3.ZERO
 	rotation = Vector3.ZERO
 
+func configure_ball_model(model_path: String) -> void:
+	if model_path == "":
+		return
+	ball_model = model_path
+
 func swing() -> void:
 	if _ball == null:
 		return
@@ -85,7 +90,7 @@ func _build_flail() -> void:
 		previous = link
 
 	var ball_y := _ball_center_y()
-	_ball = _make_rigid_part("Ball", BALL_MODEL, BALL_SCALE, Vector3(0.0, ball_y, 0.0), Vector3(0.05, 0.05, 0.05), 0.55)
+	_ball = _make_rigid_part("Ball", ball_model, BALL_SCALE, Vector3(0.0, ball_y, 0.0), Vector3(0.05, 0.05, 0.05), 0.55)
 	_anchor.add_child(_ball)
 	_add_hinge("Hinge_%s_to_Ball" % previous.name, previous, _ball, Vector3(0.0, _link_bottom_y(chain_length - 1), 0.0))
 
@@ -129,7 +134,7 @@ func _make_model(model_path: String, model_scale: float) -> Node3D:
 	model_root.scale = Vector3.ONE * model_scale
 	if model_path == CHAIN_MODEL:
 		model_root.rotation_degrees = Vector3(90.0, 0.0, 90.0)
-	elif model_path == BALL_MODEL:
+	elif _is_ball_model(model_path):
 		model_root.rotation_degrees = Vector3.ZERO
 	else:
 		model_root.rotation_degrees = Vector3(90.0, 0.0, 0.0)
@@ -137,11 +142,14 @@ func _make_model(model_path: String, model_scale: float) -> Node3D:
 	if packed is PackedScene:
 		var inst := (packed as PackedScene).instantiate()
 		model_root.add_child(inst)
-		if inst is Node3D and (model_path == CHAIN_MODEL or model_path == BALL_MODEL):
+		if inst is Node3D and (model_path == CHAIN_MODEL or _is_ball_model(model_path)):
 			_center_model_instance(inst as Node3D)
 	else:
 		push_warning("Flail model missing or not importable: %s" % model_path)
 	return model_root
+
+func _is_ball_model(model_path: String) -> bool:
+	return model_path.to_lower().contains("/flail/ball/")
 
 func _center_model_instance(root: Node3D) -> void:
 	var result: Array = [false, Vector3.ZERO, Vector3.ZERO]
