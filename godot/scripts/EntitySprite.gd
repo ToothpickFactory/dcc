@@ -1156,6 +1156,8 @@ func _attach_weapon_instance(skeleton: Skeleton3D, bone_name: String, spec: Dict
 	weapon.scale = Vector3.ONE * _weapon_scale_for(weapon_type)
 	weapon.position = HERO_OFFHAND_OFFSET if offhand else _weapon_offset_for(weapon_type)
 	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else HERO_WEAPON_ROTATION_DEGREES
+	if weapon_type == "sword":
+		_align_sword_grip_to_origin(weapon)
 	if weapon_type == "flail" and weapon.has_method("configure_ball_model"):
 		weapon.call("configure_ball_model", _flail_ball_path(str(spec.get("asset_rarity", "Rare"))))
 	attachment.add_child(weapon)
@@ -1226,10 +1228,57 @@ func _weapon_scale_for(weapon_type: String) -> float:
 	return 1.0
 
 func _weapon_offset_for(weapon_type: String) -> Vector3:
-	match weapon_type:
-		"sword":
-			return Vector3(0.0, 0.46, 0.0)
 	return HERO_WEAPON_OFFSET
+
+func _align_sword_grip_to_origin(weapon: Node3D) -> void:
+	var result: Array = [false, Vector3.ZERO, Vector3.ZERO]
+	_collect_local_bounds(weapon, Transform3D.IDENTITY, result)
+	if not bool(result[0]):
+		return
+	var min_v: Vector3 = result[1]
+	var max_v: Vector3 = result[2]
+	var size := max_v - min_v
+	var axis := 1
+	var length := size.y
+	if size.x > length:
+		axis = 0
+		length = size.x
+	if size.z > length:
+		axis = 2
+	var center := (min_v + max_v) * 0.5
+	var shift := Vector3(-center.x, -center.y, -center.z)
+	match axis:
+		0:
+			shift.x = -min_v.x
+		1:
+			shift.y = -min_v.y
+		2:
+			shift.z = -min_v.z
+	for child in weapon.get_children():
+		if child is Node3D:
+			(child as Node3D).position += shift
+
+func _collect_local_bounds(node: Node, to_root: Transform3D, result: Array) -> void:
+	if node is MeshInstance3D:
+		var mesh_node := node as MeshInstance3D
+		var aabb := mesh_node.get_aabb()
+		var p := aabb.position
+		var e := aabb.position + aabb.size
+		for x in [p.x, e.x]:
+			for y in [p.y, e.y]:
+				for z in [p.z, e.z]:
+					var point: Vector3 = to_root * Vector3(x, y, z)
+					if not bool(result[0]):
+						result[0] = true
+						result[1] = point
+						result[2] = point
+					else:
+						result[1] = (result[1] as Vector3).min(point)
+						result[2] = (result[2] as Vector3).max(point)
+	for child in node.get_children():
+		if child is Node3D:
+			var child3d := child as Node3D
+			_collect_local_bounds(child3d, to_root * child3d.transform, result)
 
 func _clear_weapons() -> void:
 	for attachment in _weapon_attachments:
