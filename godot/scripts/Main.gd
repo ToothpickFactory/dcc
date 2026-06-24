@@ -53,6 +53,7 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
+var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
 var _runover_panel: PanelContainer
@@ -251,6 +252,11 @@ func _ready() -> void:
 
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
+
+	var mhud := preload("res://scripts/MobileHud.gd").new()
+	mhud.setup(_inp, _inv, _skills)
+	add_child(mhud)
+	_mhud = mhud
 
 	_fx = FxLayer.new()
 	add_child(_fx)
@@ -722,6 +728,8 @@ func _process(dt: float) -> void:
 				best = bd
 				_nearest_bag_id = str(e.get("id", ""))
 	_loot_prompt.visible = _nearest_bag_id != ""
+	if _mhud != null:
+		_mhud.set_loot_bag(_nearest_bag_id)
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()

@@ -23,6 +23,17 @@ project/assembly_name="dcc"
 
 enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
 
+[display]
+
+window/handheld/orientation=2
+
+[input_devices]
+
+
+[audio]
+
+driver/output_latency=50
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
