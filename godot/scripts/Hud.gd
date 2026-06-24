@@ -104,6 +104,8 @@ func _ready() -> void:
 	_build_toast()
 	_build_waiting()
 	_build_floortitle()
+	if OS.has_feature("mobile"):
+		_bar_wrap.visible = false  # MobileHud has its own ability buttons
 
 
 # ===========================================================================
@@ -299,6 +301,8 @@ func set_run(phase: String, players: int) -> void:
 
 ## Hide/show the ability bar (Main hides it while spectating, like hudEl).
 func set_bar_visible(v: bool) -> void:
+	if OS.has_feature("mobile"):
+		return
 	_bar_wrap.visible = v
 
 

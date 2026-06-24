@@ -33,6 +33,7 @@ var _menu_btns    : Array[Button] = []
 var _loot_btn     : Button
 var _loot_bag_id  := ""
 var _joy_touch_id := -1
+var _ability_key  := ""
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,34 @@ func _on_skills_pressed() -> void:
 func _on_loot_pressed() -> void:
 	if _loot_bag_id != "" and _inv != null:
 		_inv.request_loot(_loot_bag_id)
+
+## Called by Main when abilities change. Updates button icon + name labels.
+func update_abilities(abilities: Array) -> void:
+	var key := str(abilities.size()) + ":"
+	for i in mini(abilities.size(), SLOT_COUNT):
+		var a: Dictionary = abilities[i]
+		key += str(a.get("name", "")) + ","
+	if key == _ability_key:
+		return
+	_ability_key = key
+	for i in SLOT_COUNT:
+		var btn: Button = _ability_btns[i]
+		if i >= abilities.size():
+			btn.text = str(i + 1)
+			btn.add_theme_font_size_override("font_size", 28)
+			continue
+		var a: Dictionary = abilities[i]
+		var icon := str(a.get("icon", ""))
+		var nm   := str(a.get("name", ""))
+		if icon == "" and nm == "":
+			btn.text = str(i + 1)
+			btn.add_theme_font_size_override("font_size", 28)
+		elif nm == "":
+			btn.text = icon
+			btn.add_theme_font_size_override("font_size", 32)
+		else:
+			btn.text = icon + "\n" + nm.left(9)
+			btn.add_theme_font_size_override("font_size", 18)
 
 ## Called by Main every tick with the nearest reachable bag id (or "" when none).
 func set_loot_bag(bag_id: String) -> void:

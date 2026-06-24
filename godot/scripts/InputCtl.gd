@@ -42,15 +42,14 @@ const _AIM_STICK_DEADZONE := 0.25
 
 var _cast_queue: Array[int] = []
 var _dash_pressed := false  # Space / left-shoulder — drained by consume_dash()
-# Right-stick aim, in radians, when the stick is pushed past the dead zone; NAN
-# when the stick is idle so callers can fall back to the pointer aim.
 var _stick_aim: float = NAN
-# Virtual joystick set by MobileHud on mobile; zero when no touch is active.
 var _virtual_stick := Vector2.ZERO
-# Last computed aim angle on mobile — held when the stick is idle so aim doesn't snap.
 var _last_mobile_aim := 0.0
+# Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
+var _is_mobile := false
 
 func _ready() -> void:
+	_is_mobile = OS.has_feature("mobile")
 	# Register movement actions in CODE so they don't depend on project.godot's
 	# (fragile) text serialization. Physical keycodes => layout-independent WASD.
 	_ensure_action(&"move_left", [KEY_A, KEY_LEFT])
@@ -132,10 +131,9 @@ func set_virtual_stick(dir: Vector2) -> void:
 func aim_from(camera: Camera3D, px: float, py: float) -> float:
 	if not is_nan(_stick_aim):
 		return _stick_aim
-	# On mobile, aim in the direction of movement (virtual stick) rather than toward
-	# the mouse cursor. The stick's (x,y) maps to world (x,z) the same way move_vec()
-	# does, so atan2(y,x) gives the correct world-space aim angle.
-	if OS.has_feature("mobile"):
+	# On mobile aim follows the virtual joystick direction, not the mouse cursor.
+	# _is_mobile is cached at _ready() so this is a plain bool branch per frame.
+	if _is_mobile:
 		if _virtual_stick.length() > 0.01:
 			_last_mobile_aim = atan2(_virtual_stick.y, _virtual_stick.x)
 		return _last_mobile_aim

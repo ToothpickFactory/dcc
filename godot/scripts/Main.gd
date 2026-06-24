@@ -704,6 +704,8 @@ func _process(dt: float) -> void:
 	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
 	_minimap.update_map(_pred.x, _pred.y, _net.ents, _net.you, alive)
 	_hud.update(_net)
+	if _mhud != null:
+		_mhud.update_abilities(_net.self_dto.get("abilities", []).slice(0, DccConst.HOTBAR_SIZE))
 
 	# Spectate transitions -> HUD toast + banner.
 	if sp.get("just_entered", false):

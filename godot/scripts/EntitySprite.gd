@@ -1696,13 +1696,18 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			_update_loot_model_effects(now_ms)
 			_update_loot_lock()
 			return
-		var model_dir := _action_facing_dir if _action != "" else _facing_dir
-		var model_flip := _action_flip if _action != "" else _flip
 		_model_root.rotation.x = 0.0
-		_model_root.rotation.y = _model_yaw_for_facing(model_dir, model_flip, float(_model_profile.get("yaw_offset", 0.0)))
 		_model_root.rotation.z = 0.0
-		if _action == "":
-			_play_model_anim("run" if moving else "idle")
+		if kind == "proj":
+			# Bolts face their travel direction. PI/2 - aim maps world-space atan2(z,x)
+			# to Godot rotation.y convention for this top-down camera setup.
+			_model_root.rotation.y = (PI * 0.5 - aim) + float(_model_profile.get("yaw_offset", 0.0))
+		else:
+			var model_dir := _action_facing_dir if _action != "" else _facing_dir
+			var model_flip := _action_flip if _action != "" else _flip
+			_model_root.rotation.y = _model_yaw_for_facing(model_dir, model_flip, float(_model_profile.get("yaw_offset", 0.0)))
+			if _action == "":
+				_play_model_anim("run" if moving else "idle")
 		return
 
 	# Position. Height offset is kind-dependent (render.ts h), plus the terrain ground height.
