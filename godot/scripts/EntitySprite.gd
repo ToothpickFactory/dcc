@@ -1220,7 +1220,7 @@ func _weapon_scale_for(weapon_type: String) -> float:
 		"flail":
 			return 1.0
 		"shield":
-			return 0.72
+			return 0.36
 		"axe":
 			return 0.74
 		"sword":
