@@ -139,6 +139,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private phase: RunPhase = "running";
   private floorEndsAt = 0; // wall-clock deadline of the current floor (mirrors the DO alarm)
   private pvpExitOpen = true;
+  // Players dirtied by in-tick sim events (loot grants, level-ups). Written as a
+  // batch on the next heartbeat instead of inline, avoiding mid-tick SQLite blocks.
+  private _dirtyPlayers = new Set<string>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -422,7 +425,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.attrPoints += (after - before) * ATTR_POINTS_PER_LEVEL;
       recomputePlayer(p); // new character level -> more max HP
       p.hp = p.derived.maxHp; // top off on level-up
-      this.persistPlayer(p);
+      this._dirtyPlayers.add(p.id); // write on next heartbeat, not inline
     }
   }
 
@@ -1535,12 +1538,18 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
           pvpExitOpen: this.pvpExitOpen,
           savedAt: Date.now(),
         });
-        for (const p of this.players.values()) this.store.playerSync(this.recordOf(p));
+        // Only flush players dirtied since the last heartbeat (loot grants, level-ups,
+        // and anything queued by the sim). Critical paths (death, disconnect, equip)
+        // call persistPlayer directly and are NOT deferred through this queue.
+        for (const p of this.players.values()) {
+          if (this._dirtyPlayers.has(p.id)) this.store.playerSync(this.recordOf(p));
+        }
         this.flushLb(); // persist all-time leaderboard totals (batched)
       });
     } catch {
       /* a failed checkpoint must never break the sim loop */
     }
+    this._dirtyPlayers.clear();
   }
 
   private persistPlayer(p: PlayerState) {
@@ -1593,7 +1602,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     ability.flavor = tf.flavor;
     ability.twist = tf.twist;
     this.slotLoot(p, ability);
-    this.persistPlayer(p);
+    this._dirtyPlayers.add(p.id); // write on next heartbeat, not inline
     if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: tf } });
     // Optional LLM upgrade — OFF the tick, fail-open, sends a follow-up if better.
     if (this.flavorEnabled) this.flavorize(p, ability, rarity);
