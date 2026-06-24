@@ -31,6 +31,7 @@ var _joy_knob     : Panel
 var _ability_btns : Array[Button] = []
 var _menu_btns    : Array[Button] = []
 var _loot_btn     : Button
+var _potion_btn   : Button
 var _loot_bag_id  := ""
 var _joy_touch_id := -1
 var _ability_key  := ""
@@ -60,6 +61,7 @@ func _build() -> void:
 	_build_joystick()
 	_build_ability_buttons()
 	_build_menu_buttons()
+	_build_potion_button()
 
 func _build_joystick() -> void:
 	_joy_base = _circle_panel(JOY_BASE_R,
@@ -91,6 +93,11 @@ func _build_menu_buttons() -> void:
 	_root.add_child(_loot_btn)
 	_loot_btn.pressed.connect(_on_loot_pressed)
 
+func _build_potion_button() -> void:
+	_potion_btn = _potion_button()
+	_root.add_child(_potion_btn)
+	_potion_btn.pressed.connect(_on_potion_pressed)
+
 # ── Layout (position + size from viewport, called after ready + on resize) ────
 
 func _do_layout() -> void:
@@ -100,6 +107,7 @@ func _do_layout() -> void:
 	_layout_joystick(vp)
 	_layout_ability_buttons(vp)
 	_layout_menu_buttons(vp)
+	_layout_potion_button(vp)
 
 func _layout_joystick(vp: Vector2) -> void:
 	_joy_base.position = Vector2(JOY_PAD, vp.y - JOY_PAD - JOY_BASE_R * 2.0)
@@ -131,6 +139,10 @@ func _layout_menu_buttons(vp: Vector2) -> void:
 	_loot_btn.position = Vector2(cx - MENU_W * 0.5, vp.y - total_h - JOY_PAD)
 	_loot_btn.size     = Vector2(MENU_W, MENU_H)
 
+func _layout_potion_button(vp: Vector2) -> void:
+	_potion_btn.position = Vector2(MENU_PAD, MENU_PAD)
+	_potion_btn.size     = Vector2(MENU_W, MENU_H)
+
 # ── Menu callbacks ────────────────────────────────────────────────────────────
 
 func _on_inv_pressed() -> void:
@@ -148,6 +160,10 @@ func _on_skills_pressed() -> void:
 func _on_loot_pressed() -> void:
 	if _loot_bag_id != "" and _inv != null:
 		_inv.request_loot(_loot_bag_id)
+
+func _on_potion_pressed() -> void:
+	if _inv != null:
+		_inv.use_first_potion()
 
 ## Called by Main when abilities change. Updates button icon + name labels.
 func update_abilities(abilities: Array) -> void:
@@ -273,6 +289,27 @@ func _slot_button(idx: int) -> Button:
 	btn.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 
 	btn.pressed.connect(func(): if _inp != null: _inp.queue_cast(idx))
+	return btn
+
+func _potion_button() -> Button:
+	var btn := Button.new()
+	btn.text = "  Potion"
+	btn.add_theme_font_size_override("font_size", 22)
+	btn.add_theme_color_override("font_color", Color8(0xff, 0x88, 0x88))
+
+	var sb := StyleBoxFlat.new()
+	sb.bg_color     = Color8(0x32, 0x0a, 0x0a, 0xdd)
+	sb.border_color = Color8(0xcc, 0x44, 0x44, 0xee)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(10)
+	sb.corner_detail = 12
+	btn.add_theme_stylebox_override("normal", sb)
+
+	var sb_h := sb.duplicate() as StyleBoxFlat
+	sb_h.bg_color = Color8(0x60, 0x18, 0x18, 0xee)
+	btn.add_theme_stylebox_override("hover",   sb_h)
+	btn.add_theme_stylebox_override("pressed", sb_h)
+	btn.add_theme_stylebox_override("focus",   StyleBoxEmpty.new())
 	return btn
 
 func _loot_button() -> Button:
