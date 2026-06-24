@@ -1154,7 +1154,7 @@ func _attach_weapon_instance(skeleton: Skeleton3D, bone_name: String, spec: Dict
 	skeleton.add_child(attachment)
 	var weapon := inst as Node3D
 	weapon.scale = Vector3.ONE * _weapon_scale_for(weapon_type)
-	weapon.position = HERO_OFFHAND_OFFSET if offhand else HERO_WEAPON_OFFSET
+	weapon.position = HERO_OFFHAND_OFFSET if offhand else _weapon_offset_for(weapon_type)
 	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else HERO_WEAPON_ROTATION_DEGREES
 	if weapon_type == "flail" and weapon.has_method("configure_ball_model"):
 		weapon.call("configure_ball_model", _flail_ball_path(str(spec.get("asset_rarity", "Rare"))))
@@ -1222,8 +1222,14 @@ func _weapon_scale_for(weapon_type: String) -> float:
 		"axe":
 			return 0.74
 		"sword":
-			return 0.74
+			return 0.555
 	return 1.0
+
+func _weapon_offset_for(weapon_type: String) -> Vector3:
+	match weapon_type:
+		"sword":
+			return Vector3(0.0, 0.46, 0.0)
+	return HERO_WEAPON_OFFSET
 
 func _clear_weapons() -> void:
 	for attachment in _weapon_attachments:
