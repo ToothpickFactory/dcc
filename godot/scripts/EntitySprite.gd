@@ -1311,11 +1311,11 @@ func _align_sword_grip_to_origin(weapon: Node3D) -> void:
 	var shift := Vector3(-center.x, -center.y, -center.z)
 	match axis:
 		0:
-			shift.x = -min_v.x
+			shift.x = -max_v.x
 		1:
-			shift.y = -min_v.y
+			shift.y = -max_v.y
 		2:
-			shift.z = -min_v.z
+			shift.z = -max_v.z
 	for child in weapon.get_children():
 		if child is Node3D:
 			(child as Node3D).position += shift
