@@ -15,6 +15,14 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
 
+[audio]
+
+driver/output_latency=50
+
+[display]
+
+window/handheld/orientation=2
+
 [dotnet]
 
 project/assembly_name="dcc"
@@ -22,17 +30,6 @@ project/assembly_name="dcc"
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg")
-
-[display]
-
-window/handheld/orientation=2
-
-[input_devices]
-
-
-[audio]
-
-driver/output_latency=50
 
 [rendering]
 
