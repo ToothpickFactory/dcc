@@ -42,11 +42,14 @@ const _AIM_STICK_DEADZONE := 0.25
 
 var _cast_queue: Array[int] = []
 var _dash_pressed := false  # Space / left-shoulder — drained by consume_dash()
-# Right-stick aim, in radians, when the stick is pushed past the dead zone; NAN
-# when the stick is idle so callers can fall back to the pointer aim.
 var _stick_aim: float = NAN
+var _virtual_stick := Vector2.ZERO
+var _last_mobile_aim := 0.0
+# Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
+var _is_mobile := false
 
 func _ready() -> void:
+	_is_mobile = OS.has_feature("mobile")
 	# Register movement actions in CODE so they don't depend on project.godot's
 	# (fragile) text serialization. Physical keycodes => layout-independent WASD.
 	_ensure_action(&"move_left", [KEY_A, KEY_LEFT])
@@ -78,8 +81,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cast_queue.append(idx)
 			return
 	# Left-click fires slot 1 (index 0), like canvas mousedown button 0 in TS.
+	# On mobile, emulate_mouse_from_touch is on so every tap becomes a click — skip it
+	# there; ability buttons call queue_cast() directly instead.
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_cast_queue.append(0)
+		if not OS.has_feature("mobile"):
+			_cast_queue.append(0)
 		return
 	# Gamepad: left shoulder = dodge/dash; face/right-shoulder buttons = fire.
 	if event is InputEventJoypadButton and event.pressed:
@@ -100,6 +106,7 @@ func consume_dash() -> bool:
 # Raw move vector. Keyboard/arrows come from the move_* actions (their key events
 # are bound in project.godot); the gamepad left stick is folded in so a pad walks
 # too. NOT normalized — the Predictor normalizes, matching predict.ts/input.ts.
+# On mobile, the virtual stick (set by MobileHud) overrides when a touch is active.
 func move_vec() -> Vector2:
 	var v := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# Left stick (axes 0/1) via the same actions only if those actions also bind
@@ -109,7 +116,13 @@ func move_vec() -> Vector2:
 		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
 	if stick.length() >= 0.5:  # match the action deadzone (0.5)
 		v = stick
+	if _virtual_stick.length() > 0.01:
+		v = _virtual_stick
 	return v
+
+## Set by MobileHud while a joystick touch is active; pass Vector2.ZERO on release.
+func set_virtual_stick(dir: Vector2) -> void:
+	_virtual_stick = dir
 
 # Aim radians from the pointer: raycast the active camera through the cursor onto
 # the ground plane (y=0) and atan2 toward (px,py). Mirrors renderer.aimFromPointer
@@ -118,6 +131,12 @@ func move_vec() -> Vector2:
 func aim_from(camera: Camera3D, px: float, py: float) -> float:
 	if not is_nan(_stick_aim):
 		return _stick_aim
+	# On mobile aim follows the virtual joystick direction, not the mouse cursor.
+	# _is_mobile is cached at _ready() so this is a plain bool branch per frame.
+	if _is_mobile:
+		if _virtual_stick.length() > 0.01:
+			_last_mobile_aim = atan2(_virtual_stick.y, _virtual_stick.x)
+		return _last_mobile_aim
 	if camera == null:
 		return 0.0
 	var mouse := camera.get_viewport().get_mouse_position()

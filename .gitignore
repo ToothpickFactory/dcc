@@ -177,3 +177,10 @@ public/client.js
 
 # Claude Code local plugin/tooling state (machine-specific, not shared)
 .claude/settings.json
+.claude/settings.local.json
+
+# Godot export build outputs (can be 100 MB+, not source)
+godot/*.exe
+godot/*.pck
+godot/*.apk
+godot/build/
