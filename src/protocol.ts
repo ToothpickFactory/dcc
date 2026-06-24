@@ -7,11 +7,11 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, CcKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, CcKind, DamageType, EnemyVisualKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, ProjectileRender, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 24; // was 23 - player weapon visual loadout
+export const PROTOCOL_VERSION = 25; // was 24 - stage-specific enemy/boss damage profiles
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -78,8 +78,9 @@ export interface EntityDTO {
   klass?: Klass; // players only: chosen WoW class (drives the ally nameplate icon)
   weapons?: WeaponLoadoutDTO; // players only: compact held-weapon visuals
   monKind?: MonsterKind; // monsters only: server archetype, used by 3D clients for matching GLBs
+  enemy?: EnemyVisualKind; // monsters only: stage-specific visual identity/model
   sprite?: number; // atlas frame id (kind-specific)
-  proj?: "fire" | "ice" | "poison"; // projectiles: preferred 3D render asset
+  proj?: ProjectileRender; // projectiles: preferred 3D render asset
   n?: number; // item count (loot bags)
   rarity?: string; // loot bags: best item rarity (drives the ground glow/beam)
   owner?: string; // loot bags: playerId with priority during the owner window (loot etiquette)
@@ -138,7 +139,7 @@ export type GameEvent =
   | { e: "cc"; x: number; y: number; id: string; kind: CcKind; ms: number } // hard CC landed on a foe (pop fx)
   | { e: "boss"; x: number; y: number; state: "spawn" | "dead"; by?: string };
 
-export type StatusEffect = "fire" | "frost" | "poison";
+export type StatusEffect = DamageType;
 
 // Static floor geometry shipped to clients that don't run the TS procgen (e.g. the
 // native Godot client). The browser ignores this and rebuilds from `seed`. Sent

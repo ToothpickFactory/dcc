@@ -4,6 +4,21 @@
 export type AbilityCategory = "ranged" | "melee" | "aoe" | "support" | "utility" | "stealth";
 export type Rarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 export type Theme = "fantasy" | "cyberpunk" | "forest" | "pirate" | "clockwork" | "nightmare" | "icedungeon";
+export type DamageType = "bleed" | "electric" | "fire" | "frost" | "poison" | "shadow" | "stun";
+export type ProjectileRender = "bleed" | "electric" | "fire" | "ice" | "poison" | "shadow" | "stun";
+export type EnemyVisualKind =
+  | "alien_squid"
+  | "ent"
+  | "ghoul"
+  | "goblin"
+  | "infernax"
+  | "orc"
+  | "pirate"
+  | "sharkman"
+  | "skeleton"
+  | "troll"
+  | "wraith"
+  | "zombie";
 export type PlayerClass =
   | "vanilla"
   | "protector"

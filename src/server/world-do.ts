@@ -3,7 +3,6 @@ import {
   ATTR_POINTS_PER_LEVEL,
   BOSS_MAX_HP,
   BOSS_RADIUS,
-  bossNameForDepth,
   BUY_MARKUP,
   DASH_CD,
   DASH_IFRAME_MS,
@@ -27,6 +26,7 @@ import {
   VENDOR_REROLL_STEP,
 } from "../shared/constants";
 import type { Ability, Klass, MonsterKind, Rarity } from "../shared/types";
+import { attackProfileForEnemy, bossProfileForTheme, enemyVisualForTheme } from "../shared/dungeon-rules";
 import {
   ATTR_KEYS,
   addItem,
@@ -507,9 +507,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       const kind = homogeneousGrunt ? VARIETY[i % VARIETY.length] : s.kind;
       const def = MONSTER_KINDS[kind];
       const base = zeroAttrs();
+      const visualKind = enemyVisualForTheme(this.floor.theme, this.gearRng);
+      const attacks = attackProfileForEnemy(visualKind);
       return {
         id: `m_${i.toString(36)}`,
         kind,
+        visualKind,
         x: s.x,
         y: s.y,
         aim: 0,
@@ -525,6 +528,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         derived: deriveStats(def.hp, def.speed, base),
         threat: new Map(),
         dmgMult,
+        boltDamageType: attacks.bolt,
+        meleeDamageType: attacks.melee,
         windupUntil: 0,
         windupTarget: "",
         knockUntil: 0,
@@ -564,10 +569,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     const { x, y } = this.bossSpawnNearStairs();
     const depthSteps = Math.max(0, this.floor.depth - 1);
     const maxHp = Math.round(BOSS_MAX_HP * (1 + depthSteps * FLOOR_HP_SCALE));
+    const profile = bossProfileForTheme(this.floor.theme, this.gearRng);
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
-      name: bossNameForDepth(this.floor.depth, this.floor.seed),
+      name: profile.name,
       x,
       y,
       aim: 0,
@@ -578,6 +584,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       meleeReadyAt: 0,
       threat: new Map(),
       dmgMult: 1 + depthSteps * FLOOR_DMG_SCALE,
+      boltDamageType: profile.bolt,
+      meleeDamageType: profile.melee,
       meleeWindupUntil: 0,
       castWindupUntil: 0,
       castTarget: "",
@@ -1705,7 +1713,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const m of this.monsters) {
       if (m.dead && !this.corpseLootExists(m.id)) continue;
       const mcc = m.ccUntil > this.now && m.ccKind !== "" ? m.ccKind : undefined;
-      ents.push({ id: m.id, kind: "monster", monKind: m.kind, x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead, cc: mcc });
+      ents.push({ id: m.id, kind: "monster", monKind: m.kind, enemy: m.visualKind, x: r(m.x), y: r(m.y), aim: r2(m.aim), hp: Math.max(0, r(m.hp)), maxHp: m.maxHp, dead: m.dead, cc: mcc });
     }
     if (this.boss && (!this.boss.dead || this.corpseLootExists(this.boss.id))) {
       const bcc = this.boss.ccUntil > this.now && this.boss.ccKind !== "" ? this.boss.ccKind : undefined;

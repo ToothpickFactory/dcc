@@ -64,6 +64,34 @@ $App = Join-Path $Root "godot\build\windows\DCC.exe"
 $NeedBuild = $false
 $LocalWsUrl = "ws://127.0.0.1:8787/ws"
 
+function Invoke-GodotStep {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]] $Args,
+    [Parameter(Mandatory = $true)]
+    [string] $Label
+  )
+
+  $OldPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $Output = & $Godot @Args 2>&1
+    $ExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $OldPreference
+  }
+
+  if ($Output) {
+    $Output |
+      Where-Object { "$_" -notmatch 'Condition "f\.is_null\(\)" is true\. Continuing\.' } |
+      ForEach-Object { Write-Host $_ }
+  }
+
+  if ($ExitCode -ne 0) {
+    throw "$Label failed with exit code $ExitCode"
+  }
+}
+
 # Update check: fast-forward main only if the working tree is clean and behind.
 if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path ".git")) {
   Write-Host "==> Checking for updates..."
@@ -109,9 +137,9 @@ if ($NeedBuild) {
     Copy-Item -Recurse -Force "assets/*" "godot/assets/" -ErrorAction SilentlyContinue
   }
   Write-Host "==> Building the latest client (~20s)..."
-  & $Godot --headless --path godot --import 2>$null
+  Invoke-GodotStep -Args @("--headless", "--path", "godot", "--import", "--quit") -Label "Godot import"
   New-Item -ItemType Directory -Force (Split-Path $App) | Out-Null
-  & $Godot --headless --path godot --export-release "Windows Desktop" $App
+  Invoke-GodotStep -Args @("--headless", "--path", "godot", "--export-release", "Windows Desktop", $App) -Label "Godot export"
   if (-not (Test-Path $App)) {
     Write-Host "!! Build failed. See godot/SETUP.md for export template help."
     Read-Host "Press enter to close"

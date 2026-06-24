@@ -32,10 +32,10 @@ function player(id: string, x: number, y: number, over: Partial<PlayerState> = {
 }
 function monster(id: string, x: number, y: number): MonsterState {
   return {
-    id, kind: "grunt", x, y, aim: 0, maxHp: 60, hp: 60, dead: false, respawnAt: 0, attackReadyAt: 0,
+    id, kind: "grunt", visualKind: "goblin", x, y, aim: 0, maxHp: 60, hp: 60, dead: false, respawnAt: 0, attackReadyAt: 0,
     wanderAt: 0, slowUntil: 0, base: zeroAttrs(), inv: { equipped: {}, bagEquip: [null, null, null, null], carried: [] },
     derived: deriveStats(60, 95, zeroAttrs()), threat: new Map(),
-    dmgMult: 1, windupUntil: 0, windupTarget: "", knockUntil: 0, knockVx: 0, knockVy: 0, ccUntil: 0, ccKind: "",
+    dmgMult: 1, boltDamageType: "bleed", meleeDamageType: "bleed", windupUntil: 0, windupTarget: "", knockUntil: 0, knockVx: 0, knockVy: 0, ccUntil: 0, ccKind: "",
   };
 }
 function ctxOf(players: PlayerState[], monsters: MonsterState[], events: GameEvent[] = []): WorldCtx {

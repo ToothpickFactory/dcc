@@ -14,6 +14,7 @@ import {
   BOSS_RADIUS,
   BOSS_SPEED,
 } from "../../shared/constants";
+import { projectileRenderForDamage } from "../../shared/dungeon-rules";
 import type { BossState, PlayerState, WorldCtx } from "../state";
 import { applyDamage } from "./combat";
 import { moveWithWorldCollisions } from "./collision";
@@ -43,7 +44,7 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
     const t = pickTarget(ctx, boss);
     if (t && Math.hypot(t.x - boss.x, t.y - boss.y) <= BOSS_MELEE_RANGE + 14) {
       ctx.pushFx({ e: "melee", by: boss.id });
-      applyDamage(ctx, t, BOSS_MELEE_DMG * boss.dmgMult, boss.id, false);
+      applyDamage(ctx, t, BOSS_MELEE_DMG * boss.dmgMult, boss.id, false, 0, 0, 0, 1, boss.meleeDamageType);
     }
   }
   // Resolve a pending bolt-fan wind-up: fire at the locked target's CURRENT position.
@@ -100,7 +101,7 @@ function bossCast(ctx: WorldCtx, boss: BossState, target: PlayerState): void {
       dmg: BOSS_PROJ_DMG * boss.dmgMult,
       slowMs: 0,
       ability: BOSS_BOLT_SPRITE,
-      proj: "fire",
+      proj: projectileRenderForDamage(boss.boltDamageType),
       ttl: BOSS_PROJ_LIFE,
       hitR: BOSS_PROJ_RADIUS,
       boss: true,

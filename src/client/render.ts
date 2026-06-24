@@ -28,15 +28,28 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot.glb",
   "Ice Golem": "/assets/Bosses/IceGolem/IceGolem.glb",
 };
+const BOLT_MODEL_PATHS: Record<string, string> = {
+  fire: "/assets/Bolt/Fire.glb",
+  ice: "/assets/Bolt/Frost.glb",
+  poison: "/assets/Bolt/Poison.glb",
+  electric: "/assets/Bolt/Electric.glb",
+  shadow: "/assets/Bolt/Shadow.glb",
+  bleed: "/assets/Bolt/Shadow.glb",
+  stun: "/assets/Bolt/Electric.glb",
+};
 const LOOT_MODEL_PATH = "/assets/Props/loot.glb";
 const STATUS_EFFECT_MS = 3000;
 const STATUS_EFFECT_SIZE = 112;
 const STATUS_EFFECT_FRAMES = 16;
 const STATUS_EFFECT_COLS = 4;
 const STATUS_EFFECT_PATHS: Record<StatusEffect, string> = {
+  bleed: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
+  electric: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
   fire: "/assets/StatusEffects/Fire/Fire-spritesheet.png",
   frost: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
   poison: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
+  shadow: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
+  stun: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
 };
 const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
@@ -143,6 +156,9 @@ export class Renderer {
   private bossModelSources = new Map<string, THREE.Object3D | null>();
   private bossModelPromises = new Map<string, Promise<THREE.Object3D | null>>();
   private bossModels = new Map<string, THREE.Object3D>();
+  private boltModelSources = new Map<string, THREE.Object3D | null>();
+  private boltModelPromises = new Map<string, Promise<THREE.Object3D | null>>();
+  private boltModels = new Map<string, THREE.Object3D>();
   private heroAttackToggle = false;
   private stairs: THREE.Sprite | null = null;
   private walls: THREE.InstancedMesh | null = null;
@@ -713,6 +729,84 @@ export class Renderer {
     return true;
   }
 
+  private boltKey(e: EntityDTO): string {
+    if (e.proj) return e.proj;
+    if (e.sprite === ICE_PROJECTILE_SPRITE) return "ice";
+    if (e.sprite === POISON_PROJECTILE_SPRITE) return "poison";
+    return "fire";
+  }
+
+  private ensureBoltModel(key: string): Promise<THREE.Object3D | null> {
+    const path = BOLT_MODEL_PATHS[key] ?? BOLT_MODEL_PATHS.fire;
+    if (this.boltModelSources.has(key)) return Promise.resolve(this.boltModelSources.get(key) ?? null);
+    const inFlight = this.boltModelPromises.get(key);
+    if (inFlight) return inFlight;
+    const p = this.gltfLoader.loadAsync(path)
+      .then((gltf: GLTF) => {
+        const source = gltf.scene;
+        source.traverse((obj: THREE.Object3D) => {
+          if (!(obj instanceof THREE.Mesh)) return;
+          obj.frustumCulled = false;
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          obj.material = mats.map((mat) => mat.clone()) as THREE.Material[];
+        });
+        this.boltModelSources.set(key, source);
+        return source;
+      })
+      .catch(() => {
+        this.boltModelSources.set(key, null);
+        return null;
+      })
+      .finally(() => {
+        this.boltModelPromises.delete(key);
+      });
+    this.boltModelPromises.set(key, p);
+    return p;
+  }
+
+  private createBoltModel(id: string, key: string): THREE.Object3D | null {
+    const source = this.boltModelSources.get(key);
+    if (!source) {
+      void this.ensureBoltModel(key);
+      return null;
+    }
+    const root = source.clone(true);
+    root.userData.entityId = id;
+    root.userData.boltKey = key;
+    root.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      obj.material = mats.map((mat) => mat.clone()) as THREE.Material[];
+    });
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    root.scale.setScalar(30 / maxDim);
+    this.scene.add(root);
+    this.boltModels.set(id, root);
+    return root;
+  }
+
+  private syncBoltModel(e: EntityDTO, x: number, y: number, visible: boolean): boolean {
+    const key = this.boltKey(e);
+    let model = this.boltModels.get(e.id);
+    if (model && model.userData.boltKey !== key) {
+      this.scene.remove(model);
+      this.boltModels.delete(e.id);
+      model = undefined;
+    }
+    if (!model) {
+      const created = this.createBoltModel(e.id, key);
+      if (!created) return false;
+      model = created;
+    }
+    model.position.set(x, 12, y);
+    model.rotation.y = -(e.aim ?? 0) + Math.PI * 0.5;
+    model.visible = visible;
+    return true;
+  }
+
   private lootColor(rarity?: string): THREE.Color {
     switch (rarity) {
       case "uncommon": return new THREE.Color(0x6cff99);
@@ -1003,6 +1097,7 @@ export class Renderer {
     const propIds = new Set<string>();
     const seenLootModels = new Set<string>();
     const seenBossModels = new Set<string>();
+    const seenBoltModels = new Set<string>();
     for (const e of ents) {
       seen.add(e.id);
       if (e.kind === "prop") {
@@ -1051,6 +1146,10 @@ export class Renderer {
           e.proj === "fire" ? 0xff6a2a :
           e.proj === "ice" ? 0x8fd8ff :
           e.proj === "poison" ? 0x8cff4d :
+          e.proj === "electric" ? 0xfff36a :
+          e.proj === "shadow" ? 0x7c4dff :
+          e.proj === "bleed" ? 0xb82032 :
+          e.proj === "stun" ? 0xffee55 :
           e.sprite === FIREBALL_PROJECTILE_SPRITE ? 0xff6a2a :
           e.sprite === ICE_PROJECTILE_SPRITE ? 0x8fd8ff :
           e.sprite === POISON_PROJECTILE_SPRITE ? 0x8cff4d :
@@ -1147,14 +1246,16 @@ export class Renderer {
         this.setFallback(s, color);
       }
 
-      s.sprite.scale.set(size, size, 1);
-      s.sprite.position.set(wx, h, wy);
-      this.lastPos.set(e.id, { x: wx, y: wy });
-
       // Fog of war: the local player + allies are always drawn; monsters, the
       // boss, and projectiles only within VISION_RADIUS and with clear line-of-
       // sight to the player (walls block). predicted = local player world pos.
-      s.sprite.visible = this.entityVisible(e, wx, wy, predicted);
+      const visible = this.entityVisible(e, wx, wy, predicted);
+      const usesBoltModel = e.kind === "proj" && this.syncBoltModel(e, wx, wy, visible);
+      if (usesBoltModel) seenBoltModels.add(e.id);
+      s.sprite.scale.set(size, size, 1);
+      s.sprite.position.set(wx, h, wy);
+      this.lastPos.set(e.id, { x: wx, y: wy });
+      s.sprite.visible = visible && !usesBoltModel;
       if (e.kind === "player" || e.kind === "monster" || e.kind === "boss") {
         this.updateStatusOverlay(e.id, wx, wy, h, s.sprite.visible && !e.dead, now);
       }
@@ -1185,6 +1286,13 @@ export class Renderer {
       if (!seenBossModels.has(id)) {
         this.scene.remove(model);
         this.bossModels.delete(id);
+        if (!seen.has(id)) this.lastPos.delete(id);
+      }
+    }
+    for (const [id, model] of this.boltModels) {
+      if (!seenBoltModels.has(id)) {
+        this.scene.remove(model);
+        this.boltModels.delete(id);
         if (!seen.has(id)) this.lastPos.delete(id);
       }
     }

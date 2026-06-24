@@ -159,7 +159,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 				spr.set_chosen_class(player_class)
 				spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 			elif k == "monster":
-				spr.set_monster_kind(str(d.get("monKind", "")))
+				spr.set_monster_kind(str(d.get("enemy", d.get("monKind", ""))))
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
@@ -169,7 +169,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.set_chosen_class(player_class)
 			spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 		elif k == "monster":
-			spr.set_monster_kind(str(d.get("monKind", "")))
+			spr.set_monster_kind(str(d.get("enemy", d.get("monKind", ""))))
 		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.

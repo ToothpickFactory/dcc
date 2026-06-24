@@ -1,4 +1,4 @@
-import type { Ability, CcKind, Klass, MonsterKind } from "../shared/types";
+import type { Ability, CcKind, DamageType, EnemyVisualKind, Klass, MonsterKind, ProjectileRender } from "../shared/types";
 import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
@@ -54,6 +54,7 @@ export interface PlayerState {
 export interface MonsterState {
   id: string;
   kind: MonsterKind;
+  visualKind: EnemyVisualKind;
   x: number;
   y: number;
   aim: number;
@@ -69,6 +70,8 @@ export interface MonsterState {
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
   threat: Map<string, number>; // playerId -> accumulated threat
   dmgMult: number; // per-floor damage scaling (1 at floor 1, grows with depth)
+  boltDamageType: DamageType;
+  meleeDamageType: DamageType;
   // ---- Attack telegraph (melee wind-up) ----
   windupUntil: number; // melee lands when now >= this (0 = not winding up)
   windupTarget: string; // player id the wind-up is aimed at
@@ -97,6 +100,8 @@ export interface BossState {
   meleeReadyAt: number;
   threat: Map<string, number>;
   dmgMult: number; // per-floor damage scaling
+  boltDamageType: DamageType;
+  meleeDamageType: DamageType;
   // ---- Attack telegraphs (wind-up before melee / cast) ----
   meleeWindupUntil: number; // boss melee lands when now >= this
   castWindupUntil: number; // boss bolt-fan fires when now >= this
@@ -120,7 +125,7 @@ export interface ProjectileState {
   freeze?: boolean;
   ability: number;
   sprite?: number; // optional client render marker; ability remains the real caster slot
-  proj?: "fire" | "ice" | "poison"; // preferred client render asset
+  proj?: ProjectileRender; // preferred client render asset
   ttl: number; // seconds remaining
   hitR: number; // projectile's own collision radius (px), added to the target's
   boss: boolean; // enemy projectile (boss bolt OR monster bolt): only affects players

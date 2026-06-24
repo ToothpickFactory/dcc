@@ -82,6 +82,9 @@ const JUGGERNAUT_MODEL_PATH := "res://assets/Bosses/Juggernaut/Juggernaut-3d-ani
 const TERRORBOT_NAME := "TerrorBot"
 const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot.glb"
 const TERRORBOT_MODEL_SCALE := 297.0
+const ICE_GOLEM_NAME := "Ice Golem"
+const ICE_GOLEM_MODEL_PATH := "res://assets/Bosses/IceGolem/IceGolem.glb"
+const ICE_GOLEM_MODEL_SCALE := 180.0
 const TERRORBOT_ANIM_ALIASES := {
 	"idle": ["Walking"],
 	"run": ["Running", "Run_and_Shoot", "Walking"],
@@ -115,6 +118,9 @@ const ENT_ANIM_ALIASES := {
 	"hurt": ["Hit_Reaction_1"],
 	"death": ["Dead"],
 }
+const ALIEN_SQUID_MODEL_PATH := "res://assets/Enemies/AlienSquid/AlienSquid.glb"
+const ALIEN_SQUID_MODEL_SCALE := 86.0
+const ALIEN_SQUID_LIGHT_ENERGY := 1.85
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
@@ -144,14 +150,15 @@ const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
 const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie", "Ent"]
 const POISON_PROJECTILE_SPRITE := 95 # src/shared/constants.ts POISON_PROJECTILE_SPRITE
-const POISON_MODEL_PATH := "res://assets/Projectiles/Poisonball/Poisonball.glb"
-const POISON_MODEL_SCALE := 36.0
 const ICE_PROJECTILE_SPRITE := 96 # src/shared/constants.ts ICE_PROJECTILE_SPRITE
-const ICE_MODEL_PATH := "res://assets/Projectiles/Iceball/An ice projectile.glb"
-const ICE_MODEL_SCALE := 36.0
 const FIREBALL_PROJECTILE_SPRITE := 97 # src/shared/constants.ts FIREBALL_PROJECTILE_SPRITE
-const FIREBALL_MODEL_PATH := "res://assets/Projectiles/Fireball/Fireball.glb"
-const FIREBALL_MODEL_SCALE := 36.0
+const FIRE_BOLT_MODEL_PATH := "res://assets/Bolt/Fire.glb"
+const FROST_BOLT_MODEL_PATH := "res://assets/Bolt/Frost.glb"
+const POISON_BOLT_MODEL_PATH := "res://assets/Bolt/Poison.glb"
+const ELECTRIC_BOLT_MODEL_PATH := "res://assets/Bolt/Electric.glb"
+const SHADOW_BOLT_MODEL_PATH := "res://assets/Bolt/Shadow.glb"
+const BLEED_BOLT_MODEL_PATH := "res://assets/Bolt/Shadow.glb"
+const BOLT_MODEL_SCALE := 34.0
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
 const LOOT_MODEL_PATH := "res://assets/Props/loot.glb"
@@ -163,6 +170,7 @@ const HERO_OFF_HAND_BONES := ["LeftHand", "mixamorig:LeftHand", "left_hand", "ha
 const HERO_WEAPON_OFFSET := Vector3(0.0, 0.12, 0.0)
 const HERO_OFFHAND_OFFSET := Vector3(0.0, 0.10, 0.0)
 const HERO_WEAPON_ROTATION_DEGREES := Vector3(0.0, 0.0, 0.0)
+const HERO_SWORD_ROTATION_DEGREES := Vector3(0.0, 0.0, 180.0)
 const HERO_OFFHAND_ROTATION_DEGREES := Vector3(0.0, 180.0, 0.0)
 const WEAPON_ASSET_RARITY := {
 	"common": "Common",
@@ -477,6 +485,10 @@ func _normalize_status_effect(kind_name: String) -> String:
 			return "fire"
 		"venom", "toxic":
 			return "poison"
+		"shadow":
+			return "dark"
+		"electric", "lightning", "shock":
+			return "stun"
 		_:
 			return key
 
@@ -735,8 +747,12 @@ static func _fnv1a(s: String) -> int:
 
 func _enemy_root() -> String:
 	match _monster_kind:
+		"alien_squid", "aliensquid":
+			return "res://assets/Enemies/AlienSquid"
 		"ghoul":
 			return "res://assets/Enemies/Ghoul"
+		"goblin":
+			return "res://assets/Enemies/Goblin"
 		"infernax":
 			return "res://assets/Enemies/Infernax"
 		"orc":
@@ -795,9 +811,9 @@ func _model_profile_for_entity() -> Dictionary:
 		return profile
 	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
-			"label": "Fireball",
-			"path": FIREBALL_MODEL_PATH,
-			"scale": FIREBALL_MODEL_SCALE,
+			"label": "Fire Bolt",
+			"path": FIRE_BOLT_MODEL_PATH,
+			"scale": BOLT_MODEL_SCALE,
 			"y": 18.0,
 			"light_energy": 2.0,
 			"light_range": 90.0,
@@ -807,9 +823,9 @@ func _model_profile_for_entity() -> Dictionary:
 		}
 	if kind == "proj" and (_projectile_render == "ice" or _sprite_id == ICE_PROJECTILE_SPRITE):
 		return {
-			"label": "Iceball",
-			"path": ICE_MODEL_PATH,
-			"scale": ICE_MODEL_SCALE,
+			"label": "Frost Bolt",
+			"path": FROST_BOLT_MODEL_PATH,
+			"scale": BOLT_MODEL_SCALE,
 			"y": 18.0,
 			"light_energy": 1.6,
 			"light_range": 90.0,
@@ -819,12 +835,38 @@ func _model_profile_for_entity() -> Dictionary:
 		}
 	if kind == "proj" and (_projectile_render == "poison" or _sprite_id == POISON_PROJECTILE_SPRITE):
 		return {
-			"label": "Poisonball",
-			"path": POISON_MODEL_PATH,
-			"scale": POISON_MODEL_SCALE,
+			"label": "Poison Bolt",
+			"path": POISON_BOLT_MODEL_PATH,
+			"scale": BOLT_MODEL_SCALE,
 			"y": 18.0,
 			"light_energy": 1.7,
 			"light_range": 90.0,
+			"light_y": 16.0,
+			"contrast": 1.3,
+			"saturation": 1.35,
+		}
+	if kind == "proj" and (_projectile_render == "electric" or _projectile_render == "shadow" or _projectile_render == "bleed" or _projectile_render == "stun"):
+		var bolt_path := ELECTRIC_BOLT_MODEL_PATH
+		var bolt_label := "Electric Bolt"
+		var bolt_light := 2.0
+		if _projectile_render == "shadow":
+			bolt_path = SHADOW_BOLT_MODEL_PATH
+			bolt_label = "Shadow Bolt"
+			bolt_light = 1.75
+		elif _projectile_render == "bleed":
+			bolt_path = BLEED_BOLT_MODEL_PATH
+			bolt_label = "Bleed Bolt"
+			bolt_light = 1.6
+		elif _projectile_render == "stun":
+			bolt_label = "Stun Bolt"
+			bolt_light = 2.05
+		return {
+			"label": bolt_label,
+			"path": bolt_path,
+			"scale": BOLT_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": bolt_light,
+			"light_range": 95.0,
 			"light_y": 16.0,
 			"contrast": 1.3,
 			"saturation": 1.35,
@@ -843,6 +885,18 @@ func _model_profile_for_entity() -> Dictionary:
 		}
 	if kind == "monster":
 		var root := _enemy_root()
+		if root.ends_with("/AlienSquid"):
+			return {
+				"label": "Alien Squid",
+				"path": ALIEN_SQUID_MODEL_PATH,
+				"scale": ALIEN_SQUID_MODEL_SCALE,
+				"model_y": 64.0,
+				"light_energy": ALIEN_SQUID_LIGHT_ENERGY,
+				"light_range": 300.0,
+				"light_y": 112.0,
+				"contrast": 1.3,
+				"saturation": 1.25,
+			}
 		if root.ends_with("/Ent"):
 			return {
 				"label": "Ent",
@@ -980,6 +1034,9 @@ func _model_profile_for_entity() -> Dictionary:
 			boss_model_path = TERRORBOT_MODEL_PATH
 			boss_model_scale = TERRORBOT_MODEL_SCALE
 			boss_anim_aliases = TERRORBOT_ANIM_ALIASES
+		elif _entity_name == ICE_GOLEM_NAME:
+			boss_model_path = ICE_GOLEM_MODEL_PATH
+			boss_model_scale = ICE_GOLEM_MODEL_SCALE
 		if boss_model_path != "":
 			return {
 				"label": _entity_name,
@@ -1155,7 +1212,7 @@ func _attach_weapon_instance(skeleton: Skeleton3D, bone_name: String, spec: Dict
 	var weapon := inst as Node3D
 	weapon.scale = Vector3.ONE * _weapon_scale_for(weapon_type)
 	weapon.position = HERO_OFFHAND_OFFSET if offhand else _weapon_offset_for(weapon_type)
-	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else HERO_WEAPON_ROTATION_DEGREES
+	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else _weapon_rotation_for(weapon_type)
 	if weapon_type == "sword":
 		_align_sword_grip_to_origin(weapon)
 	if weapon_type == "flail" and weapon.has_method("configure_ball_model"):
@@ -1222,13 +1279,18 @@ func _weapon_scale_for(weapon_type: String) -> float:
 		"shield":
 			return 0.36
 		"axe":
-			return 0.74
+			return 0.65
 		"sword":
 			return 0.555
 	return 1.0
 
 func _weapon_offset_for(weapon_type: String) -> Vector3:
 	return HERO_WEAPON_OFFSET
+
+func _weapon_rotation_for(weapon_type: String) -> Vector3:
+	if weapon_type == "sword":
+		return HERO_SWORD_ROTATION_DEGREES
+	return HERO_WEAPON_ROTATION_DEGREES
 
 func _align_sword_grip_to_origin(weapon: Node3D) -> void:
 	var result: Array = [false, Vector3.ZERO, Vector3.ZERO]

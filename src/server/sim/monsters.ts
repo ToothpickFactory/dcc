@@ -1,5 +1,6 @@
 import { randomWalkablePosition } from "../../procgen/collision";
 import { BRUTE_WINDUP_MULT, KNOCK_MS, MELEE_WINDUP_MS, MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
+import { projectileRenderForDamage } from "../../shared/dungeon-rules";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage, applyHeal } from "./combat";
 import { moveWithWorldCollisions } from "./collision";
@@ -60,7 +61,7 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
       const tgt = ctx.players.get(m.windupTarget);
       if (tgt && tgt.status === "alive" && !tgt.reached && Math.hypot(tgt.x - m.x, tgt.y - m.y) <= def.meleeRange + 10) {
         ctx.pushFx({ e: "melee", by: m.id });
-        applyDamage(ctx, tgt, def.dmg * m.dmgMult, m.id, false);
+        applyDamage(ctx, tgt, def.dmg * m.dmgMult, m.id, false, 0, 0, 0, 1, m.meleeDamageType);
       }
     }
     // While winding up, the monster is committed to the swing — plant + face, no move.
@@ -141,7 +142,7 @@ function shoot(ctx: WorldCtx, m: MonsterState, prey: PlayerState, projSpeed: num
     dmg: projDmg,
     slowMs: 0,
     ability: MONSTER_BOLT_SPRITE,
-    proj: "fire",
+    proj: projectileRenderForDamage(m.boltDamageType),
     ttl: 4,
     hitR: 7,
     boss: true,

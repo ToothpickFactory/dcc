@@ -163,12 +163,16 @@ func _process(_delta: float) -> void:
 	if is_instance_valid(_active_status_glb) and is_instance_valid(_active_status_target):
 		_active_status_glb.global_position = _active_status_target.global_position
 
-func spawn_status_glb(x: float, y: float, target: Node3D = null) -> void:
+func spawn_status_glb(x: float, y: float, target: Node3D = null, requested_effect: String = "") -> void:
 	if is_instance_valid(_active_status_glb):
 		return
-	var keys := STATUS_GLB_EFFECTS.keys()
-	var effect_name := str(keys[_status_glb_index % keys.size()])
-	_status_glb_index += 1
+	var effect_name := _normalize_status_effect(requested_effect)
+	if effect_name == "":
+		var keys := STATUS_GLB_EFFECTS.keys()
+		effect_name = str(keys[_status_glb_index % keys.size()])
+		_status_glb_index += 1
+	if not STATUS_GLB_EFFECTS.has(effect_name):
+		return
 	var glb_path := str(STATUS_GLB_EFFECTS[effect_name])
 	var scene := _load_status_glb(glb_path)
 	if scene == null:
@@ -200,6 +204,18 @@ func spawn_status_glb(x: float, y: float, target: Node3D = null) -> void:
 		_active_status_glb = null
 		_active_status_target = null
 	)
+
+func _normalize_status_effect(effect_name: String) -> String:
+	var key := effect_name.strip_edges().to_lower()
+	match key:
+		"shadow":
+			return "dark"
+		"electric", "lightning", "shock":
+			return "stun"
+		"ice", "freeze", "frozen":
+			return "frost"
+		_:
+			return key
 
 func _get_status_mat(effect_name: String) -> ShaderMaterial:
 	if _status_shader_mats.has(effect_name):

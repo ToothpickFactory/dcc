@@ -15,7 +15,7 @@ import {
   PLAYER_RADIUS,
   PROJECTILE_RADIUS,
 } from "../../shared/constants";
-import type { Ability } from "../../shared/types";
+import type { Ability, ProjectileRender } from "../../shared/types";
 import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { blocked } from "../../procgen/collision";
 import { applyCc, applyDamage, applyHeal } from "./combat";
@@ -153,7 +153,7 @@ function projectileSpriteForAbility(ab: Ability): number | undefined {
   return undefined;
 }
 
-function projectileRenderForAbility(ab: Ability): "fire" | "ice" | "poison" | undefined {
+function projectileRenderForAbility(ab: Ability): ProjectileRender | undefined {
   if (isIceOrRockProjectile(ab)) return "ice";
   if (isPoisonProjectile(ab)) return "poison";
   if (isFireballProjectile(ab)) return "fire";
@@ -392,8 +392,12 @@ function resolve(
   ctx.pushFx({ e: "hit", x: pr.x, y: pr.y, ability: pr.ability });
 }
 
-function statusForProjectile(proj: ProjectileState["proj"]): "fire" | "frost" | "poison" {
+function statusForProjectile(proj: ProjectileState["proj"]) {
   if (proj === "ice") return "frost";
+  if (proj === "electric") return "electric";
+  if (proj === "shadow") return "shadow";
+  if (proj === "bleed") return "bleed";
+  if (proj === "stun") return "stun";
   return proj ?? "fire";
 }
 
