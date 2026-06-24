@@ -92,6 +92,37 @@ function Invoke-GodotStep {
   }
 }
 
+function Test-WebSocketUrl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string] $Url,
+    [int] $TimeoutMs = 3000
+  )
+
+  $Client = [System.Net.WebSockets.ClientWebSocket]::new()
+  $Cancel = [System.Threading.CancellationTokenSource]::new($TimeoutMs)
+  try {
+    $Client.ConnectAsync([Uri] $Url, $Cancel.Token).GetAwaiter().GetResult()
+    return $Client.State -eq [System.Net.WebSockets.WebSocketState]::Open
+  } catch {
+    return $false
+  } finally {
+    if ($Client.State -eq [System.Net.WebSockets.WebSocketState]::Open) {
+      try {
+        $Client.CloseAsync(
+          [System.Net.WebSockets.WebSocketCloseStatus]::NormalClosure,
+          "launcher probe",
+          [System.Threading.CancellationToken]::None
+        ).GetAwaiter().GetResult()
+      } catch {
+        # Probe cleanup should never block launching.
+      }
+    }
+    $Client.Dispose()
+    $Cancel.Dispose()
+  }
+}
+
 # Update check: fast-forward main only if the working tree is clean and behind.
 if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path ".git")) {
   Write-Host "==> Checking for updates..."
@@ -170,6 +201,25 @@ if (-not $WsOverride) {
   }
 } else {
   Write-Host "    Using DCC_WS=$WsOverride"
+  if ($WsOverride -like "ws://127.0.0.1:8787*") {
+    $WranglerDevs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+      Where-Object {
+        $_.CommandLine -like "*$Root*" -and
+        $_.CommandLine -like "*wrangler*" -and
+        $_.CommandLine -like "*dev*" -and
+        $_.CommandLine -like "*8787*"
+      }
+    if (($WranglerDevs | Measure-Object).Count -gt 2) {
+      Write-Host "!! Multiple local wrangler dev processes are running for this project."
+      Write-Host "   The newest terminal can say Ready while an older workerd still owns port 8787."
+    }
+    if (Test-WebSocketUrl -Url $WsOverride) {
+      Write-Host "    Local WebSocket accepted $WsOverride."
+    } else {
+      Write-Host "!! DCC_WS points at local dev, but $WsOverride did not accept a WebSocket."
+      Write-Host "   Stop duplicate npm run dev/wrangler processes, start one npm run dev, wait for Ready, then relaunch."
+    }
+  }
 }
 
 if ($env:DCC_FORCE_THEME) {

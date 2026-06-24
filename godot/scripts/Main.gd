@@ -81,6 +81,7 @@ var _decor_cached_live_props_key := ""
 var _cam_zoom := 1.0
 var _cam_zoom_target := 1.0
 var _cam_dragging := false
+var _connect_banner: Label
 
 func _ready() -> void:
 	randomize()
@@ -272,17 +273,24 @@ func _ready() -> void:
 	_net.shop_received.connect(func(m): _inv.on_shop(m))
 	_net.events_received.connect(_on_events)
 	_net.loot_received.connect(_on_loot)
-	_net.welcomed.connect(func(you): print("[DCC] welcome you=", you))
+	_net.closed.connect(_on_net_closed)
+	_net.welcomed.connect(func(you):
+		print("[DCC] welcome you=", you)
+		_hide_connect_banner())
 
 	# Name screen before connecting (skipped headless / in diagnostic modes).
 	if _skip_login():
+		_show_connect_banner("Connecting to %s ..." % server_url)
 		_net.start(server_url, player_name)
+		_start_connect_watchdog()
 	else:
 		var login := Login.new()
 		add_child(login)
 		login.submitted.connect(func(n):
 			player_name = n
-			_net.start(server_url, n))
+			_show_connect_banner("Connecting to %s ..." % server_url)
+			_net.start(server_url, n)
+			_start_connect_watchdog())
 
 func _setup_scene_lighting() -> void:
 	_key_light = DirectionalLight3D.new()
@@ -388,6 +396,36 @@ func _bag_present(id: String) -> bool:
 		if typeof(e) == TYPE_DICTIONARY and str(e.get("id", "")) == id:
 			return true
 	return false
+
+func _show_connect_banner(text: String) -> void:
+	if _connect_banner == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 90
+		layer.name = "ConnectionStatus"
+		add_child(layer)
+		_connect_banner = Label.new()
+		_connect_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_connect_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_connect_banner.add_theme_font_size_override("font_size", 18)
+		_connect_banner.add_theme_color_override("font_color", Color(1.0, 0.78, 0.38))
+		_connect_banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		_connect_banner.position.y = 18
+		layer.add_child(_connect_banner)
+	_connect_banner.text = text
+	_connect_banner.visible = true
+
+func _hide_connect_banner() -> void:
+	if _connect_banner != null:
+		_connect_banner.visible = false
+
+func _start_connect_watchdog() -> void:
+	get_tree().create_timer(4.0).timeout.connect(func():
+		if _net != null and str(_net.you) == "":
+			_show_connect_banner("Still connecting to %s. Check that npm run dev says Ready and only one dev server is running." % server_url))
+
+func _on_net_closed() -> void:
+	if _net != null and str(_net.you) == "":
+		_show_connect_banner("Could not connect to %s. Restart npm run dev, wait for Ready, then relaunch." % server_url)
 
 func _current_weapon_loadout() -> Dictionary:
 	if _net == null:
