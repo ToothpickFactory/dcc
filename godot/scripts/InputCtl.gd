@@ -136,20 +136,23 @@ func set_virtual_stick(dir: Vector2) -> void:
 #   2. Mobile virtual stick — overrides gamepad on mobile.
 #   3. PC mouse cursor (camera->ground raycast) — only when no stick input.
 #   4. _last_aim — held when completely idle so the character keeps facing last direction.
-func aim_from(camera: Camera3D, px: float, py: float) -> float:
+func aim_from(camera: Camera3D, px: float, py: float, cam_yaw_rad: float = 0.0) -> float:
 	var stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
 		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
 	if stick.length() >= 0.5:
-		_last_aim = atan2(stick.y, stick.x)
+		# Stick direction is screen-relative; rotate into world space by camera yaw.
+		_last_aim = atan2(stick.y, stick.x) - cam_yaw_rad
 	if _is_mobile:
 		if _virtual_stick.length() > 0.01:
-			_last_aim = atan2(_virtual_stick.y, _virtual_stick.x)
+			# Virtual stick is screen-relative; same rotation applies.
+			_last_aim = atan2(_virtual_stick.y, _virtual_stick.x) - cam_yaw_rad
 		return _last_aim
 	# PC: if stick is active, prefer it over mouse so character faces movement direction.
 	if stick.length() >= 0.5:
 		return _last_aim
-	# PC fallback: aim toward mouse cursor.
+	# PC fallback: aim toward mouse cursor via camera ray. The camera already incorporates
+	# yaw, so the world-space hit point needs no additional rotation.
 	if camera == null:
 		return _last_aim
 	var mouse := camera.get_viewport().get_mouse_position()

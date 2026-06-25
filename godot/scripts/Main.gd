@@ -607,6 +607,10 @@ func _process(dt: float) -> void:
 		mv = Vector2.ZERO  # left stick drives the cursor, not the character
 	if OS.get_environment("DCC_AUTOMOVE") != "":
 		mv = Vector2(1, 0)  # diagnostic: simulate holding right to test the move pipeline
+	# Rotate movement into world space based on camera yaw so "forward" always means
+	# "toward the top of the screen" regardless of how the camera is oriented.
+	var _cam_yaw_rad := deg_to_rad(cam_yaw_deg)
+	mv = mv.rotated(-_cam_yaw_rad)
 	# Feed live props to the predictor so it collides exactly like the server (no rubber-band /
 	# wedging-in-place against an invisible-to-the-client decoration). radius = max(12, 24*scale).
 	var props: Array = []
@@ -615,7 +619,7 @@ func _process(dt: float) -> void:
 			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": maxf(12.0, 24.0 * float(e.get("scale", 1.0)))})
 	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
-	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y)
+	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad)
 
 	# Spectate/waiting state machine drives the camera target while out of play.
 	var sp: Dictionary = _spectate.update(_net, mv, Vector2(_pred.x, _pred.y), dt)
