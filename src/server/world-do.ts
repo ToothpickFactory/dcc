@@ -753,8 +753,26 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // Survivors descend; if none remain the run ends.
   private advanceFloor(): void {
     const survivors = [...this.players.values()].filter((p) => p.status === "alive");
-    if (survivors.length === 0 || this.floor.depth + 1 > MAX_FLOORS) {
+
+    // True victory: at least one survivor cleared the final floor.
+    if (survivors.length > 0 && this.floor.depth + 1 > MAX_FLOORS) {
       this.endRun();
+      return;
+    }
+
+    // Wipe (mid-combat death or floor timeout with nobody reaching the stairs).
+    // Restart to floor 1 if there are players to revive; end the run if the room
+    // is empty (no one to restart for).
+    if (survivors.length === 0) {
+      if (this.players.size > 0 && !this._restartPending) {
+        this._restartPending = true;
+        setTimeout(() => {
+          this._restartPending = false;
+          void this.newRun();
+        }, 5000);
+      } else if (this.players.size === 0) {
+        this.endRun();
+      }
       return;
     }
     // M4 floor_record: log the floor the survivors just cleared, before the depth
