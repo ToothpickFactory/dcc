@@ -929,14 +929,16 @@ func _unhandled_input(e: InputEvent) -> void:
 					_inv.request_loot(_nearest_bag_id)
 				get_viewport().set_input_as_handled()
 	# LT is an axis trigger; toggle the skills menu on each press (threshold crossing).
-	if e is InputEventJoypadMotion and e.axis == JOY_AXIS_TRIGGER_LEFT:
-		var lt_pressed := e.axis_value > 0.5
-		if lt_pressed and not _lt_pressed:
-			if _inv.is_open():
-				_inv.close()
-			_skills.toggle()
-		_lt_pressed = lt_pressed
-		get_viewport().set_input_as_handled()
+	if e is InputEventJoypadMotion:
+		var joy_e := e as InputEventJoypadMotion
+		if joy_e.axis == JOY_AXIS_TRIGGER_LEFT:
+			var lt_pressed := joy_e.axis_value > 0.5
+			if lt_pressed and not _lt_pressed:
+				if _inv.is_open():
+					_inv.close()
+				_skills.toggle()
+			_lt_pressed = lt_pressed
+			get_viewport().set_input_as_handled()
 
 func _color_of(s: String) -> Color:
 	if s.begins_with("#"):

@@ -96,11 +96,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cast_queue.append(pidx)
 			return
 	# RT trigger (axis): queue cast 5 on each press (threshold crossing).
-	if event is InputEventJoypadMotion and event.axis == JOY_AXIS_TRIGGER_RIGHT:
-		var pressed := event.axis_value > 0.5
-		if pressed and not _rt_pressed:
-			_cast_queue.append(5)
-		_rt_pressed = pressed
+	if event is InputEventJoypadMotion:
+		var joy_e := event as InputEventJoypadMotion
+		if joy_e.axis == JOY_AXIS_TRIGGER_RIGHT:
+			var pressed := joy_e.axis_value > 0.5
+			if pressed and not _rt_pressed:
+				_cast_queue.append(5)
+			_rt_pressed = pressed
 
 # True once per Space / RS-click press (drained by Main). The dodge/evade intent.
 func consume_dash() -> bool:
