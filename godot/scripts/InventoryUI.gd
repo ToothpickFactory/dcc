@@ -239,6 +239,19 @@ func use_first_potion() -> void:
 			_send({"t": "useItem", "item": str(it.get("id", ""))})
 			return
 
+# Controller B button: drop the carried item under the cursor position.
+func pad_drop_at(screen_pos: Vector2) -> void:
+	for child in _carry_grid.get_children():
+		if child is PanelContainer and child.get_global_rect().has_point(screen_pos) and child.has_meta("item_id"):
+			_send({"t": "drop", "item": str(child.get_meta("item_id"))})
+			return
+
+# Returns the ScrollContainer that is currently scrollable (loot panel or inv panel).
+func get_active_scroll() -> ScrollContainer:
+	if _loot_root != null and _loot_root.visible:
+		return _find_scroll(_loot_root)
+	return _find_scroll(_inv_root)
+
 func loot_open_bag_id() -> String:
 	return _open_bag_id if (_loot_root != null and _loot_root.visible) else ""
 
@@ -303,6 +316,7 @@ func _render(msg: Dictionary) -> void:
 		var item_id := str(it.get("id", ""))
 		var is_consumable := str(it.get("slot", "")) == "consumable"
 		var tile := _item_tile(it, "")
+		tile.set_meta("item_id", item_id)  # used by pad_drop_at for controller drop
 		var body := _tile_body(tile)
 		# Consumables drink (heal self); everything else equips on tap.
 		var tap_msg := {"t": "useItem", "item": item_id} if is_consumable else {"t": "equip", "item": item_id}
@@ -435,6 +449,7 @@ func _render_loot() -> void:
 			continue
 		var item_id := str(it.get("id", ""))
 		var tile := _item_tile(it, "")
+		tile.set_meta("item_id", item_id)
 		tile.gui_input.connect(func(ev: InputEvent):
 			if _is_tap(ev) and _open_bag_id != "":
 				_send({"t": "takeLoot", "bag": _open_bag_id, "item": item_id})

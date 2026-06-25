@@ -110,6 +110,9 @@ func sync_if_open() -> void:
 	if _state_key() != _key:
 		_render()
 
+func get_scroll() -> ScrollContainer:
+	return _scroll
+
 
 # =====================================================================
 # Rendering

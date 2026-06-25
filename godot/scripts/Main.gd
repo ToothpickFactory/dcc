@@ -85,6 +85,9 @@ var _cam_zoom := 1.0
 var _cam_zoom_target := 1.0
 var _cam_dragging := false
 var _lt_pressed := false  # tracks LT axis state for skills-menu toggle
+var _pad_cursor_pos := Vector2.ZERO
+var _pad_cursor_node: Control = null
+var _menu_was_open := false
 var _connect_banner: Label
 
 func _ready() -> void:
@@ -206,6 +209,19 @@ func _ready() -> void:
 	_gate_hint.position.y -= 140
 	_gate_hint.visible = false
 	loot_layer.add_child(_gate_hint)
+
+	# Gamepad virtual cursor — shown when a menu is open, driven by the left stick.
+	var cursor_layer := CanvasLayer.new()
+	cursor_layer.layer = 30  # above all UI layers (inv=25, skills=26)
+	add_child(cursor_layer)
+	_pad_cursor_node = Label.new()
+	_pad_cursor_node.text = "✛"
+	_pad_cursor_node.add_theme_font_size_override("font_size", 24)
+	_pad_cursor_node.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3, 0.9))
+	_pad_cursor_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_pad_cursor_node.visible = false
+	cursor_layer.add_child(_pad_cursor_node)
+	_pad_cursor_pos = get_viewport().get_visible_rect().size * Vector2(0.5, 0.4)
 
 	# Run-over death summary: a centered card with your run stats + how to restart.
 	_runover_panel = PanelContainer.new()
@@ -584,7 +600,11 @@ func _process(dt: float) -> void:
 	# Keyed off wall-clock (unaffected by time_scale) so it always restores.
 	Engine.time_scale = 0.12 if Time.get_ticks_msec() < _hitstop_until else 1.0
 
+	var menu_open := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != ""
+
 	var mv: Vector2 = _inp.move_vec()
+	if menu_open:
+		mv = Vector2.ZERO  # left stick drives the cursor, not the character
 	if OS.get_environment("DCC_AUTOMOVE") != "":
 		mv = Vector2(1, 0)  # diagnostic: simulate holding right to test the move pipeline
 	# Feed live props to the predictor so it collides exactly like the server (no rubber-band /
@@ -667,6 +687,35 @@ func _process(dt: float) -> void:
 	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
+
+	# Gamepad cursor: move with the left stick when any menu is open.
+	if menu_open:
+		if not _menu_was_open:
+			_pad_cursor_pos = get_viewport().get_visible_rect().size * Vector2(0.5, 0.4)
+		const PAD_CURSOR_SPEED := 900.0
+		const PAD_CURSOR_DEAD := 0.15
+		var ls := Vector2(Input.get_joy_axis(0, JOY_AXIS_LEFT_X), Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+		if ls.length() > PAD_CURSOR_DEAD:
+			_pad_cursor_pos += ls * PAD_CURSOR_SPEED * dt
+		var vp_size := get_viewport().get_visible_rect().size
+		_pad_cursor_pos = _pad_cursor_pos.clamp(Vector2.ZERO, vp_size)
+		# Auto-scroll when the cursor is within 12% of the top or bottom edge.
+		var sc: ScrollContainer = null
+		if _inv.is_open() or _inv.loot_open_bag_id() != "":
+			sc = _inv.get_active_scroll()
+		elif _skills.is_open():
+			sc = _skills.get_scroll()
+		if sc != null:
+			var zone := vp_size.y * 0.12
+			if _pad_cursor_pos.y > vp_size.y - zone:
+				sc.scroll_vertical += int(600.0 * dt)
+			elif _pad_cursor_pos.y < zone:
+				sc.scroll_vertical -= int(600.0 * dt)
+		_pad_cursor_node.position = _pad_cursor_pos - Vector2(12, 14)
+		_pad_cursor_node.visible = true
+	else:
+		_pad_cursor_node.visible = false
+	_menu_was_open = menu_open
 
 	# Danger feedback: red vignette + quickening heartbeat as HP drops (alive only).
 	var danger := 0.0
@@ -912,9 +961,26 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_V:
 				_spectate.toggle_mode()
 	# Gamepad menu/action bindings (abilities and dash are handled in InputCtl):
+	#   A/B -> interact/drop while a menu is open (consumed before InputCtl sees them)
 	#   LB -> inventory   LT -> character/skills
 	#   D-pad Up -> quick potion   D-pad Right -> loot
 	if e is InputEventJoypadButton and e.pressed:
+		var _any_menu := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != ""
+		if _any_menu:
+			match e.button_index:
+				JOY_BUTTON_A:
+					# Synthesize a touch-tap at the cursor — works with all gui_input tiles.
+					var tap := InputEventScreenTouch.new()
+					tap.pressed = false
+					tap.position = _pad_cursor_pos
+					Input.parse_input_event(tap)
+					get_viewport().set_input_as_handled()
+					return
+				JOY_BUTTON_B:
+					if _inv.is_open():
+						_inv.pad_drop_at(_pad_cursor_pos)
+						get_viewport().set_input_as_handled()
+					return
 		match e.button_index:
 			JOY_BUTTON_LEFT_SHOULDER:
 				if _skills.is_open():

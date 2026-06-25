@@ -41,8 +41,7 @@ var _cast_queue: Array[int] = []
 var _dash_pressed := false  # Space / RS-click — drained by consume_dash()
 var _rt_pressed := false    # tracks RT axis state to fire cast 5 on threshold cross
 var _virtual_stick := Vector2.ZERO
-var _last_mobile_aim := 0.0
-var _last_move_aim := 0.0  # aim direction from last movement (gamepad fallback)
+var _last_aim := 0.0  # last known aim angle; held when idle so character keeps facing
 # Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
 var _is_mobile := false
 
@@ -132,35 +131,37 @@ func move_vec() -> Vector2:
 func set_virtual_stick(dir: Vector2) -> void:
 	_virtual_stick = dir
 
-# Aim radians from the pointer: raycast the active camera through the cursor onto
-# the ground plane (y=0) and atan2 toward (px,py). On mobile, aim follows the
-# virtual joystick. On gamepad (no mouse), aim follows movement direction as a
-# fallback so the aim-assist can snap to nearby enemies.
+# Aim radians from the pointer. Priority order:
+#   1. Gamepad left stick (when pushed past deadzone) — updates _last_aim and returns it.
+#   2. Mobile virtual stick — overrides gamepad on mobile.
+#   3. PC mouse cursor (camera->ground raycast) — only when no stick input.
+#   4. _last_aim — held when completely idle so the character keeps facing last direction.
 func aim_from(camera: Camera3D, px: float, py: float) -> float:
-	# On mobile aim follows the virtual joystick direction, not the mouse cursor.
-	if _is_mobile:
-		if _virtual_stick.length() > 0.01:
-			_last_mobile_aim = atan2(_virtual_stick.y, _virtual_stick.x)
-		return _last_mobile_aim
-	if camera == null:
-		return 0.0
-	# If a gamepad left stick is active, keep aim pointing in the movement direction
-	# so the aim-assist has a useful angle to snap from. Mouse movement overrides this.
 	var stick := Vector2(
 		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
 		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
 	if stick.length() >= 0.5:
-		_last_move_aim = atan2(stick.y, stick.x)
+		_last_aim = atan2(stick.y, stick.x)
+	if _is_mobile:
+		if _virtual_stick.length() > 0.01:
+			_last_aim = atan2(_virtual_stick.y, _virtual_stick.x)
+		return _last_aim
+	# PC: if stick is active, prefer it over mouse so character faces movement direction.
+	if stick.length() >= 0.5:
+		return _last_aim
+	# PC fallback: aim toward mouse cursor.
+	if camera == null:
+		return _last_aim
 	var mouse := camera.get_viewport().get_mouse_position()
 	var origin := camera.project_ray_origin(mouse)
 	var dir := camera.project_ray_normal(mouse)
 	var plane := Plane(Vector3.UP, 0.0)
 	var hit: Variant = plane.intersects_ray(origin, dir)
 	if hit == null:
-		return _last_move_aim
+		return _last_aim
 	var p: Vector3 = hit
-	# World maps (x,y)->(x,0,y); aim toward the hit's XZ relative to the player.
-	return atan2(p.z - py, p.x - px)
+	_last_aim = atan2(p.z - py, p.x - px)
+	return _last_aim
 
 # Drain the queued ability indices (FIFO). Main sends each as a {t:"cast"} with
 # its own seq, exactly as pump() fires one queued cast per call in TS.
