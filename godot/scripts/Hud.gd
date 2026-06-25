@@ -82,7 +82,7 @@ var _slots: Array = []        # the slot Control roots
 var _cd_overlays: Array = []  # ColorRect cooldown overlays (fill bottom-up)
 var _ammo_labels: Array = []  # Label or null per slot
 var _bar_key := ""
-var _auto_attack := true
+var _auto_attack := false
 
 # ---- floor / run state (fed by Main; not on the frozen Net) ----
 var _floor_depth := -1
@@ -374,7 +374,7 @@ func update(net) -> void:
 	# benched collection, managed from the character screen.
 	var all_abilities: Array = self_dto.get("abilities", [])
 	var abilities: Array = all_abilities.slice(0, DccConst.HOTBAR_SIZE)
-	_auto_attack = bool(self_dto.get("autoAttack", true))
+	_auto_attack = bool(self_dto.get("autoAttack", false))
 
 	# Rebuild the bar only when its contents change (loot / swaps), like barKey.
 	var key := _bar_key_of(abilities)

@@ -87,6 +87,8 @@ var _cam_dragging := false
 var _lt_pressed := false  # tracks LT axis state for skills-menu toggle
 var _pad_cursor_pos := Vector2.ZERO
 var _pad_cursor_node: Control = null
+const WEAPON_DAMAGE_TYPES := ["fire", "frost", "poison", "bleed", "stun", "holy", "dark"]
+var _weapon_damage_types: Dictionary = {}
 var _menu_was_open := false
 var _connect_banner: Label
 
@@ -293,8 +295,27 @@ func _ready() -> void:
 
 	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)
-	_net.inv_received.connect(func(m): _inv.on_inv(m))
-	_net.bag_received.connect(func(m): _inv.on_bag(m))
+	_net.inv_received.connect(func(m):
+		_inv.on_inv(m)
+		var inv_data: Variant = (m as Dictionary).get("inv", {})
+		if inv_data is Dictionary:
+			var all_items: Array = []
+			var carried: Variant = (inv_data as Dictionary).get("carried", [])
+			if carried is Array:
+				all_items.append_array(carried as Array)
+			var eq: Variant = (inv_data as Dictionary).get("equipped", {})
+			if eq is Dictionary:
+				for v in (eq as Dictionary).values():
+					if v is Dictionary:
+						all_items.append(v)
+			_assign_weapon_damage_types(all_items)
+	)
+	_net.bag_received.connect(func(m):
+		_inv.on_bag(m)
+		var bag_items: Variant = (m as Dictionary).get("items", [])
+		if bag_items is Array:
+			_assign_weapon_damage_types(bag_items as Array)
+	)
 	_net.shop_received.connect(func(m): _inv.on_shop(m))
 	_net.events_received.connect(_on_events)
 	_net.loot_received.connect(_on_loot)
@@ -485,6 +506,10 @@ func _on_events(events: Array) -> void:
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
 				var status := str(ev.get("status", ""))
+				if status == "" and str(ev.get("by", "")) == _net.you and not self_hit:
+					var w: Variant = _current_weapon_loadout().get("mainHand", null)
+					if w is Dictionary:
+						status = str(_weapon_damage_types.get(str((w as Dictionary).get("id", "")), ""))
 				if status != "":
 					_sprites.status_at(vp.x, vp.y, status, 90.0)
 				_fx.spawn_status_glb(vp.x, vp.y, _sprites.nearest_sprite_at(vp.x, vp.y, 70.0), status)
@@ -526,6 +551,21 @@ func _on_events(events: Array) -> void:
 				else:
 					_mark_exit_on_minimap()
 					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
+
+func _assign_weapon_damage_types(items: Array) -> void:
+	for item in items:
+		if not (item is Dictionary):
+			continue
+		var item_id := str((item as Dictionary).get("id", ""))
+		if item_id == "" or _weapon_damage_types.has(item_id):
+			continue
+		var wtype := str((item as Dictionary).get("weaponType", (item as Dictionary).get("type", ""))).strip_edges().to_lower()
+		var iname := str((item as Dictionary).get("name", "")).to_lower()
+		var is_weapon := ["axe", "flail", "shield", "sword"].has(wtype) \
+			or iname.contains("axe") or iname.contains("flail") \
+			or iname.contains("shield") or iname.contains("sword") or iname.contains("blade")
+		if is_weapon:
+			_weapon_damage_types[item_id] = WEAPON_DAMAGE_TYPES[randi() % WEAPON_DAMAGE_TYPES.size()]
 
 # Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
 # of tofu. Prefer a bundled font if someone dropped one in res://fonts/; otherwise use the

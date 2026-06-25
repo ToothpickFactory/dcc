@@ -153,7 +153,6 @@ static var _failed_status_glbs: Dictionary = {}
 static var _status_shader_mats: Dictionary = {}
 var _active_status_glb: Node3D = null
 var _active_status_target: Node3D = null
-var _status_glb_index: int = 0
 
 # The GLB scale is set to sprite_px * this factor, so the effect envelops the character.
 # Increase to make effects larger relative to the character; 1.35 = 35% taller than the sprite.
@@ -167,11 +166,7 @@ func spawn_status_glb(x: float, y: float, target: Node3D = null, requested_effec
 	if is_instance_valid(_active_status_glb):
 		return
 	var effect_name := _normalize_status_effect(requested_effect)
-	if effect_name == "":
-		var keys := STATUS_GLB_EFFECTS.keys()
-		effect_name = str(keys[_status_glb_index % keys.size()])
-		_status_glb_index += 1
-	if not STATUS_GLB_EFFECTS.has(effect_name):
+	if effect_name == "" or not STATUS_GLB_EFFECTS.has(effect_name):
 		return
 	var glb_path := str(STATUS_GLB_EFFECTS[effect_name])
 	var scene := _load_status_glb(glb_path)

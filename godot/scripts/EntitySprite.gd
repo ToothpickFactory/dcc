@@ -1175,9 +1175,10 @@ func _attach_weapon_to_model(profile: Dictionary) -> void:
 		push_warning("Weapon attachment skipped: no right-hand bone found for %s" % str(profile.get("label", "model")))
 		return
 	var main_item: Dictionary = _equipped_item("mainHand")
-	var main_spec := _weapon_spec_from_item(main_item, "flail", "rare")
-	if str(main_spec.get("type", "")) != "shield":
-		_attach_weapon_instance(skeleton, main_bone, main_spec, false)
+	if not main_item.is_empty():
+		var main_spec := _weapon_spec_from_item(main_item, "flail", "rare")
+		if str(main_spec.get("type", "")) != "shield":
+			_attach_weapon_instance(skeleton, main_bone, main_spec, false)
 
 	var off_item: Dictionary = _equipped_item("offHand")
 	if off_item.is_empty():
