@@ -506,7 +506,7 @@ func _on_events(events: Array) -> void:
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
 				var status := str(ev.get("status", ""))
-				if status == "" and str(ev.get("by", "")) == _net.you and not self_hit:
+				if status == "" and not self_hit:
 					var w: Variant = _current_weapon_loadout().get("mainHand", null)
 					if w is Dictionary:
 						status = str(_weapon_damage_types.get(str((w as Dictionary).get("id", "")), ""))
