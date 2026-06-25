@@ -322,7 +322,8 @@ func _ready() -> void:
 	_net.closed.connect(_on_net_closed)
 	_net.welcomed.connect(func(you):
 		print("[DCC] welcome you=", you)
-		_hide_connect_banner())
+		_hide_connect_banner()
+		_net.send_msg({"t": "setAutoAttack", "enabled": false}))
 
 	# Name screen before connecting (skipped headless / in diagnostic modes).
 	if _skip_login():
