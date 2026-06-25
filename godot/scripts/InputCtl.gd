@@ -14,8 +14,8 @@ extends Node
 ##      move_vec()  -> the raw move vector (keyboard/arrows OR gamepad left stick)
 ##      aim_from()  -> aim radians from a camera->ground raycast (Main passes cam+pos)
 ##      take_casts()-> drains queued ability indices (keys 1-6, left-click, gamepad)
-##  - Native bonuses over the web build: gamepad left-stick movement, gamepad
-##    face/shoulder buttons as fire, and right-stick aim (used only when Main asks).
+##  - Native bonuses over the web build: gamepad left-stick movement and
+##    face/shoulder/trigger buttons as fire; right stick drives the camera.
 ##
 ## Cast index mapping mirrors input.ts:
 ##   keys "1".."6" -> indices 0..5 ; left mouse button -> 0 (slot 1 / auto-cast).
@@ -27,24 +27,22 @@ const _SLOT_KEYS := {
 }
 
 # Gamepad fire buttons -> the same ability indices. Face buttons cover slots 1-4
-# (A/B/X/Y on Xbox-style pads); this is the native-pad bonus the web build lacks.
+# (A/B/X/Y on Xbox-style pads); RB covers slot 5. RT (trigger axis) fires slot 6,
+# handled separately below via threshold tracking.
 const _PAD_BTN_CASTS := {
-	JOY_BUTTON_A: 0,         # slot 1 / basic — also the most reachable button
+	JOY_BUTTON_A: 0,
 	JOY_BUTTON_B: 1,
 	JOY_BUTTON_X: 2,
 	JOY_BUTTON_Y: 3,
-	JOY_BUTTON_RIGHT_SHOULDER: 0,  # handy alias for "fire basic"
+	JOY_BUTTON_RIGHT_SHOULDER: 4,  # RB -> slot 5
 }
 
-# Stick dead zones. The move action deadzone (0.5) is already baked into the
-# InputMap; the right stick (aim) gets its own so a resting pad doesn't twitch aim.
-const _AIM_STICK_DEADZONE := 0.25
-
 var _cast_queue: Array[int] = []
-var _dash_pressed := false  # Space / left-shoulder — drained by consume_dash()
-var _stick_aim: float = NAN
+var _dash_pressed := false  # Space / RS-click — drained by consume_dash()
+var _rt_pressed := false    # tracks RT axis state to fire cast 5 on threshold cross
 var _virtual_stick := Vector2.ZERO
 var _last_mobile_aim := 0.0
+var _last_move_aim := 0.0  # aim direction from last movement (gamepad fallback)
 # Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
 var _is_mobile := false
 
@@ -87,16 +85,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not OS.has_feature("mobile"):
 			_cast_queue.append(0)
 		return
-	# Gamepad: left shoulder = dodge/dash; face/right-shoulder buttons = fire.
+	# Gamepad buttons: RS-click = dodge/dash; face/RB = fire ability.
+	# LB, LT, D-pad Up/Right, and right-stick camera are handled in Main._unhandled_input.
 	if event is InputEventJoypadButton and event.pressed:
-		if event.button_index == JOY_BUTTON_LEFT_SHOULDER:
+		if event.button_index == JOY_BUTTON_RIGHT_STICK:
 			_dash_pressed = true
 			return
 		var pidx: int = int(_PAD_BTN_CASTS.get(event.button_index, -1))
 		if pidx >= 0:
 			_cast_queue.append(pidx)
+			return
+	# RT trigger (axis): queue cast 5 on each press (threshold crossing).
+	if event is InputEventJoypadMotion and event.axis == JOY_AXIS_TRIGGER_RIGHT:
+		var pressed := event.axis_value > 0.5
+		if pressed and not _rt_pressed:
+			_cast_queue.append(5)
+		_rt_pressed = pressed
 
-# True once per Space / left-shoulder press (drained by Main). The dodge/evade intent.
+# True once per Space / RS-click press (drained by Main). The dodge/evade intent.
 func consume_dash() -> bool:
 	if _dash_pressed:
 		_dash_pressed = false
@@ -125,27 +131,31 @@ func set_virtual_stick(dir: Vector2) -> void:
 	_virtual_stick = dir
 
 # Aim radians from the pointer: raycast the active camera through the cursor onto
-# the ground plane (y=0) and atan2 toward (px,py). Mirrors renderer.aimFromPointer
-# (camera->ground projection) + the world (x,y)->Vector3(x,0,y) mapping. If a
-# right-stick aim is active it wins (native pad bonus), like right-stick mouselook.
+# the ground plane (y=0) and atan2 toward (px,py). On mobile, aim follows the
+# virtual joystick. On gamepad (no mouse), aim follows movement direction as a
+# fallback so the aim-assist can snap to nearby enemies.
 func aim_from(camera: Camera3D, px: float, py: float) -> float:
-	if not is_nan(_stick_aim):
-		return _stick_aim
 	# On mobile aim follows the virtual joystick direction, not the mouse cursor.
-	# _is_mobile is cached at _ready() so this is a plain bool branch per frame.
 	if _is_mobile:
 		if _virtual_stick.length() > 0.01:
 			_last_mobile_aim = atan2(_virtual_stick.y, _virtual_stick.x)
 		return _last_mobile_aim
 	if camera == null:
 		return 0.0
+	# If a gamepad left stick is active, keep aim pointing in the movement direction
+	# so the aim-assist has a useful angle to snap from. Mouse movement overrides this.
+	var stick := Vector2(
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+	if stick.length() >= 0.5:
+		_last_move_aim = atan2(stick.y, stick.x)
 	var mouse := camera.get_viewport().get_mouse_position()
 	var origin := camera.project_ray_origin(mouse)
 	var dir := camera.project_ray_normal(mouse)
 	var plane := Plane(Vector3.UP, 0.0)
 	var hit: Variant = plane.intersects_ray(origin, dir)
 	if hit == null:
-		return 0.0
+		return _last_move_aim
 	var p: Vector3 = hit
 	# World maps (x,y)->(x,0,y); aim toward the hit's XZ relative to the player.
 	return atan2(p.z - py, p.x - px)
@@ -153,8 +163,6 @@ func aim_from(camera: Camera3D, px: float, py: float) -> float:
 # Drain the queued ability indices (FIFO). Main sends each as a {t:"cast"} with
 # its own seq, exactly as pump() fires one queued cast per call in TS.
 func take_casts() -> Array:
-	# Fold the right stick into the aim cache each drain so aim_from() can prefer it.
-	_update_stick_aim()
 	if _cast_queue.is_empty():
 		return []
 	var out := _cast_queue
@@ -165,14 +173,3 @@ func take_casts() -> Array:
 func queue_cast(i: int) -> void:
 	_cast_queue.append(i)
 
-# Right-stick -> aim radians (native bonus). Cached so aim_from() can prefer it
-# over the pointer when the stick is pushed; NAN when idle to fall back to mouse.
-func _update_stick_aim() -> void:
-	var rx := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
-	var ry := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
-	var v := Vector2(rx, ry)
-	if v.length() >= _AIM_STICK_DEADZONE:
-		# Stick (x,y) maps onto world XZ; right = +x, down = +z (toward camera).
-		_stick_aim = atan2(v.y, v.x)
-	else:
-		_stick_aim = NAN

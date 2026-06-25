@@ -33,6 +33,8 @@ const AMBIENT_LIGHT_ENERGY := 0.72
 @export var cam_tilt_min_deg := 34.0
 @export var cam_tilt_max_deg := 72.0
 @export var cam_drag_sensitivity := 0.18
+@export var cam_stick_rot_speed := 90.0   # degrees/sec for right-stick yaw
+@export var cam_stick_zoom_speed := 0.5   # zoom units/sec for right-stick Y
 
 var _net                       # Net (Node)
 var _world: World
@@ -82,6 +84,7 @@ var _decor_cached_live_props_key := ""
 var _cam_zoom := 1.0
 var _cam_zoom_target := 1.0
 var _cam_dragging := false
+var _lt_pressed := false  # tracks LT axis state for skills-menu toggle
 var _connect_banner: Label
 
 func _ready() -> void:
@@ -642,6 +645,15 @@ func _process(dt: float) -> void:
 	# Heightfield 2.5D: lift the camera + its look target by the focus point's ground height so the
 	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
+	# Right stick: X rotates the camera yaw, Y zooms (push up = zoom in).
+	const _STICK_DEAD := 0.15
+	var _rs_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
+	var _rs_y := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	if absf(_rs_x) > _STICK_DEAD:
+		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
+	if absf(_rs_y) > _STICK_DEAD:
+		_cam_zoom_target = clampf(_cam_zoom_target + _rs_y * cam_stick_zoom_speed * dt, cam_zoom_min, cam_zoom_max)
+
 	_cam_zoom = lerpf(_cam_zoom, _cam_zoom_target, clampf(dt * cam_zoom_smooth, 0.0, 1.0))
 	var base_dist := sqrt(cam_height * cam_height + cam_back * cam_back) * _cam_zoom
 	var tilt := deg_to_rad(clampf(cam_tilt_deg, cam_tilt_min_deg, cam_tilt_max_deg))
@@ -899,6 +911,32 @@ func _unhandled_input(e: InputEvent) -> void:
 				_spectate.cycle()
 			KEY_V:
 				_spectate.toggle_mode()
+	# Gamepad menu/action bindings (abilities and dash are handled in InputCtl):
+	#   LB -> inventory   LT -> character/skills
+	#   D-pad Up -> quick potion   D-pad Right -> loot
+	if e is InputEventJoypadButton and e.pressed:
+		match e.button_index:
+			JOY_BUTTON_LEFT_SHOULDER:
+				if _skills.is_open():
+					_skills.close()
+				_inv.toggle()
+				get_viewport().set_input_as_handled()
+			JOY_BUTTON_DPAD_UP:
+				_inv.use_first_potion()
+				get_viewport().set_input_as_handled()
+			JOY_BUTTON_DPAD_RIGHT:
+				if _nearest_bag_id != "":
+					_inv.request_loot(_nearest_bag_id)
+				get_viewport().set_input_as_handled()
+	# LT is an axis trigger; toggle the skills menu on each press (threshold crossing).
+	if e is InputEventJoypadMotion and e.axis == JOY_AXIS_TRIGGER_LEFT:
+		var lt_pressed := e.axis_value > 0.5
+		if lt_pressed and not _lt_pressed:
+			if _inv.is_open():
+				_inv.close()
+			_skills.toggle()
+		_lt_pressed = lt_pressed
+		get_viewport().set_input_as_handled()
 
 func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
