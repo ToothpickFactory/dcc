@@ -277,7 +277,8 @@ func _ready() -> void:
 	var mhud := preload("res://scripts/MobileHud.gd").new()
 	mhud.setup(_inp, _inv, _skills)
 	add_child(mhud)
-	_mhud = mhud
+	if OS.has_feature("mobile"):
+		_mhud = mhud
 
 	_fx = FxLayer.new()
 	add_child(_fx)
