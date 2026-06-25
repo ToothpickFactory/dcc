@@ -142,6 +142,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // Players dirtied by in-tick sim events (loot grants, level-ups). Written as a
   // batch on the next heartbeat instead of inline, avoiding mid-tick SQLite blocks.
   private _dirtyPlayers = new Set<string>();
+  // Prevents the all-dead restart from scheduling multiple times.
+  private _restartPending = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -790,6 +792,21 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     void this.ctx.storage.deleteAlarm();
     this.checkpoint();
     this.broadcastFloorRun();
+  }
+
+  // Called each tick after death events are processed. If every connected player
+  // is now a spectator (wiped), schedule a fresh run after a short delay so they
+  // can see the death state before being snapped back to floor 1.
+  private checkAllDead(): void {
+    if (this.phase !== "running" || this._restartPending) return;
+    const connected = [...this.players.values()].filter((p) => !p.linkdead);
+    if (connected.length === 0) return; // empty room — nothing to restart
+    if ([...this.players.values()].some((p) => p.status === "alive")) return;
+    this._restartPending = true;
+    setTimeout(() => {
+      this._restartPending = false;
+      void this.newRun();
+    }, 5000);
   }
 
   private checkpoint(): void {
@@ -1518,6 +1535,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.checkpoint();
       this.broadcastFloorRun();
     }
+    this.checkAllDead();
     this.broadcast();
     this.events = [];
     if (++this.ticksSincePersist >= PERSIST_EVERY) {
