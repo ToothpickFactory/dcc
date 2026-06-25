@@ -42,6 +42,8 @@ var _dash_pressed := false  # Space / RS-click — drained by consume_dash()
 var _rt_pressed := false    # tracks RT axis state to fire cast 5 on threshold cross
 var _virtual_stick := Vector2.ZERO
 var _last_aim := 0.0  # last known aim angle; held when idle so character keeps facing
+var last_aim: float:   # read-only accessor so Main can freeze aim while menu is open
+    get: return _last_aim
 # Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
 var _is_mobile := false
 

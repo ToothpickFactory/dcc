@@ -619,7 +619,9 @@ func _process(dt: float) -> void:
 			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": maxf(12.0, 24.0 * float(e.get("scale", 1.0)))})
 	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
-	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad)
+	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
+	# the character. aim_from() is skipped entirely to avoid updating _last_aim.
+	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad) if not menu_open else _inp.last_aim
 
 	# Spectate/waiting state machine drives the camera target while out of play.
 	var sp: Dictionary = _spectate.update(_net, mv, Vector2(_pred.x, _pred.y), dt)
@@ -627,28 +629,33 @@ func _process(dt: float) -> void:
 
 	var alive := str(_net.self_dto.get("status", "")) == "alive" and not bool(_net.self_dto.get("reached", false))
 	if alive:
+		# Always send movement (mv=0 when menu open) so server knows to stop the char.
 		_input_accum += dt
 		if _input_accum * 1000.0 >= DccConst.INPUT_MS:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
-		var casts: Array = _inp.take_casts()
-		if not casts.is_empty():
-			var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
-			for idx in casts:
-				_seq += 1
-				_net.send_cast(_seq, int(idx), cast_aim)
-				_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
-		# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
-		if _inp.consume_dash():
-			var now_ms := float(Time.get_ticks_msec())
-			if now_ms >= _dash_ready_at:
-				_dash_ready_at = now_ms + DccConst.DASH_CD
-				var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
-				_seq += 1
-				_net.send_dash(_seq, ddir)
-				_pred.dash(ddir)
-				_sfx.play("dash")
+		if not menu_open:
+			var casts: Array = _inp.take_casts()
+			if not casts.is_empty():
+				var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
+				for idx in casts:
+					_seq += 1
+					_net.send_cast(_seq, int(idx), cast_aim)
+					_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+			# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
+			if _inp.consume_dash():
+				var now_ms := float(Time.get_ticks_msec())
+				if now_ms >= _dash_ready_at:
+					_dash_ready_at = now_ms + DccConst.DASH_CD
+					var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
+					_seq += 1
+					_net.send_dash(_seq, ddir)
+					_pred.dash(ddir)
+					_sfx.play("dash")
+		else:
+			_inp.take_casts()    # drain without firing so queue doesn't back up
+			_inp.consume_dash()  # drain without dashing
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
 	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
@@ -1008,16 +1015,38 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _pad_tap(pos: Vector2) -> void:
-	var press := InputEventScreenTouch.new()
-	press.pressed = true
-	press.position = pos
-	press.index = 0
-	get_viewport().push_input(press)
-	var release := InputEventScreenTouch.new()
-	release.pressed = false
-	release.position = pos
-	release.index = 0
-	get_viewport().push_input(release)
+	var ev := InputEventScreenTouch.new()
+	ev.pressed = false
+	ev.index = 0
+	ev.position = pos
+	# Walk only the active UI layer so HUD controls can't intercept.
+	if _skills.is_open():
+		_fire_at(_skills, pos, ev)
+	elif _inv.is_open() or _inv.loot_open_bag_id() != "":
+		_fire_at(_inv, pos, ev)
+
+# Recursive depth-first search for the deepest interactive Control at logical
+# screen position pos. Buttons get pressed.emit(); other STOP-filter Controls get
+# gui_input.emit() — matching what Godot's GUI router would do, but using logical
+# coordinates so content_scale_factor never misroutes the synthesized event.
+func _fire_at(node: Node, pos: Vector2, ev: InputEvent) -> bool:
+	if node is CanvasItem and not (node as CanvasItem).is_visible_in_tree():
+		return false
+	var children := node.get_children()
+	for i in range(children.size() - 1, -1, -1):
+		if _fire_at(children[i], pos, ev):
+			return true
+	if node is Button:
+		var btn := node as Button
+		if not btn.disabled and btn.get_global_rect().has_point(pos):
+			btn.pressed.emit()
+			return true
+	elif node is Control:
+		var ctrl := node as Control
+		if ctrl.mouse_filter == Control.MOUSE_FILTER_STOP and ctrl.get_global_rect().has_point(pos):
+			ctrl.gui_input.emit(ev)
+			return true
+	return false
 
 func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
