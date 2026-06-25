@@ -969,11 +969,8 @@ func _unhandled_input(e: InputEvent) -> void:
 		if _any_menu:
 			match e.button_index:
 				JOY_BUTTON_A:
-					# Synthesize a touch-tap at the cursor — works with all gui_input tiles.
-					var tap := InputEventScreenTouch.new()
-					tap.pressed = false
-					tap.position = _pad_cursor_pos
-					Input.parse_input_event(tap)
+					# Defer so push_input isn't called from inside an active dispatch.
+					call_deferred(&"_pad_tap", _pad_cursor_pos)
 					get_viewport().set_input_as_handled()
 					return
 				JOY_BUTTON_B:
@@ -1005,6 +1002,18 @@ func _unhandled_input(e: InputEvent) -> void:
 				_skills.toggle()
 			_lt_pressed = lt_pressed
 			get_viewport().set_input_as_handled()
+
+func _pad_tap(pos: Vector2) -> void:
+	var press := InputEventScreenTouch.new()
+	press.pressed = true
+	press.position = pos
+	press.index = 0
+	get_viewport().push_input(press)
+	var release := InputEventScreenTouch.new()
+	release.pressed = false
+	release.position = pos
+	release.index = 0
+	get_viewport().push_input(release)
 
 func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
