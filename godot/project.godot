@@ -21,7 +21,7 @@ driver/output_latency=50
 
 [display]
 
-window/handheld/orientation=2
+window/handheld/orientation=4
 
 [dotnet]
 
