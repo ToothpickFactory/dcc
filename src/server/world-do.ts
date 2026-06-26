@@ -1518,15 +1518,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const id = this.topThreat(this.boss.threat);
         const winner = id ? this.players.get(id) : null;
         if (winner) this.grantLoot(winner, "kill", this.floor.depth >= 10 ? "legendary" : "epic");
-        // ...and a hoard for the whole party — dropped at the stairs (always
-        // visible on the way out) rather than at the boss's death spot which can
-        // be anywhere in the dungeon (PG-4).
         const bossRarity: Rarity = this.floor.depth >= 10 ? "legendary" : "epic";
         const hoard = Array.from({ length: 3 + Math.floor(this.gearRng() * 3) }, () =>
           generateItem(this.floor.depth, this.gearRng() < 0.5 ? bossRarity : "rare", this.gearRng),
         );
-        const { x: sx, y: sy } = this.floor.stairs;
-        this.dropLoot(sx, sy, hoard, this.boss.id);
+        this.dropLoot(this.boss.x, this.boss.y, hoard, this.boss.id);
       }
     }
     // Clear the boss reference only AFTER the event loop so the death event above
