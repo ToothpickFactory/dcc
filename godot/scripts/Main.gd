@@ -58,6 +58,8 @@ var _loot_prompt: Label
 var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
+var _floor_stairs: Dictionary = {}  # raw stairs dict from geometry (saved even when hidden)
+var _floor_key := ""               # "seed_depth" — unique per floor even if same depth across runs
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
@@ -87,6 +89,8 @@ var _cam_dragging := false
 var _lt_pressed := false  # tracks LT axis state for skills-menu toggle
 var _pad_cursor_pos := Vector2.ZERO
 var _pad_cursor_node: Control = null
+const WEAPON_DAMAGE_TYPES := ["fire", "frost", "poison", "bleed", "stun", "holy", "dark"]
+var _weapon_damage_types: Dictionary = {}
 var _menu_was_open := false
 var _connect_banner: Label
 
@@ -275,7 +279,8 @@ func _ready() -> void:
 	var mhud := preload("res://scripts/MobileHud.gd").new()
 	mhud.setup(_inp, _inv, _skills)
 	add_child(mhud)
-	_mhud = mhud
+	if OS.has_feature("mobile"):
+		_mhud = mhud
 
 	_fx = FxLayer.new()
 	add_child(_fx)
@@ -293,15 +298,35 @@ func _ready() -> void:
 
 	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)
-	_net.inv_received.connect(func(m): _inv.on_inv(m))
-	_net.bag_received.connect(func(m): _inv.on_bag(m))
+	_net.inv_received.connect(func(m):
+		_inv.on_inv(m)
+		var inv_data: Variant = (m as Dictionary).get("inv", {})
+		if inv_data is Dictionary:
+			var all_items: Array = []
+			var carried: Variant = (inv_data as Dictionary).get("carried", [])
+			if carried is Array:
+				all_items.append_array(carried as Array)
+			var eq: Variant = (inv_data as Dictionary).get("equipped", {})
+			if eq is Dictionary:
+				for v in (eq as Dictionary).values():
+					if v is Dictionary:
+						all_items.append(v)
+			_assign_weapon_damage_types(all_items)
+	)
+	_net.bag_received.connect(func(m):
+		_inv.on_bag(m)
+		var bag_items: Variant = (m as Dictionary).get("items", [])
+		if bag_items is Array:
+			_assign_weapon_damage_types(bag_items as Array)
+	)
 	_net.shop_received.connect(func(m): _inv.on_shop(m))
 	_net.events_received.connect(_on_events)
 	_net.loot_received.connect(_on_loot)
 	_net.closed.connect(_on_net_closed)
 	_net.welcomed.connect(func(you):
 		print("[DCC] welcome you=", you)
-		_hide_connect_banner())
+		_hide_connect_banner()
+		_net.send_msg({"t": "setAutoAttack", "enabled": false}))
 
 	# Name screen before connecting (skipped headless / in diagnostic modes).
 	if _skip_login():
@@ -485,6 +510,10 @@ func _on_events(events: Array) -> void:
 				var self_hit := vp.distance_to(pp) < 38.0
 				_sprites.flash_at(vp.x, vp.y, 70.0, self_hit, "hit")
 				var status := str(ev.get("status", ""))
+				if status == "" and not self_hit:
+					var w: Variant = _current_weapon_loadout().get("mainHand", null)
+					if w is Dictionary:
+						status = str(_weapon_damage_types.get(str((w as Dictionary).get("id", "")), ""))
 				if status != "":
 					_sprites.status_at(vp.x, vp.y, status, 90.0)
 				_fx.spawn_status_glb(vp.x, vp.y, _sprites.nearest_sprite_at(vp.x, vp.y, 70.0), status)
@@ -524,8 +553,31 @@ func _on_events(events: Array) -> void:
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
 				else:
+					# Show the exit immediately using the saved stairs position.
+					# The floor message (broadcastFloorRun) arrives first in normal
+					# ordering, but this covers the fallback case where it arrives
+					# after or the decor/minimap weren't updated yet.
+					if not _floor_stairs.is_empty():
+						_decor.show_stairs(_floor_stairs)
+						_minimap.update_stairs(_floor_stairs)
+						_stairs = Vector2(float(_floor_stairs.get("x", 0.0)), float(_floor_stairs.get("y", 0.0)))
 					_mark_exit_on_minimap()
 					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
+
+func _assign_weapon_damage_types(items: Array) -> void:
+	for item in items:
+		if not (item is Dictionary):
+			continue
+		var item_id := str((item as Dictionary).get("id", ""))
+		if item_id == "" or _weapon_damage_types.has(item_id):
+			continue
+		var wtype := str((item as Dictionary).get("weaponType", (item as Dictionary).get("type", ""))).strip_edges().to_lower()
+		var iname := str((item as Dictionary).get("name", "")).to_lower()
+		var is_weapon := ["axe", "flail", "shield", "sword"].has(wtype) \
+			or iname.contains("axe") or iname.contains("flail") \
+			or iname.contains("shield") or iname.contains("sword") or iname.contains("blade")
+		if is_weapon:
+			_weapon_damage_types[item_id] = WEAPON_DAMAGE_TYPES[randi() % WEAPON_DAMAGE_TYPES.size()]
 
 # Global color-emoji fallback so emoji glyphs (item/ability/status icons) render instead
 # of tofu. Prefer a bundled font if someone dropped one in res://fonts/; otherwise use the
@@ -559,6 +611,26 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 			"Deploy it (npm run deploy) or run vs local: DCC_WS=ws://127.0.0.1:8787/ws against npm run dev.")
 		_hud.toast("No floor geometry — deploy the server (protocol v6)", _color_of("#ff8a8a"))
 		return
+	# Always save the raw stairs dict so the boss-death handler can use it even
+	# when exitOpen was false on the first receive (stairs are omitted from decor
+	# until the boss dies, but we need the coordinates for when it opens).
+	_floor_stairs = geometry.get("stairs", {})
+	# Use seed+depth as the floor key so a new run that starts at depth 1 is not
+	# confused with a same-floor boss-death re-send (index == depth, so it repeats).
+	var new_floor_key := "%d_%d" % [int(info.get("seed", 0)), int(info.get("depth", 0))]
+	var same_floor := not _floor_key.is_empty() and new_floor_key == _floor_key
+	if same_floor:
+		# Same floor re-send: the server is telling us exitOpen changed (boss died).
+		# Avoid a full world rebuild — just show the exit without resetting fog or
+		# replaying the descent title/sound.
+		var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
+		if not stairs.is_empty():
+			_decor.show_stairs(stairs)
+			_minimap.update_stairs(stairs)
+			_stairs = Vector2(float(stairs.get("x", 0.0)), float(stairs.get("y", 0.0)))
+			_mark_exit_on_minimap()
+		return
+	_floor_key = new_floor_key
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
 	_fog.attach(_world)
@@ -566,7 +638,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	var forced_theme := OS.get_environment("DCC_FORCE_THEME")
 	if forced_theme != "":
 		theme = forced_theme
-	var stairs: Dictionary = geometry.get("stairs", {}) if bool(_net.floor_state.get("exitOpen", true)) else {}
+	var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
 	_decor.apply(theme, geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
@@ -588,7 +660,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if OS.get_environment("DCC_DEBUG") != "":
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
-		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", geometry.get("stairs", {}))
+		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", _floor_stairs)
 
 func _mark_exit_on_minimap() -> void:
 	if _minimap == null:
@@ -619,7 +691,9 @@ func _process(dt: float) -> void:
 			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": maxf(12.0, 24.0 * float(e.get("scale", 1.0)))})
 	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
-	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad)
+	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
+	# the character. aim_from() is skipped entirely to avoid updating _last_aim.
+	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad) if not menu_open else _inp.last_aim
 
 	# Spectate/waiting state machine drives the camera target while out of play.
 	var sp: Dictionary = _spectate.update(_net, mv, Vector2(_pred.x, _pred.y), dt)
@@ -627,28 +701,33 @@ func _process(dt: float) -> void:
 
 	var alive := str(_net.self_dto.get("status", "")) == "alive" and not bool(_net.self_dto.get("reached", false))
 	if alive:
+		# Always send movement (mv=0 when menu open) so server knows to stop the char.
 		_input_accum += dt
 		if _input_accum * 1000.0 >= DccConst.INPUT_MS:
 			_input_accum = 0.0
 			_seq += 1
 			_net.send_input(_seq, mv, aim)
-		var casts: Array = _inp.take_casts()
-		if not casts.is_empty():
-			var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
-			for idx in casts:
-				_seq += 1
-				_net.send_cast(_seq, int(idx), cast_aim)
-				_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
-		# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
-		if _inp.consume_dash():
-			var now_ms := float(Time.get_ticks_msec())
-			if now_ms >= _dash_ready_at:
-				_dash_ready_at = now_ms + DccConst.DASH_CD
-				var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
-				_seq += 1
-				_net.send_dash(_seq, ddir)
-				_pred.dash(ddir)
-				_sfx.play("dash")
+		if not menu_open:
+			var casts: Array = _inp.take_casts()
+			if not casts.is_empty():
+				var cast_aim := _assist_aim(aim)  # light snap toward a nearby enemy in the aim cone
+				for idx in casts:
+					_seq += 1
+					_net.send_cast(_seq, int(idx), cast_aim)
+					_hud.pulse_slot(int(idx))  # bar-slot punch on cast (readability)
+			# Dodge/dash (Space / LB): client-gated cooldown, predicted burst + whoosh.
+			if _inp.consume_dash():
+				var now_ms := float(Time.get_ticks_msec())
+				if now_ms >= _dash_ready_at:
+					_dash_ready_at = now_ms + DccConst.DASH_CD
+					var ddir: Vector2 = mv if mv.length() > 0.01 else Vector2(cos(aim), sin(aim))
+					_seq += 1
+					_net.send_dash(_seq, ddir)
+					_pred.dash(ddir)
+					_sfx.play("dash")
+		else:
+			_inp.take_casts()    # drain without firing so queue doesn't back up
+			_inp.consume_dash()  # drain without dashing
 
 	# Camera + fog centre: predicted player in play, spectate target while waiting/dead.
 	# Smoothed follow (lerp toward the target) + decaying screenshake on taking damage.
@@ -1008,16 +1087,38 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _pad_tap(pos: Vector2) -> void:
-	var press := InputEventScreenTouch.new()
-	press.pressed = true
-	press.position = pos
-	press.index = 0
-	get_viewport().push_input(press)
-	var release := InputEventScreenTouch.new()
-	release.pressed = false
-	release.position = pos
-	release.index = 0
-	get_viewport().push_input(release)
+	var ev := InputEventScreenTouch.new()
+	ev.pressed = false
+	ev.index = 0
+	ev.position = pos
+	# Walk only the active UI layer so HUD controls can't intercept.
+	if _skills.is_open():
+		_fire_at(_skills, pos, ev)
+	elif _inv.is_open() or _inv.loot_open_bag_id() != "":
+		_fire_at(_inv, pos, ev)
+
+# Recursive depth-first search for the deepest interactive Control at logical
+# screen position pos. Buttons get pressed.emit(); other STOP-filter Controls get
+# gui_input.emit() — matching what Godot's GUI router would do, but using logical
+# coordinates so content_scale_factor never misroutes the synthesized event.
+func _fire_at(node: Node, pos: Vector2, ev: InputEvent) -> bool:
+	if node is CanvasItem and not (node as CanvasItem).is_visible_in_tree():
+		return false
+	var children := node.get_children()
+	for i in range(children.size() - 1, -1, -1):
+		if _fire_at(children[i], pos, ev):
+			return true
+	if node is Button:
+		var btn := node as Button
+		if not btn.disabled and btn.get_global_rect().has_point(pos):
+			btn.pressed.emit()
+			return true
+	elif node is Control:
+		var ctrl := node as Control
+		if ctrl.mouse_filter == Control.MOUSE_FILTER_STOP and ctrl.get_global_rect().has_point(pos):
+			ctrl.gui_input.emit(ev)
+			return true
+	return false
 
 func _color_of(s: String) -> Color:
 	if s.begins_with("#"):

@@ -771,6 +771,7 @@ func _model_profile_for_entity() -> Dictionary:
 		var label := "Kevin"
 		var anim_aliases: Dictionary = {}
 		var model_scale := HERO_MODEL_SCALE
+		var model_rot_deg: Variant = null
 		match _chosen_class:
 			"warrior":
 				model_path = BARBARIAN_MODEL_PATH
@@ -799,6 +800,8 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
+		if model_rot_deg != null:
+			profile["rotation_degrees"] = model_rot_deg
 		return profile
 	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
@@ -1190,9 +1193,10 @@ func _attach_weapon_to_model(profile: Dictionary) -> void:
 		push_warning("Weapon attachment skipped: no right-hand bone found for %s" % str(profile.get("label", "model")))
 		return
 	var main_item: Dictionary = _equipped_item("mainHand")
-	var main_spec := _weapon_spec_from_item(main_item, "flail", "rare")
-	if str(main_spec.get("type", "")) != "shield":
-		_attach_weapon_instance(skeleton, main_bone, main_spec, false)
+	if not main_item.is_empty():
+		var main_spec := _weapon_spec_from_item(main_item, "flail", "rare")
+		if str(main_spec.get("type", "")) != "shield":
+			_attach_weapon_instance(skeleton, main_bone, main_spec, false)
 
 	var off_item: Dictionary = _equipped_item("offHand")
 	if off_item.is_empty():

@@ -27,11 +27,7 @@ let seq = 0;
 export function updateBoss(ctx: WorldCtx, dt: number): void {
   const boss = ctx.boss;
   if (!boss) return;
-  if (boss.dead) {
-    if (ctx.corpseLootExists(boss.id)) return;
-    ctx.boss = null; // cleared the tick after death (events already emitted)
-    return;
-  }
+  if (boss.dead) return; // dead boss: no AI updates; ctx.boss is nulled by the tick once corpse loot is claimed
 
   // Hard CC: a stun/freeze fully locks the boss out (its wind-ups were cancelled when the
   // CC landed) — the floor's interrupt window. A root only pins its movement (below).

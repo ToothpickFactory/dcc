@@ -653,6 +653,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = this.makeFloor(seed, 1, false);
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
+    this.lootBags = []; // fresh run — wipe bags from the previous run
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -783,6 +784,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.floor = this.makeFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
+    this.lootBags = []; // previous floor's bags are now unreachable
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
@@ -1499,7 +1501,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       const nowMs = Date.now();
       this.lootBags = this.lootBags.filter((b) => (b.corpseId ? true : b.expiresAt > nowMs && b.items.length > 0));
     }
-
     // Permadeath must be durable the instant it happens, not on the next
     // heartbeat — persist any player who died this tick.
     let exitUnlocked = false;
@@ -1517,14 +1518,17 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const id = this.topThreat(this.boss.threat);
         const winner = id ? this.players.get(id) : null;
         if (winner) this.grantLoot(winner, "kill", this.floor.depth >= 10 ? "legendary" : "epic");
-        // ...and a hoard for the whole party — a great-gear bag at its lair, so a
-        // group is rewarded together, not just the top-damage hero (PG-4).
         const bossRarity: Rarity = this.floor.depth >= 10 ? "legendary" : "epic";
         const hoard = Array.from({ length: 3 + Math.floor(this.gearRng() * 3) }, () =>
           generateItem(this.floor.depth, this.gearRng() < 0.5 ? bossRarity : "rare", this.gearRng),
         );
         this.dropLoot(this.boss.x, this.boss.y, hoard, this.boss.id);
       }
+    }
+    // Clear the boss reference only AFTER the event loop so the death event above
+    // always fires with this.boss intact on the same tick loot is created.
+    if (this.boss?.dead && !this.corpseLootExists(this.boss.id)) {
+      this.boss = null;
     }
 
     // All living players reached the stairs -> descend early (the other advance

@@ -51,6 +51,11 @@ func set_floor(grid: Dictionary, stairs: Dictionary) -> void:
 	visible = true
 	queue_redraw()
 
+## Update just the stairs position (e.g. when boss dies and exit opens mid-floor)
+## without clearing discovery or rebuilding the grid.
+func update_stairs(stairs: Dictionary) -> void:
+	_stairs = stairs
+
 func highlight_stairs() -> void:
 	if _grid.is_empty() or _stairs.is_empty():
 		return
