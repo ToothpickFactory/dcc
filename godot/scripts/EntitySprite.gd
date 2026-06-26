@@ -778,6 +778,7 @@ func _model_profile_for_entity() -> Dictionary:
 		var label := "Kevin"
 		var anim_aliases: Dictionary = {}
 		var model_scale := HERO_MODEL_SCALE
+		var model_rot_deg: Variant = null
 		match _chosen_class:
 			"warrior":
 				model_path = BARBARIAN_MODEL_PATH
@@ -796,6 +797,10 @@ func _model_profile_for_entity() -> Dictionary:
 				label = "Rogue"
 				anim_aliases = ROGUE_ANIM_ALIASES
 				model_scale = ROGUE_MODEL_SCALE
+				# Rogue.glb exported with Blender I/O v4.2; Hips bone has ~58° Y-axis
+				# rotation in the bind pose, making the model face a different direction
+				# than other heroes at the same rotation.y. Correct it at import time.
+				model_rot_deg = Vector3(0, -90.0, 0)
 		var profile := {
 			"label": label,
 			"path": model_path,
@@ -808,6 +813,8 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.2,
 			"saturation": 1.2,
 		}
+		if model_rot_deg != null:
+			profile["rotation_degrees"] = model_rot_deg
 		return profile
 	if kind == "proj" and (_projectile_render == "fire" or _sprite_id == FIREBALL_PROJECTILE_SPRITE or _sprite_id == BOSS_BOLT_SPRITE or _sprite_id == MONSTER_BOLT_SPRITE):
 		return {
