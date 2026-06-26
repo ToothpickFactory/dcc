@@ -58,6 +58,8 @@ var _loot_prompt: Label
 var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
+var _floor_stairs: Dictionary = {}  # raw stairs dict from geometry (saved even when hidden)
+var _floor_index := -1              # tracks same-floor re-sends (boss death unlocks exit)
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
@@ -551,6 +553,14 @@ func _on_events(events: Array) -> void:
 				if str(ev.get("state", "")) == "spawn":
 					_hud.toast("⚠ A BOSS has awoken — dodge its bolts! ⚠", Color8(0xe7, 0xb3, 0xff))
 				else:
+					# Show the exit immediately using the saved stairs position.
+					# The floor message (broadcastFloorRun) arrives first in normal
+					# ordering, but this covers the fallback case where it arrives
+					# after or the decor/minimap weren't updated yet.
+					if not _floor_stairs.is_empty():
+						_decor.show_stairs(_floor_stairs)
+						_minimap.update_stairs(_floor_stairs)
+						_stairs = Vector2(float(_floor_stairs.get("x", 0.0)), float(_floor_stairs.get("y", 0.0)))
 					_mark_exit_on_minimap()
 					_hud.toast("☠ The boss has been slain! ☠", Color8(0xff, 0xd3, 0x4d))
 
@@ -601,6 +611,24 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 			"Deploy it (npm run deploy) or run vs local: DCC_WS=ws://127.0.0.1:8787/ws against npm run dev.")
 		_hud.toast("No floor geometry — deploy the server (protocol v6)", _color_of("#ff8a8a"))
 		return
+	# Always save the raw stairs dict so the boss-death handler can use it even
+	# when exitOpen was false on the first receive (stairs are omitted from decor
+	# until the boss dies, but we need the coordinates for when it opens).
+	_floor_stairs = geometry.get("stairs", {})
+	var new_index := int(info.get("index", -1))
+	var same_floor := (new_index >= 0 and new_index == _floor_index)
+	if same_floor:
+		# Same floor re-send: the server is telling us exitOpen changed (boss died).
+		# Avoid a full world rebuild — just show the exit without resetting fog or
+		# replaying the descent title/sound.
+		var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
+		if not stairs.is_empty():
+			_decor.show_stairs(stairs)
+			_minimap.update_stairs(stairs)
+			_stairs = Vector2(float(stairs.get("x", 0.0)), float(stairs.get("y", 0.0)))
+			_mark_exit_on_minimap()
+		return
+	_floor_index = new_index
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
 	_fog.attach(_world)
@@ -608,7 +636,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	var forced_theme := OS.get_environment("DCC_FORCE_THEME")
 	if forced_theme != "":
 		theme = forced_theme
-	var stairs: Dictionary = geometry.get("stairs", {}) if bool(_net.floor_state.get("exitOpen", true)) else {}
+	var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
 	_decor.apply(theme, geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
 	_sprites.set_grid(_world.grid)
@@ -630,7 +658,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if OS.get_environment("DCC_DEBUG") != "":
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
-		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", geometry.get("stairs", {}))
+		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", _floor_stairs)
 
 func _mark_exit_on_minimap() -> void:
 	if _minimap == null:

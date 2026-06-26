@@ -114,6 +114,7 @@ var _hazard_wall_tex: Texture2D
 var _stairs_pulse := 0.0
 var _stairs_tex_h := 64.0  # cached stairs texture height, for the pulse pixel_size
 var _stairs_base := Color.WHITE  # base tint (white for art, green for the fallback)
+var _theme := ""  # saved by apply() so show_stairs() can use it
 
 
 func _process(dt: float) -> void:
@@ -169,6 +170,7 @@ func _process(dt: float) -> void:
 ## Theme the floor: retexture World's ground/wall materials and spawn decoration +
 ## stairs billboards. Mirrors applyTileTheme + applyPropTheme from render.ts.
 func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array = [], portals: Array = []) -> void:
+	_theme = theme
 	clear()
 	if not THEMES.has(theme):
 		# Unknown theme: leave World on its flat fallback colours, no props.
@@ -280,6 +282,34 @@ func clear() -> void:
 		stairs_sprite.queue_free()
 	stairs_sprite = null
 	_stairs_pulse = 0.0
+
+
+## Show the exit staircase without clearing decorations. Called when the boss dies
+## and exitOpen flips to true after the initial floor was built without stairs.
+func show_stairs(stairs: Dictionary) -> void:
+	if stairs.is_empty() or not THEMES.has(_theme):
+		return
+	# Ice dungeon uses a 3D scene; other themes use the billboard sprite.
+	if _theme == "icedungeon":
+		if _ice_stairs_scene != null or ResourceLoader.exists(ICE_STAIRS_SCENE):
+			var sx := float(stairs.get("x", 0.0))
+			var sy := float(stairs.get("y", 0.0))
+			_place_ice_stairs(sx, sy)
+	else:
+		if stairs_sprite != null:
+			return  # Already placed.
+		var props := _load_props(_theme)
+		var sx := float(stairs.get("x", 0.0))
+		var sy := float(stairs.get("y", 0.0))
+		var stairs_tex: Texture2D = props[0] if props.size() > 0 else null
+		stairs_sprite = _make_billboard(stairs_tex, sx, STAIRS_Y + _gh(sx, sy), sy, 120.0)
+		_stairs_tex_h = float(stairs_tex.get_height()) if (stairs_tex != null and stairs_tex.get_height() > 0) else 64.0
+		if stairs_tex == null:
+			stairs_sprite.modulate = STAIRS_FALLBACK
+			_stairs_base = STAIRS_FALLBACK
+		else:
+			_stairs_base = Color.WHITE
+		add_child(stairs_sprite)
 
 
 # --- internal -------------------------------------------------------------
