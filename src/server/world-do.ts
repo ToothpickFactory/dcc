@@ -1501,6 +1501,13 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       const nowMs = Date.now();
       this.lootBags = this.lootBags.filter((b) => (b.corpseId ? true : b.expiresAt > nowMs && b.items.length > 0));
     }
+    // Once a dead boss's corpse bag is fully looted, clear the reference so it
+    // leaves the entity list. Doing this AFTER the bag filter (not inside
+    // updateBoss) ensures the boss death event loop below still sees this.boss
+    // on the same tick the boss dies and can drop loot.
+    if (this.boss?.dead && !this.corpseLootExists(this.boss.id)) {
+      this.boss = null;
+    }
 
     // Permadeath must be durable the instant it happens, not on the next
     // heartbeat — persist any player who died this tick.
