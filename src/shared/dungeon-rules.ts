@@ -33,16 +33,18 @@ export const ENEMIES_BY_THEME: Record<Theme, EnemyVisualKind[]> = {
   forest: ["ent", "skeleton", "troll", "wraith"],
   fantasy: ["goblin", "orc"],
   clockwork: ["goblin", "wraith", "zombie"],
-  nightmare: ["ghoul", "infernax", "skeleton", "wraith", "zombie"],
+  nightmare: ["fire_elemental", "ghoul", "infernax", "skeleton", "wraith", "zombie"],
   pirate: ["pirate", "sharkman"],
-  icedungeon: ["wraith"],
+  icedungeon: ["ice_giant", "wraith"],
 };
 
 export const ENEMY_ATTACKS: Record<EnemyVisualKind, AttackProfile> = {
   alien_squid: { bolt: "electric", melee: "bleed" },
   ent: { bolt: "poison", melee: "stun" },
+  fire_elemental: { bolt: "fire", melee: "fire" },
   ghoul: { bolt: "shadow", melee: "shadow" },
   goblin: { bolt: "bleed", melee: "bleed" },
+  ice_giant: { bolt: "frost", melee: "frost" },
   infernax: { bolt: "fire", melee: "shadow" },
   orc: { bolt: "electric", melee: "stun" },
   pirate: { bolt: "frost", melee: "bleed" },

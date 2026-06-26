@@ -49,23 +49,7 @@ const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animat
 const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
 const PALADIN_MODEL_PATH := "res://assets/Heroes/Paladin/Paladin-3d-animated.glb"
 const RANGER_MODEL_PATH := "res://assets/Heroes/Ranger/Ranger-3d-animated.glb"
-const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue.glb"
-const ROGUE_MODEL_SCALE := 42.0
-const ROGUE_ANIM_ALIASES := {
-	"idle": ["Sneaky_Walk"],
-	"run": ["Running", "Walking", "Sneaky_Walk"],
-	"slash_a": ["Thrust_Slash", "Counterstrike", "Punch_Combo_3"],
-	"slash_b": ["Counterstrike", "Thrust_Slash", "Punch_Combo_3"],
-	"slash_c": ["Punch_Combo_3", "Jumping_Punch", "Thrust_Slash"],
-	"strike": ["Thrust_Slash", "Counterstrike", "Punch_Combo_3"],
-	"punch": ["Punch_Combo_3", "Jumping_Punch", "Counterstrike"],
-	"kick": ["Jumping_Punch", "Punch_Combo_3", "Counterstrike"],
-	"cast": ["baseball_pitching", "Jumping_Punch", "Counterstrike"],
-	"bolt": ["baseball_pitching", "Jumping_Punch", "Counterstrike"],
-	"hit": ["Hit_Reaction_1"],
-	"hurt": ["Hit_Reaction_1"],
-	"death": ["Dead"],
-}
+const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue-3d-animated.glb"
 const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
 const HERO_CLASS_IDS := ["warrior", "mage", "priest", "hunter", "rogue"]
 const BOSS_ROOT := "res://assets/Bosses/Slime"
@@ -121,9 +105,15 @@ const ENT_ANIM_ALIASES := {
 const ALIEN_SQUID_MODEL_PATH := "res://assets/Enemies/AlienSquid/AlienSquid.glb"
 const ALIEN_SQUID_MODEL_SCALE := 86.0
 const ALIEN_SQUID_LIGHT_ENERGY := 1.85
+const FIRE_ELEMENTAL_MODEL_PATH := "res://assets/Enemies/FireElemental/FireElemental.glb"
+const FIRE_ELEMENTAL_MODEL_SCALE := 118.0
+const FIRE_ELEMENTAL_LIGHT_ENERGY := 1.9
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
+const ICE_GIANT_MODEL_PATH := "res://assets/Enemies/IceGiant/IceGiant.glb"
+const ICE_GIANT_MODEL_SCALE := 132.0
+const ICE_GIANT_LIGHT_ENERGY := 1.75
 const INFERNAX_MODEL_PATH := "res://assets/Enemies/Infernax/Warlock - Infernax (Transformation)-3d-animated.glb"
 const INFERNAX_MODEL_SCALE := 122.0
 const INFERNAX_LIGHT_ENERGY := 1.65
@@ -148,7 +138,7 @@ const WRAITH_LIGHT_ENERGY := 1.7
 const ZOMBIE_MODEL_PATH := "res://assets/Enemies/Zombie/Zombie-3d-animated.glb"
 const ZOMBIE_MODEL_SCALE := 118.0
 const ZOMBIE_LIGHT_ENERGY := 1.5
-const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie", "Ent"]
+const ENEMY_ROOTS := ["Goblin", "Ghoul", "Infernax", "Orc", "Pirate", "SharkMan", "Skeleton", "Troll", "Wraith", "Zombie", "Ent", "FireElemental", "IceGiant"]
 const POISON_PROJECTILE_SPRITE := 95 # src/shared/constants.ts POISON_PROJECTILE_SPRITE
 const ICE_PROJECTILE_SPRITE := 96 # src/shared/constants.ts ICE_PROJECTILE_SPRITE
 const FIREBALL_PROJECTILE_SPRITE := 97 # src/shared/constants.ts FIREBALL_PROJECTILE_SPRITE
@@ -167,10 +157,9 @@ const LOOT_LIGHT_ENERGY := 1.8
 const HERO_FLAIL_SCENE_PATH := "res://scenes/weapons/flail.tscn"
 const HERO_MAIN_HAND_BONES := ["RightHand", "mixamorig:RightHand", "right_hand", "hand.R"]
 const HERO_OFF_HAND_BONES := ["LeftHand", "mixamorig:LeftHand", "left_hand", "hand.L"]
-const HERO_WEAPON_OFFSET := Vector3(0.0, 0.12, 0.0)
+const HERO_WEAPON_OFFSET := Vector3.ZERO
 const HERO_OFFHAND_OFFSET := Vector3(0.0, 0.10, 0.0)
 const HERO_WEAPON_ROTATION_DEGREES := Vector3(0.0, 0.0, 0.0)
-const HERO_SWORD_ROTATION_DEGREES := Vector3(0.0, 0.0, 180.0)
 const HERO_OFFHAND_ROTATION_DEGREES := Vector3(0.0, 180.0, 0.0)
 const WEAPON_ASSET_RARITY := {
 	"common": "Common",
@@ -749,10 +738,14 @@ func _enemy_root() -> String:
 	match _monster_kind:
 		"alien_squid", "aliensquid":
 			return "res://assets/Enemies/AlienSquid"
+		"fire_elemental", "fireelemental":
+			return "res://assets/Enemies/FireElemental"
 		"ghoul":
 			return "res://assets/Enemies/Ghoul"
 		"goblin":
 			return "res://assets/Enemies/Goblin"
+		"ice_giant", "icegiant":
+			return "res://assets/Enemies/IceGiant"
 		"infernax":
 			return "res://assets/Enemies/Infernax"
 		"orc":
@@ -794,8 +787,6 @@ func _model_profile_for_entity() -> Dictionary:
 			"rogue":
 				model_path = ROGUE_MODEL_PATH
 				label = "Rogue"
-				anim_aliases = ROGUE_ANIM_ALIASES
-				model_scale = ROGUE_MODEL_SCALE
 		var profile := {
 			"label": label,
 			"path": model_path,
@@ -910,6 +901,18 @@ func _model_profile_for_entity() -> Dictionary:
 				"contrast": 1.25,
 				"saturation": 1.15,
 			}
+		if root.ends_with("/FireElemental"):
+			return {
+				"label": "Fire Elemental",
+				"path": FIRE_ELEMENTAL_MODEL_PATH,
+				"scale": FIRE_ELEMENTAL_MODEL_SCALE,
+				"model_y": 68.0,
+				"light_energy": FIRE_ELEMENTAL_LIGHT_ENERGY,
+				"light_range": 340.0,
+				"light_y": 118.0,
+				"contrast": 1.35,
+				"saturation": 1.35,
+			}
 		if root.ends_with("/Ghoul"):
 			return {
 				"label": "Ghoul",
@@ -921,6 +924,18 @@ func _model_profile_for_entity() -> Dictionary:
 				"light_y": 106.0,
 				"contrast": 1.25,
 				"saturation": 1.2,
+			}
+		if root.ends_with("/IceGiant"):
+			return {
+				"label": "Ice Giant",
+				"path": ICE_GIANT_MODEL_PATH,
+				"scale": ICE_GIANT_MODEL_SCALE,
+				"model_y": 73.0,
+				"light_energy": ICE_GIANT_LIGHT_ENERGY,
+				"light_range": 330.0,
+				"light_y": 122.0,
+				"contrast": 1.3,
+				"saturation": 1.25,
 			}
 		if root.ends_with("/Infernax"):
 			return {
@@ -1213,8 +1228,6 @@ func _attach_weapon_instance(skeleton: Skeleton3D, bone_name: String, spec: Dict
 	weapon.scale = Vector3.ONE * _weapon_scale_for(weapon_type)
 	weapon.position = HERO_OFFHAND_OFFSET if offhand else _weapon_offset_for(weapon_type)
 	weapon.rotation_degrees = HERO_OFFHAND_ROTATION_DEGREES if offhand else _weapon_rotation_for(weapon_type)
-	if weapon_type == "sword":
-		_align_sword_grip_to_origin(weapon)
 	if weapon_type == "flail" and weapon.has_method("configure_ball_model"):
 		weapon.call("configure_ball_model", _flail_ball_path(str(spec.get("asset_rarity", "Rare"))))
 	attachment.add_child(weapon)
@@ -1288,59 +1301,7 @@ func _weapon_offset_for(weapon_type: String) -> Vector3:
 	return HERO_WEAPON_OFFSET
 
 func _weapon_rotation_for(weapon_type: String) -> Vector3:
-	if weapon_type == "sword":
-		return HERO_SWORD_ROTATION_DEGREES
 	return HERO_WEAPON_ROTATION_DEGREES
-
-func _align_sword_grip_to_origin(weapon: Node3D) -> void:
-	var result: Array = [false, Vector3.ZERO, Vector3.ZERO]
-	_collect_local_bounds(weapon, Transform3D.IDENTITY, result)
-	if not bool(result[0]):
-		return
-	var min_v: Vector3 = result[1]
-	var max_v: Vector3 = result[2]
-	var size := max_v - min_v
-	var axis := 1
-	var length := size.y
-	if size.x > length:
-		axis = 0
-		length = size.x
-	if size.z > length:
-		axis = 2
-	var center := (min_v + max_v) * 0.5
-	var shift := Vector3(-center.x, -center.y, -center.z)
-	match axis:
-		0:
-			shift.x = -max_v.x
-		1:
-			shift.y = -max_v.y
-		2:
-			shift.z = -max_v.z
-	for child in weapon.get_children():
-		if child is Node3D:
-			(child as Node3D).position += shift
-
-func _collect_local_bounds(node: Node, to_root: Transform3D, result: Array) -> void:
-	if node is MeshInstance3D:
-		var mesh_node := node as MeshInstance3D
-		var aabb := mesh_node.get_aabb()
-		var p := aabb.position
-		var e := aabb.position + aabb.size
-		for x in [p.x, e.x]:
-			for y in [p.y, e.y]:
-				for z in [p.z, e.z]:
-					var point: Vector3 = to_root * Vector3(x, y, z)
-					if not bool(result[0]):
-						result[0] = true
-						result[1] = point
-						result[2] = point
-					else:
-						result[1] = (result[1] as Vector3).min(point)
-						result[2] = (result[2] as Vector3).max(point)
-	for child in node.get_children():
-		if child is Node3D:
-			var child3d := child as Node3D
-			_collect_local_bounds(child3d, to_root * child3d.transform, result)
 
 func _clear_weapons() -> void:
 	for attachment in _weapon_attachments:

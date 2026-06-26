@@ -11,7 +11,7 @@ import type { Ability, AbilityFlavor, CcKind, DamageType, EnemyVisualKind, Klass
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 25; // was 24 - stage-specific enemy/boss damage profiles
+export const PROTOCOL_VERSION = 26; // was 25 - FireElemental/IceGiant enemy visual kinds
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
