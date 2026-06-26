@@ -8,13 +8,47 @@ extends Node3D
 
 const WALL_H := 220.0  # wall box height (px). Tall, cliff-like — paired with the lower 3/4 camera.
 const WALL_SKIRT := 300.0  # extra height extending each wall box DOWNWARD, so on sloped/sunken terrain the base never lifts off the floor and shows a gap (heightfield 2.5D).
+const MODEL_WALL_TARGET_H := 210.0
+const FANTASY_WALL_TARGET_H := MODEL_WALL_TARGET_H * 1.5
+const FOREST_WALL_TARGET_H := 255.0
+const ICE_WALL_TARGET_H := 240.0
+const MODEL_WALL_FOOTPRINT := 1.12
+const EDGE_WALL_THEMES := ["cyberpunk", "fantasy"]
+const CLUSTER_WALL_THEMES := ["forest", "icedungeon"]
+const WALL_SHADOW_ALPHA := 0.62
+const WALL_MODEL_SCENES := {
+	"cyberpunk": [
+		"res://assets/Tiles/3D/CyberPunk/Walls/WallA.glb",
+		"res://assets/Tiles/3D/CyberPunk/Walls/WallB.glb",
+		"res://assets/Tiles/3D/CyberPunk/Walls/WallC.glb",
+	],
+	"fantasy": [
+		"res://assets/Tiles/3D/Dungeon/Walls/WallA.glb",
+	],
+	"icedungeon": [
+		"res://assets/Tiles/3D/Ice/Walls/WallA.glb",
+	],
+	"forest": [
+		"res://assets/Tiles/3D/Forest/Walls/Pine.glb",
+		"res://assets/Tiles/3D/Forest/Walls/Redwood.glb",
+		"res://assets/Tiles/3D/Forest/Walls/Tree.glb",
+	],
+}
 
 var grid: Dictionary = {}
 var _walls: MultiMeshInstance3D
+var _wall_models := Node3D.new()
+var _wall_model_nodes: Array[Node3D] = []
+var _wall_scene_cache: Dictionary = {}
+var _wall_shadow_mat: StandardMaterial3D
 var _ground: MeshInstance3D
 var _ground_mat: StandardMaterial3D
 var _wall_mat: StandardMaterial3D
 var _fog: Node  # set by Fog.attach(); themed tiles route into the fog shader when present
+
+func _init() -> void:
+	_wall_models.name = "WallModels"
+	add_child(_wall_models)
 
 func build(geometry: Dictionary) -> void:
 	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")))
@@ -33,6 +67,14 @@ func ground_instance() -> GeometryInstance3D:
 ## The wall MultiMeshInstance3D (null until build()). For Fog.material_override.
 func wall_instance() -> GeometryInstance3D:
 	return _walls
+
+func model_wall_nodes() -> Array[Node3D]:
+	return _wall_model_nodes
+
+func set_wall_model_shadowed(node: Node3D, shadowed: bool) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	_apply_wall_model_shadow(node, shadowed)
 
 ## Base albedo of the flat ground (render.ts floor 0x161d2e), for the fog fallback.
 func ground_color() -> Color:
@@ -92,6 +134,19 @@ func set_wall_texture(tex: Texture2D) -> void:
 	_wall_mat.albedo_texture = tex
 	_wall_mat.albedo_color = Color.WHITE
 
+func set_wall_model_theme(theme: String) -> void:
+	_clear_wall_models()
+	if _walls:
+		_walls.visible = true
+	if not WALL_MODEL_SCENES.has(theme) or grid.is_empty():
+		return
+	var scenes := _load_wall_scenes(theme)
+	if scenes.is_empty():
+		return
+	if _walls:
+		_walls.visible = false
+	_build_wall_models(theme, scenes)
+
 func _build_ground() -> void:
 	if _ground:
 		_ground.queue_free()
@@ -140,6 +195,7 @@ func _build_ground_mesh(w: int, h: int, cell: float) -> ArrayMesh:
 func _build_walls() -> void:
 	if _walls:
 		_walls.queue_free()
+	_clear_wall_models()
 	var cell: float = grid["cell"]
 	var w: int = grid["w"]
 	var h: int = grid["h"]
@@ -176,3 +232,177 @@ func _build_walls() -> void:
 	_walls = MultiMeshInstance3D.new()
 	_walls.multimesh = mm
 	add_child(_walls)
+
+func _build_wall_models(theme: String, scenes: Array) -> void:
+	var cell: float = grid["cell"]
+	var w: int = grid["w"]
+	var h: int = grid["h"]
+	var solid: PackedByteArray = grid["solid"]
+	for cy in h:
+		for cx in w:
+			if solid[cy * w + cx] != 1 or not _wall_borders_floor(cx, cy, w, h, solid):
+				continue
+			var center := Vector2((cx + 0.5) * cell, (cy + 0.5) * cell)
+			var open_dir := _wall_open_dir(cx, cy, w, h, solid)
+			var placement := center
+			if EDGE_WALL_THEMES.has(theme):
+				placement += open_dir * (cell * 0.5)
+			var holder := Node3D.new()
+			holder.name = "WallModel"
+			holder.position = Vector3(placement.x, Geo.ground_height(grid, placement.x, placement.y), placement.y)
+			holder.rotation.y = _wall_rotation_from_dir(open_dir)
+			holder.set_meta("dcc_world", center)
+			_wall_models.add_child(holder)
+			_wall_model_nodes.append(holder)
+			if CLUSTER_WALL_THEMES.has(theme):
+				_populate_wall_cluster(holder, scenes, cx, cy, cell, theme)
+			else:
+				var scene: PackedScene = scenes[int(_hash01(cx, cy) * float(scenes.size())) % scenes.size()]
+				_add_scaled_model(holder, scene, cell * MODEL_WALL_FOOTPRINT, _wall_target_height(theme), true)
+
+func _populate_wall_cluster(holder: Node3D, scenes: Array, cx: int, cy: int, cell: float, theme: String) -> void:
+	var count := 2 + int(_hash01(cx + 17, cy + 31) * (2.99 if theme == "forest" else 1.99))
+	for i in count:
+		var scene: PackedScene = scenes[(cx * 19 + cy * 31 + i * 7) % scenes.size()]
+		var piece := Node3D.new()
+		var angle := _hash01(cx + i * 11, cy + i * 23) * TAU
+		var radius := cell * (0.08 + _hash01(cx + i * 5, cy + i * 13) * (0.25 if theme == "forest" else 0.18))
+		piece.position = Vector3(cos(angle) * radius, 0.0, sin(angle) * radius)
+		piece.rotation.y = angle
+		holder.add_child(piece)
+		var base_h := _wall_target_height(theme)
+		var height := base_h * (0.82 + _hash01(cx + i * 43, cy + i * 47) * 0.34)
+		_add_scaled_model(piece, scene, cell * (0.82 if theme == "forest" else 0.68), height, theme == "icedungeon")
+
+func _add_scaled_model(parent: Node3D, scene: PackedScene, target_footprint: float, target_h: float, scale_by_height: bool = false) -> void:
+	var model := scene.instantiate() as Node3D
+	if model == null:
+		return
+	parent.add_child(model)
+	_tune_model(model)
+	var bounds := _visual_aabb(model)
+	var max_footprint := maxf(bounds.size.x, bounds.size.z)
+	var model_scale := 1.0
+	if scale_by_height and bounds.size.y > 0.001:
+		model_scale = target_h / bounds.size.y
+	elif max_footprint > 0.001:
+		model_scale = target_footprint / max_footprint
+	if bounds.size.y > 0.001:
+		model_scale = minf(model_scale, target_h / bounds.size.y)
+	model_scale = clampf(model_scale, 0.01, 120.0)
+	model.scale = Vector3.ONE * model_scale
+	model.position = Vector3(
+		-(bounds.position.x + bounds.size.x * 0.5) * model_scale,
+		-bounds.position.y * model_scale,
+		-(bounds.position.z + bounds.size.z * 0.5) * model_scale
+	)
+
+func _load_wall_scenes(theme: String) -> Array:
+	var scenes: Array = []
+	for path in WALL_MODEL_SCENES.get(theme, []):
+		if _wall_scene_cache.has(path):
+			scenes.append(_wall_scene_cache[path])
+			continue
+		var loaded := load(path)
+		if loaded is PackedScene:
+			_wall_scene_cache[path] = loaded
+			scenes.append(loaded)
+		else:
+			push_warning("World: wall model failed to load: %s" % path)
+	return scenes
+
+func _clear_wall_models() -> void:
+	for child in _wall_models.get_children():
+		child.queue_free()
+	_wall_model_nodes.clear()
+
+func _wall_borders_floor(cx: int, cy: int, w: int, h: int, solid: PackedByteArray) -> bool:
+	return (cx > 0 and solid[cy * w + cx - 1] == 0) or (cx < w - 1 and solid[cy * w + cx + 1] == 0) or (cy > 0 and solid[(cy - 1) * w + cx] == 0) or (cy < h - 1 and solid[(cy + 1) * w + cx] == 0)
+
+func _wall_rotation(cx: int, cy: int, w: int, h: int, solid: PackedByteArray) -> float:
+	return _wall_rotation_from_dir(_wall_open_dir(cx, cy, w, h, solid))
+
+func _wall_open_dir(cx: int, cy: int, w: int, h: int, solid: PackedByteArray) -> Vector2:
+	if cy < h - 1 and solid[(cy + 1) * w + cx] == 0:
+		return Vector2(0.0, 1.0)
+	if cx < w - 1 and solid[cy * w + cx + 1] == 0:
+		return Vector2(1.0, 0.0)
+	if cy > 0 and solid[(cy - 1) * w + cx] == 0:
+		return Vector2(0.0, -1.0)
+	if cx > 0 and solid[cy * w + cx - 1] == 0:
+		return Vector2(-1.0, 0.0)
+	return Vector2(0.0, 1.0)
+
+func _wall_rotation_from_dir(open_dir: Vector2) -> float:
+	if open_dir.y > 0.0:
+		return 0.0
+	if open_dir.x > 0.0:
+		return PI * 0.5
+	if open_dir.y < 0.0:
+		return PI
+	if open_dir.x < 0.0:
+		return -PI * 0.5
+	return 0.0
+
+func _wall_target_height(theme: String) -> float:
+	match theme:
+		"fantasy":
+			return FANTASY_WALL_TARGET_H
+		"forest":
+			return FOREST_WALL_TARGET_H
+		"icedungeon":
+			return ICE_WALL_TARGET_H
+	return MODEL_WALL_TARGET_H
+
+func _tune_model(root: Node3D) -> void:
+	if root is GeometryInstance3D:
+		(root as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for child in root.get_children():
+		if child is Node3D:
+			_tune_model(child)
+
+func _apply_wall_model_shadow(root: Node3D, shadowed: bool) -> void:
+	if root is GeometryInstance3D:
+		var gi := root as GeometryInstance3D
+		gi.material_overlay = _wall_shadow_material() if shadowed else null
+	for child in root.get_children():
+		if child is Node3D:
+			_apply_wall_model_shadow(child, shadowed)
+
+func _wall_shadow_material() -> StandardMaterial3D:
+	if _wall_shadow_mat != null:
+		return _wall_shadow_mat
+	var mat := StandardMaterial3D.new()
+	mat.resource_name = "DCCWallShadowOverlay"
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.0, 0.0, 0.0, WALL_SHADOW_ALPHA)
+	_wall_shadow_mat = mat
+	return _wall_shadow_mat
+
+func _visual_aabb(root: Node3D) -> AABB:
+	var state := {"has": false, "aabb": AABB()}
+	_collect_visual_aabb(root, Transform3D.IDENTITY, state)
+	return state["aabb"] if bool(state["has"]) else AABB(Vector3.ZERO, Vector3.ONE)
+
+func _collect_visual_aabb(node: Node3D, xf: Transform3D, state: Dictionary) -> void:
+	if node is MeshInstance3D:
+		var local := (node as MeshInstance3D).get_aabb()
+		for xi in 2:
+			for yi in 2:
+				for zi in 2:
+					var corner := local.position + Vector3(local.size.x * float(xi), local.size.y * float(yi), local.size.z * float(zi))
+					var p := xf * corner
+					if not bool(state["has"]):
+						state["aabb"] = AABB(p, Vector3.ZERO)
+						state["has"] = true
+					else:
+						state["aabb"] = (state["aabb"] as AABB).expand(p)
+	for child in node.get_children():
+		if child is Node3D:
+			var c := child as Node3D
+			_collect_visual_aabb(c, xf * c.transform, state)
+
+func _hash01(x: int, y: int) -> float:
+	var v := float(int(sin(float(x) * 127.1 + float(y) * 311.7) * 43758.5453) % 10000) / 10000.0
+	return absf(v)

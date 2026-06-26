@@ -108,12 +108,14 @@ const ALIEN_SQUID_LIGHT_ENERGY := 1.85
 const FIRE_ELEMENTAL_MODEL_PATH := "res://assets/Enemies/FireElemental/FireElemental.glb"
 const FIRE_ELEMENTAL_MODEL_SCALE := 118.0
 const FIRE_ELEMENTAL_LIGHT_ENERGY := 1.9
+const FIRE_ELEMENTAL_MOVEMENT_ANIMS := ["walk", "walking", "move"]
 const GHOUL_MODEL_PATH := "res://assets/Enemies/Ghoul/Ghoul-3d-animated.glb"
 const GHOUL_MODEL_SCALE := 116.0
 const GHOUL_LIGHT_ENERGY := 1.5
 const ICE_GIANT_MODEL_PATH := "res://assets/Enemies/IceGiant/IceGiant.glb"
 const ICE_GIANT_MODEL_SCALE := 132.0
 const ICE_GIANT_LIGHT_ENERGY := 1.75
+const ICE_GIANT_MOVEMENT_ANIMS := ["walk", "walking", "move"]
 const INFERNAX_MODEL_PATH := "res://assets/Enemies/Infernax/Warlock - Infernax (Transformation)-3d-animated.glb"
 const INFERNAX_MODEL_SCALE := 122.0
 const INFERNAX_LIGHT_ENERGY := 1.65
@@ -908,6 +910,7 @@ func _model_profile_for_entity() -> Dictionary:
 			return {
 				"label": "Fire Elemental",
 				"path": FIRE_ELEMENTAL_MODEL_PATH,
+				"movement_anim_needles": FIRE_ELEMENTAL_MOVEMENT_ANIMS,
 				"scale": FIRE_ELEMENTAL_MODEL_SCALE,
 				"model_y": 68.0,
 				"light_energy": FIRE_ELEMENTAL_LIGHT_ENERGY,
@@ -932,6 +935,7 @@ func _model_profile_for_entity() -> Dictionary:
 			return {
 				"label": "Ice Giant",
 				"path": ICE_GIANT_MODEL_PATH,
+				"movement_anim_needles": ICE_GIANT_MOVEMENT_ANIMS,
 				"scale": ICE_GIANT_MODEL_SCALE,
 				"model_y": 73.0,
 				"light_energy": ICE_GIANT_LIGHT_ENERGY,
@@ -1471,6 +1475,11 @@ func _normalize_anim_name(value: String) -> String:
 	return normalized.strip_edges()
 
 func _movement_anim_needles() -> Array[String]:
+	if _model_profile.has("movement_anim_needles"):
+		var needles: Array[String] = []
+		for needle in _model_profile["movement_anim_needles"]:
+			needles.append(str(needle))
+		return needles
 	if kind == "player":
 		return ["jog", "job", "run", "walk", "move"]
 	return ["run", "walk", "move"]

@@ -17,6 +17,7 @@ const KEY_LIGHT_RIGHT_OFFSET := 520.0
 const KEY_LIGHT_BACK_OFFSET := 620.0
 const KEY_LIGHT_ENERGY := 1.45
 const AMBIENT_LIGHT_ENERGY := 0.72
+const WALL_MODEL_SCREEN_MARGIN := 180.0
 
 # Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
 # live in the editor. height = how far above; back = how far behind (lower back = more
@@ -952,19 +953,23 @@ func _update_decor_visibility(x: float, y: float) -> void:
 	var cell: float = _world.grid["cell"]
 	var cell_id := int(floor(y / cell)) * int(_world.grid["w"]) + int(floor(x / cell))
 	var live_props_key := _cached_live_props_key()
+	var qx: float = (floor(x / cell) + 0.5) * cell
+	var qy: float = (floor(y / cell) + 0.5) * cell
+	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
 	if cell_id == _decor_vis_cell and live_props_key == _decor_live_props_key:
+		for wall_model in _world.model_wall_nodes():
+			_set_wall_model_visibility(wall_model, qx, qy, vision_sq)
 		return
 	_decor_vis_cell = cell_id
 	_decor_live_props_key = live_props_key
-	var vision_sq := DccConst.VISION_RADIUS * DccConst.VISION_RADIUS
 	_decor.set_live_props(_net.ents)
-	var qx: float = (floor(x / cell) + 0.5) * cell
-	var qy: float = (floor(y / cell) + 0.5) * cell
 	_set_static_sprite_visibility(_decor.stairs_sprite, qx, qy, vision_sq)
 	for sprite in _decor.decoration_sprites:
 		_set_static_sprite_visibility(sprite, qx, qy, vision_sq)
 	for a in _decor.atmo_sprites:  # torch glow-pools / flames / decals — fog-culled like decor
 		_set_static_sprite_visibility(a, qx, qy, vision_sq)
+	for wall_model in _world.model_wall_nodes():
+		_set_wall_model_visibility(wall_model, qx, qy, vision_sq)
 
 func _cached_live_props_key() -> String:
 	var tick := -1
@@ -1002,6 +1007,37 @@ func _set_static_sprite_visibility(sprite: Node3D, x: float, y: float, vision_sq
 	# Always show close objects (you should see a prop you can bump into); LoS-gate the rest.
 	const NEAR_SQ := 340.0 * 340.0
 	sprite.visible = dsq <= NEAR_SQ or (dsq <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y))
+
+func _set_wall_model_visibility(wall: Node3D, x: float, y: float, vision_sq: float) -> void:
+	if wall == null or not is_instance_valid(wall):
+		return
+	var world_pos := Vector2(wall.global_position.x, wall.global_position.z)
+	if wall.has_meta("dcc_world"):
+		var meta_pos = wall.get_meta("dcc_world")
+		if meta_pos is Vector2:
+			world_pos = meta_pos
+	var dx := world_pos.x - x
+	var dy := world_pos.y - y
+	var dsq := dx * dx + dy * dy
+	const NEAR_SQ := 340.0 * 340.0
+	var lit := dsq <= NEAR_SQ or (dsq <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y))
+	if lit:
+		wall.visible = true
+		_world.set_wall_model_shadowed(wall, false)
+		return
+	var on_screen := _node_on_screen(wall)
+	wall.visible = on_screen
+	_world.set_wall_model_shadowed(wall, on_screen)
+
+func _node_on_screen(node: Node3D) -> bool:
+	if _cam == null or node == null or not is_instance_valid(node):
+		return false
+	var pos := node.global_position
+	if _cam.is_position_behind(pos):
+		return false
+	var screen_pos := _cam.unproject_position(pos)
+	var rect := get_viewport().get_visible_rect().grow(WALL_MODEL_SCREEN_MARGIN)
+	return rect.has_point(screen_pos)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed:
