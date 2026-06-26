@@ -59,7 +59,7 @@ var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
 var _floor_stairs: Dictionary = {}  # raw stairs dict from geometry (saved even when hidden)
-var _floor_index := -1              # tracks same-floor re-sends (boss death unlocks exit)
+var _floor_key := ""               # "seed_depth" — unique per floor even if same depth across runs
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
@@ -615,8 +615,10 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	# when exitOpen was false on the first receive (stairs are omitted from decor
 	# until the boss dies, but we need the coordinates for when it opens).
 	_floor_stairs = geometry.get("stairs", {})
-	var new_index := int(info.get("index", -1))
-	var same_floor := (new_index >= 0 and new_index == _floor_index)
+	# Use seed+depth as the floor key so a new run that starts at depth 1 is not
+	# confused with a same-floor boss-death re-send (index == depth, so it repeats).
+	var new_floor_key := "%d_%d" % [int(info.get("seed", 0)), int(info.get("depth", 0))]
+	var same_floor := not _floor_key.is_empty() and new_floor_key == _floor_key
 	if same_floor:
 		# Same floor re-send: the server is telling us exitOpen changed (boss died).
 		# Avoid a full world rebuild — just show the exit without resetting fog or
@@ -628,7 +630,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 			_stairs = Vector2(float(stairs.get("x", 0.0)), float(stairs.get("y", 0.0)))
 			_mark_exit_on_minimap()
 		return
-	_floor_index = new_index
+	_floor_key = new_floor_key
 	_world.build(geometry)
 	_pred.set_grid(_world.grid)
 	_fog.attach(_world)
