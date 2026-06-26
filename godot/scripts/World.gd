@@ -9,7 +9,7 @@ extends Node3D
 const WALL_H := 220.0  # wall box height (px). Tall, cliff-like — paired with the lower 3/4 camera.
 const WALL_SKIRT := 300.0  # extra height extending each wall box DOWNWARD, so on sloped/sunken terrain the base never lifts off the floor and shows a gap (heightfield 2.5D).
 const MODEL_WALL_TARGET_H := 210.0
-const FANTASY_WALL_TARGET_H := MODEL_WALL_TARGET_H * 1.5
+const FANTASY_WALL_TARGET_H := MODEL_WALL_TARGET_H
 const FOREST_WALL_TARGET_H := 255.0
 const ICE_WALL_TARGET_H := 240.0
 const MODEL_WALL_FOOTPRINT := 1.12

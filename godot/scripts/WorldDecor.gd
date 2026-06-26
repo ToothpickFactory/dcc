@@ -55,13 +55,6 @@ const ICE_STAIRS_SCENE := "res://assets/Props/IceDungeonStairs.glb"
 const ICE_STAIRS_TARGET_FOOTPRINT := 150.0
 const ICE_STAIRS_TARGET_H := 125.0
 const ICE_STAIRS_SINK := 34.0
-const DOOR_TARGET_FOOTPRINT := 150.0
-const DOOR_TARGET_H := 170.0
-const DOOR_SCENES := {
-	"cyberpunk": "res://assets/Tiles/3D/CyberPunk/Door/Door.glb",
-	"fantasy": "res://assets/Tiles/3D/Dungeon/Door/Archway.glb",
-	"icedungeon": "res://assets/Tiles/3D/Dungeon/Door/Archway.glb",
-}
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"]
@@ -109,7 +102,6 @@ static var _campfire_spark_tex: Texture2D
 static var _campfire_scene: PackedScene
 static var _ice_stairs_hole_tex: Texture2D
 static var _ice_stairs_scene: PackedScene
-static var _door_scene_cache: Dictionary = {}
 
 # theme -> { "floor": Texture2D, "wall": Texture2D } where each texture carries
 # metadata telling the fog shader which half of the 4x4 sheet to randomize across.
@@ -203,9 +195,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array
 	if not stairs.is_empty():
 		var sx := float(stairs.get("x", 0.0))
 		var sy := float(stairs.get("y", 0.0))
-		if _has_door_scene(theme):
-			_place_model_door(theme, sx, sy)
-		elif theme == "icedungeon":
+		if theme == "icedungeon":
 			_place_ice_stairs(sx, sy)
 		else:
 			var stairs_tex: Texture2D = props[0] if props.size() > 0 else null
@@ -304,14 +294,8 @@ func clear() -> void:
 func show_stairs(stairs: Dictionary) -> void:
 	if stairs.is_empty() or not THEMES.has(_theme):
 		return
-	# Themes with model doors use a 3D exit; other themes use the billboard sprite.
-	if _has_door_scene(_theme):
-		if stairs_node != null:
-			return
-		var sx := float(stairs.get("x", 0.0))
-		var sy := float(stairs.get("y", 0.0))
-		_place_model_door(_theme, sx, sy)
-	elif _theme == "icedungeon":
+	# Ice dungeon uses a 3D scene; other themes use the billboard sprite.
+	if _theme == "icedungeon":
 		if _ice_stairs_scene != null or ResourceLoader.exists(ICE_STAIRS_SCENE):
 			var sx := float(stairs.get("x", 0.0))
 			var sy := float(stairs.get("y", 0.0))
@@ -601,73 +585,6 @@ func _place_campfire() -> void:
 		return
 	for pos in _campfire_spots():
 		_spawn_campfire(scene, pos)
-
-func _has_door_scene(theme: String) -> bool:
-	return DOOR_SCENES.has(theme)
-
-func _place_model_door(theme: String, x: float, y: float) -> void:
-	if world == null or world.grid.is_empty():
-		return
-	var scene := _load_door_scene(theme)
-	if scene == null:
-		if theme == "icedungeon":
-			_place_ice_stairs(x, y)
-		return
-	var grid: Dictionary = world.grid
-	var cell: float = grid["cell"]
-	var gh := _gh(x, y)
-	var pos := Vector2(x, y)
-	var holder := Node3D.new()
-	holder.name = "ExitDoor"
-	holder.position = Vector3(x, gh, y)
-	holder.rotation.y = _exit_door_rotation(x, y)
-	holder.set_meta("dcc_world", pos)
-	add_child(holder)
-	atmo_sprites.append(holder)
-	stairs_node = holder
-
-	var model := scene.instantiate() as Node3D
-	if model == null:
-		holder.queue_free()
-		atmo_sprites.erase(holder)
-		stairs_node = null
-		return
-	holder.add_child(model)
-	_tune_static_model(model)
-	var bounds := _visual_aabb(model)
-	var max_footprint := maxf(bounds.size.x, bounds.size.z)
-	var model_scale := 1.0
-	if max_footprint > 0.001:
-		model_scale = DOOR_TARGET_FOOTPRINT / max_footprint
-	if bounds.size.y > 0.001:
-		model_scale = minf(model_scale, DOOR_TARGET_H / bounds.size.y)
-	model_scale = clampf(model_scale, 0.01, 120.0)
-	model.scale = Vector3.ONE * model_scale
-	model.position = Vector3(
-		-(bounds.position.x + bounds.size.x * 0.5) * model_scale,
-		-bounds.position.y * model_scale,
-		-(bounds.position.z + bounds.size.z * 0.5) * model_scale
-	)
-
-func _exit_door_rotation(x: float, y: float) -> float:
-	if world == null or world.grid.is_empty():
-		return 0.0
-	var grid: Dictionary = world.grid
-	var cell: float = grid["cell"]
-	var w: int = grid["w"]
-	var h: int = grid["h"]
-	var solid: PackedByteArray = grid["solid"]
-	var cx := clampi(int(floor(x / cell)), 0, w - 1)
-	var cy := clampi(int(floor(y / cell)), 0, h - 1)
-	if cy > 0 and solid[(cy - 1) * w + cx] == 1:
-		return 0.0
-	if cx < w - 1 and solid[cy * w + cx + 1] == 1:
-		return PI * 0.5
-	if cy < h - 1 and solid[(cy + 1) * w + cx] == 1:
-		return PI
-	if cx > 0 and solid[cy * w + cx - 1] == 1:
-		return -PI * 0.5
-	return 0.0
 
 func _place_ice_stairs(x: float, y: float) -> void:
 	if world == null or world.grid.is_empty():
@@ -966,26 +883,6 @@ func _load_ice_stairs_scene() -> PackedScene:
 		return null
 	_ice_stairs_scene = loaded as PackedScene
 	return _ice_stairs_scene
-
-func _load_door_scene(theme: String) -> PackedScene:
-	var path := str(DOOR_SCENES.get(theme, ""))
-	if path == "":
-		return null
-	if _door_scene_cache.has(path):
-		return _door_scene_cache[path]
-	var loaded := load(path)
-	if not (loaded is PackedScene):
-		push_warning("WorldDecor: door scene missing: %s" % path)
-		return null
-	_door_scene_cache[path] = loaded
-	return loaded as PackedScene
-
-func _tune_static_model(root: Node3D) -> void:
-	if root is GeometryInstance3D:
-		(root as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for child in root.get_children():
-		if child is Node3D:
-			_tune_static_model(child)
 
 func _tune_campfire_materials(root: Node3D) -> void:
 	for child in root.get_children():
