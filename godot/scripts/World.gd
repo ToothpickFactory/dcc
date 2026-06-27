@@ -258,7 +258,7 @@ func _build_wall_models(theme: String, scenes: Array) -> void:
 				_populate_wall_cluster(holder, scenes, cx, cy, cell, theme)
 			else:
 				var scene: PackedScene = scenes[int(_hash01(cx, cy) * float(scenes.size())) % scenes.size()]
-				_add_scaled_model(holder, scene, cell * MODEL_WALL_FOOTPRINT, _wall_target_height(theme), true)
+				_add_scaled_model(holder, scene, cell, _wall_target_height(theme), true)
 
 func _populate_wall_cluster(holder: Node3D, scenes: Array, cx: int, cy: int, cell: float, theme: String) -> void:
 	var count := 2 + int(_hash01(cx + 17, cy + 31) * (2.99 if theme == "forest" else 1.99))
@@ -289,6 +289,10 @@ func _add_scaled_model(parent: Node3D, scene: PackedScene, target_footprint: flo
 		model_scale = target_footprint / max_footprint
 	if bounds.size.y > 0.001:
 		model_scale = minf(model_scale, target_h / bounds.size.y)
+	# Always cap by footprint so the model never exceeds its tile boundary,
+	# regardless of whether scale_by_height drove the initial scale.
+	if max_footprint > 0.001:
+		model_scale = minf(model_scale, target_footprint / max_footprint)
 	model_scale = clampf(model_scale, 0.01, 120.0)
 	model.scale = Vector3.ONE * model_scale
 	model.position = Vector3(

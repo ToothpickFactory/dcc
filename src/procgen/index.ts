@@ -112,7 +112,15 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   }));
   const decorations = [...prefabDecor, ...scatterDecor];
 
-  const theme = THEMES[Math.floor(random() * THEMES.length)]!;
+  // Shuffle THEMES once per run (seed-stable), then index by depth so every
+  // theme appears exactly once per 7-floor cycle regardless of RNG variance.
+  const themeRng = rng(seed * 0xdead);
+  const themeOrder = [...THEMES];
+  for (let i = themeOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(themeRng() * (i + 1));
+    [themeOrder[i], themeOrder[j]] = [themeOrder[j], themeOrder[i]];
+  }
+  const theme = themeOrder[(depth - 1) % themeOrder.length]!;
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
   const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
