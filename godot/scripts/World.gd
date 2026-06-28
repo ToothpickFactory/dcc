@@ -11,7 +11,7 @@ const WALL_SKIRT := 300.0  # extra height extending each wall box DOWNWARD, so o
 const MODEL_WALL_TARGET_H := 210.0
 const FANTASY_WALL_TARGET_H := MODEL_WALL_TARGET_H
 const FOREST_WALL_TARGET_H := 255.0
-const ICE_WALL_TARGET_H := 240.0
+const ICE_WALL_TARGET_H := 300.0
 const MODEL_WALL_FOOTPRINT := 1.12
 const EDGE_WALL_THEMES := ["cyberpunk", "fantasy"]
 const CLUSTER_WALL_THEMES := ["forest", "icedungeon"]
@@ -259,9 +259,22 @@ func _build_wall_models(theme: String, scenes: Array) -> void:
 			else:
 				var scene: PackedScene = scenes[int(_hash01(cx, cy) * float(scenes.size())) % scenes.size()]
 				_add_scaled_model(holder, scene, cell, _wall_target_height(theme), true)
+				# Fantasy: stack a second segment on top for extra height.
+				if theme == "fantasy":
+					var top := Node3D.new()
+					top.position = Vector3(0.0, FANTASY_WALL_TARGET_H, 0.0)
+					holder.add_child(top)
+					var scene2: PackedScene = scenes[int(_hash01(cx + 3, cy + 7) * float(scenes.size())) % scenes.size()]
+					_add_scaled_model(top, scene2, cell, FANTASY_WALL_TARGET_H, true)
 
 func _populate_wall_cluster(holder: Node3D, scenes: Array, cx: int, cy: int, cell: float, theme: String) -> void:
-	var count := 2 + int(_hash01(cx + 17, cy + 31) * (2.99 if theme == "forest" else 1.99))
+	# Forest: 1–2 trees per cluster (down from 2–4) for better performance.
+	# Ice: 2–3 pieces, slightly wider footprint for a more imposing look.
+	var count: int
+	if theme == "forest":
+		count = 1 + int(_hash01(cx + 17, cy + 31) * 1.99)
+	else:
+		count = 2 + int(_hash01(cx + 17, cy + 31) * 1.99)
 	for i in count:
 		var scene: PackedScene = scenes[(cx * 19 + cy * 31 + i * 7) % scenes.size()]
 		var piece := Node3D.new()
@@ -272,7 +285,8 @@ func _populate_wall_cluster(holder: Node3D, scenes: Array, cx: int, cy: int, cel
 		holder.add_child(piece)
 		var base_h := _wall_target_height(theme)
 		var height := base_h * (0.82 + _hash01(cx + i * 43, cy + i * 47) * 0.34)
-		_add_scaled_model(piece, scene, cell * (0.82 if theme == "forest" else 0.68), height, theme == "icedungeon")
+		var footprint := cell * (0.85 if theme == "forest" else 0.80)
+		_add_scaled_model(piece, scene, footprint, height, theme == "icedungeon")
 
 func _add_scaled_model(parent: Node3D, scene: PackedScene, target_footprint: float, target_h: float, scale_by_height: bool = false) -> void:
 	var model := scene.instantiate() as Node3D
@@ -360,7 +374,13 @@ func _wall_target_height(theme: String) -> float:
 
 func _tune_model(root: Node3D) -> void:
 	if root is GeometryInstance3D:
-		(root as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var gi := root as GeometryInstance3D
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Skip rendering anything beyond the player's visible radius — trees/walls
+		# outside the fog are invisible anyway, so this saves GPU work.
+		gi.visibility_range_end = DccConst.VISION_RADIUS * 1.2
+		gi.visibility_range_end_margin = 0.0
+		gi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	for child in root.get_children():
 		if child is Node3D:
 			_tune_model(child)
