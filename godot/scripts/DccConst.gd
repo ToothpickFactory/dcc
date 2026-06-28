@@ -5,6 +5,14 @@ class_name DccConst
 const TICK_MS := 50            # server simulation step (20 Hz)
 const PLAYER_SPEED := 230.0    # px/s (fallback; prefer SelfDTO.derived.moveSpeed)
 const PLAYER_RADIUS := 17.0
+const BOSS_RADIUS := 30.0
+const MONSTER_RADIUS_GRUNT := 20.0
+const MONSTER_RADIUS_BRUTE := 28.0
+const MONSTER_RADIUS_SWARM := 13.0
+const MONSTER_RADIUS_PIRATE := 20.0
+const MONSTER_RADIUS_SHARKMAN := 24.0
+const MONSTER_RADIUS_RANGED := 18.0
+const MONSTER_RADIUS_HEALER := 18.0
 const LOOT_REACH := 90.0       # px a player must be within to loot a bag
 const VISION_RADIUS := 1000.0  # lit/sight radius (px). Bumped with the 2x floor rescale so the circle reveals enemies/loot, not just a tiny patch.
 const WORLD := Vector2(2400, 2400)

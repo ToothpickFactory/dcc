@@ -8,7 +8,7 @@ var x := 0.0
 var y := 0.0
 var _inited := false
 var _grid: Dictionary = {}
-var _props: Array = []          # [{x,y,r}, ...] live props the server collides with (so we match it)
+var _props: Array = []          # [{x,y,r}, ...] live props/characters the server collides with
 var _dash_until := 0.0          # ms wall-clock; predicted dash burst active until then
 var _dash_dir := Vector2.ZERO
 
@@ -28,8 +28,13 @@ func _occupy(nx: float, ny: float, radius: float) -> bool:
 		var rr: float = radius + float(p.r)
 		var ddx: float = nx - float(p.x)
 		var ddy: float = ny - float(p.y)
-		if ddx * ddx + ddy * ddy < rr * rr:
-			return false
+		if ddx * ddx + ddy * ddy >= rr * rr:
+			continue
+		var fdx: float = x - float(p.x)
+		var fdy: float = y - float(p.y)
+		if fdx * fdx + fdy * fdy < rr * rr and ddx * ddx + ddy * ddy >= fdx * fdx + fdy * fdy:
+			continue
+		return false
 	return true
 
 # Axis-separated swept move against walls + props (mirrors server

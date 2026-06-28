@@ -187,6 +187,7 @@ function frame(now: number) {
   const dead = net.self?.status === "spectator";
   const spectating = reached || dead; // character has left the floor -> spectate camera
   const mv = input.moveVec();
+  if (net.cur) predictor.setBlockers(net.cur.ents, net.you);
   predictor.update(net, mv, dt);
 
   // Aim from the pointer (mouse or active touch) projected to the ground.

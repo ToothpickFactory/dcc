@@ -684,12 +684,17 @@ func _process(dt: float) -> void:
 	# "toward the top of the screen" regardless of how the camera is oriented.
 	var _cam_yaw_rad := deg_to_rad(cam_yaw_deg)
 	mv = mv.rotated(-_cam_yaw_rad)
-	# Feed live props to the predictor so it collides exactly like the server (no rubber-band /
-	# wedging-in-place against an invisible-to-the-client decoration). radius = max(12, 24*scale).
+	# Feed live props and characters to the predictor so it collides like the server.
 	var props: Array = []
 	for e in _net.ents:
-		if typeof(e) == TYPE_DICTIONARY and str(e.get("kind", "")) == "prop":
-			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": maxf(12.0, 24.0 * float(e.get("scale", 1.0)))})
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var eid := str(e.get("id", ""))
+		if eid == _net.you or bool(e.get("dead", false)):
+			continue
+		var er := _entity_collision_radius(e)
+		if er > 0.0:
+			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": er})
 	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
 	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
@@ -1160,6 +1165,32 @@ func _color_of(s: String) -> Color:
 	if s.begins_with("#"):
 		return Color.from_string(s, Color.WHITE)
 	return Color.WHITE
+
+func _entity_collision_radius(e: Dictionary) -> float:
+	match str(e.get("kind", "")):
+		"prop":
+			return maxf(12.0, 24.0 * float(e.get("scale", 1.0)))
+		"player":
+			return DccConst.PLAYER_RADIUS
+		"boss":
+			return DccConst.BOSS_RADIUS
+		"monster":
+			match str(e.get("monKind", "grunt")):
+				"brute":
+					return DccConst.MONSTER_RADIUS_BRUTE
+				"swarm":
+					return DccConst.MONSTER_RADIUS_SWARM
+				"pirate":
+					return DccConst.MONSTER_RADIUS_PIRATE
+				"sharkman":
+					return DccConst.MONSTER_RADIUS_SHARKMAN
+				"ranged":
+					return DccConst.MONSTER_RADIUS_RANGED
+				"healer":
+					return DccConst.MONSTER_RADIUS_HEALER
+				_:
+					return DccConst.MONSTER_RADIUS_GRUNT
+	return 0.0
 
 # Light aim-assist: if an enemy sits within a cone of the player's aim (and in range),
 # snap the cast toward it — so fast swarms aren't pure precision-mouse. Picks the closest
