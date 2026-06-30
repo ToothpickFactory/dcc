@@ -47,12 +47,24 @@ var last_aim: float:   # read-only accessor so Main can freeze aim while menu is
 # Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
 var _is_mobile := false
 
-# Returns the first connected joypad device index, falling back to 0.
-# On Android, Bluetooth controllers can land on a non-zero device index, so
-# hardcoding 0 silently reads zeroes from the wrong device.
-func joy_dev() -> int:
-	var devs := Input.get_connected_joypads()
-	return devs[0] if not devs.is_empty() else 0
+# Axis values cached from InputEventJoypadMotion events. Polling via
+# Input.get_joy_axis() is unreliable on Android with Bluetooth controllers —
+# events arrive correctly but the polled value can read zero from the wrong device.
+var _axes: Dictionary = {}
+
+const _STICK_DEAD := 0.15  # standard gamepad dead zone
+
+# Latest cached value for a given axis, defaulting to 0.
+func _ax(a: JoyAxis) -> float:
+	return float(_axes.get(int(a), 0.0))
+
+# Right stick as a Vector2 (for camera control in Main.gd).
+func right_stick() -> Vector2:
+	return Vector2(_ax(JOY_AXIS_RIGHT_X), _ax(JOY_AXIS_RIGHT_Y))
+
+# Left stick as a Vector2 (for menu cursor in Main.gd).
+func left_stick() -> Vector2:
+	return Vector2(_ax(JOY_AXIS_LEFT_X), _ax(JOY_AXIS_LEFT_Y))
 
 func _ready() -> void:
 	_is_mobile = OS.has_feature("mobile")
@@ -103,9 +115,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		if pidx >= 0:
 			_cast_queue.append(pidx)
 			return
-	# RT trigger (axis): queue cast 5 on each press (threshold crossing).
+	# Joypad axes: cache every axis value as events arrive. Polling via
+	# Input.get_joy_axis() is unreliable on Android with Bluetooth controllers,
+	# so _axes is the source of truth for move_vec() and aim_from().
 	if event is InputEventJoypadMotion:
 		var joy_e := event as InputEventJoypadMotion
+		_axes[int(joy_e.axis)] = joy_e.axis_value
+		# RT trigger: queue cast 5 on each threshold crossing.
 		if joy_e.axis == JOY_AXIS_TRIGGER_RIGHT:
 			var pressed := joy_e.axis_value > 0.5
 			if pressed and not _rt_pressed:
@@ -119,19 +135,14 @@ func consume_dash() -> bool:
 		return true
 	return false
 
-# Raw move vector. Keyboard/arrows come from the move_* actions (their key events
-# are bound in project.godot); the gamepad left stick is folded in so a pad walks
-# too. NOT normalized — the Predictor normalizes, matching predict.ts/input.ts.
+# Raw move vector. Keyboard/arrows come from the move_* actions; the gamepad
+# LEFT stick drives character movement. NOT normalized — the Predictor normalizes.
 # On mobile, the virtual stick (set by MobileHud) overrides when a touch is active.
 func move_vec() -> Vector2:
 	var v := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-	# Left stick (axes 0/1) via the same actions only if those actions also bind
-	# joypad motion; bind it explicitly here so movement works on a bare InputMap.
-	var dev := joy_dev()
-	var stick := Vector2(
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
-	if stick.length() >= 0.5:  # match the action deadzone (0.5)
+	# Left stick = character movement (right stick = camera, handled in Main).
+	var stick := Vector2(_ax(JOY_AXIS_LEFT_X), _ax(JOY_AXIS_LEFT_Y))
+	if stick.length() >= _STICK_DEAD:
 		v = stick
 	if _virtual_stick.length() > 0.01:
 		v = _virtual_stick
@@ -142,16 +153,14 @@ func set_virtual_stick(dir: Vector2) -> void:
 	_virtual_stick = dir
 
 # Aim radians from the pointer. Priority order:
-#   1. Gamepad left stick (when pushed past deadzone) — updates _last_aim and returns it.
+#   1. Gamepad left stick (when pushed past deadzone) — updates _last_aim.
 #   2. Mobile virtual stick — overrides gamepad on mobile.
 #   3. PC mouse cursor (camera->ground raycast) — only when no stick input.
 #   4. _last_aim — held when completely idle so the character keeps facing last direction.
 func aim_from(camera: Camera3D, px: float, py: float, cam_yaw_rad: float = 0.0) -> float:
-	var dev := joy_dev()
-	var stick := Vector2(
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
-		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
-	if stick.length() >= 0.5:
+	# Left stick drives aim on a physical controller.
+	var stick := Vector2(_ax(JOY_AXIS_LEFT_X), _ax(JOY_AXIS_LEFT_Y))
+	if stick.length() >= _STICK_DEAD:
 		# Stick direction is screen-relative; rotate into world space by camera yaw.
 		_last_aim = atan2(stick.y, stick.x) - cam_yaw_rad
 	if _is_mobile:
@@ -159,8 +168,8 @@ func aim_from(camera: Camera3D, px: float, py: float, cam_yaw_rad: float = 0.0) 
 			# Virtual stick is screen-relative; same rotation applies.
 			_last_aim = atan2(_virtual_stick.y, _virtual_stick.x) - cam_yaw_rad
 		return _last_aim
-	# PC: if stick is active, prefer it over mouse so character faces movement direction.
-	if stick.length() >= 0.5:
+	# PC: if left stick is active, prefer it over mouse.
+	if stick.length() >= _STICK_DEAD:
 		return _last_aim
 	# PC fallback: aim toward mouse cursor via camera ray. The camera already incorporates
 	# yaw, so the world-space hit point needs no additional rotation.
@@ -189,4 +198,3 @@ func take_casts() -> Array:
 # Mobile / on-screen ability bar tap -> queue a cast, mirroring queueCast(i).
 func queue_cast(i: int) -> void:
 	_cast_queue.append(i)
-

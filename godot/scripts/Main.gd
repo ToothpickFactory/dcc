@@ -755,9 +755,11 @@ func _process(dt: float) -> void:
 	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
 	# Right stick: X rotates the camera yaw, Y zooms (push up = zoom in).
+	# Uses InputCtl's event-cached axis values — polling is unreliable on Android.
 	const _STICK_DEAD := 0.15
-	var _rs_x := Input.get_joy_axis(_inp.joy_dev(), JOY_AXIS_RIGHT_X)
-	var _rs_y := Input.get_joy_axis(_inp.joy_dev(), JOY_AXIS_RIGHT_Y)
+	var _rs := _inp.right_stick()
+	var _rs_x := _rs.x
+	var _rs_y := _rs.y
 	if absf(_rs_x) > _STICK_DEAD:
 		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
 	if absf(_rs_y) > _STICK_DEAD:
@@ -783,7 +785,7 @@ func _process(dt: float) -> void:
 			_pad_cursor_pos = get_viewport().get_visible_rect().size * Vector2(0.5, 0.4)
 		const PAD_CURSOR_SPEED := 900.0
 		const PAD_CURSOR_DEAD := 0.15
-		var ls := Vector2(Input.get_joy_axis(0, JOY_AXIS_LEFT_X), Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+		var ls := _inp.left_stick()
 		if ls.length() > PAD_CURSOR_DEAD:
 			_pad_cursor_pos += ls * PAD_CURSOR_SPEED * dt
 		var vp_size := get_viewport().get_visible_rect().size
