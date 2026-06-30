@@ -13,18 +13,10 @@ const FANTASY_WALL_TARGET_H := MODEL_WALL_TARGET_H
 const FOREST_WALL_TARGET_H := 255.0
 const ICE_WALL_TARGET_H := 300.0
 const MODEL_WALL_FOOTPRINT := 1.12
-const EDGE_WALL_THEMES := ["cyberpunk", "fantasy"]
+const EDGE_WALL_THEMES := []  # no themes currently use edge-placed 3D wall models
 const CLUSTER_WALL_THEMES := ["forest", "icedungeon"]
 const WALL_SHADOW_ALPHA := 0.62
 const WALL_MODEL_SCENES := {
-	"cyberpunk": [
-		"res://assets/Tiles/3D/CyberPunk/Walls/WallA.glb",
-		"res://assets/Tiles/3D/CyberPunk/Walls/WallB.glb",
-		"res://assets/Tiles/3D/CyberPunk/Walls/WallC.glb",
-	],
-	"fantasy": [
-		"res://assets/Tiles/3D/Dungeon/Walls/WallA.glb",
-	],
 	"icedungeon": [
 		"res://assets/Tiles/3D/Ice/Walls/WallA.glb",
 	],
