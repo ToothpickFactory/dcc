@@ -756,8 +756,8 @@ func _process(dt: float) -> void:
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
 	# Right stick: X rotates the camera yaw, Y zooms (push up = zoom in).
 	const _STICK_DEAD := 0.15
-	var _rs_x := Input.get_joy_axis(0, JOY_AXIS_RIGHT_X)
-	var _rs_y := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	var _rs_x := Input.get_joy_axis(_inp.joy_dev(), JOY_AXIS_RIGHT_X)
+	var _rs_y := Input.get_joy_axis(_inp.joy_dev(), JOY_AXIS_RIGHT_Y)
 	if absf(_rs_x) > _STICK_DEAD:
 		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
 	if absf(_rs_y) > _STICK_DEAD:

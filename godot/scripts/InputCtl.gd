@@ -47,6 +47,13 @@ var last_aim: float:   # read-only accessor so Main can freeze aim while menu is
 # Cached once in _ready() so aim_from() never calls OS.has_feature() per-frame.
 var _is_mobile := false
 
+# Returns the first connected joypad device index, falling back to 0.
+# On Android, Bluetooth controllers can land on a non-zero device index, so
+# hardcoding 0 silently reads zeroes from the wrong device.
+func joy_dev() -> int:
+	var devs := Input.get_connected_joypads()
+	return devs[0] if not devs.is_empty() else 0
+
 func _ready() -> void:
 	_is_mobile = OS.has_feature("mobile")
 	# Register movement actions in CODE so they don't depend on project.godot's
@@ -120,9 +127,10 @@ func move_vec() -> Vector2:
 	var v := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# Left stick (axes 0/1) via the same actions only if those actions also bind
 	# joypad motion; bind it explicitly here so movement works on a bare InputMap.
+	var dev := joy_dev()
 	var stick := Vector2(
-		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
-		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
 	if stick.length() >= 0.5:  # match the action deadzone (0.5)
 		v = stick
 	if _virtual_stick.length() > 0.01:
@@ -139,9 +147,10 @@ func set_virtual_stick(dir: Vector2) -> void:
 #   3. PC mouse cursor (camera->ground raycast) — only when no stick input.
 #   4. _last_aim — held when completely idle so the character keeps facing last direction.
 func aim_from(camera: Camera3D, px: float, py: float, cam_yaw_rad: float = 0.0) -> float:
+	var dev := joy_dev()
 	var stick := Vector2(
-		Input.get_joy_axis(0, JOY_AXIS_LEFT_X),
-		Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(dev, JOY_AXIS_LEFT_Y))
 	if stick.length() >= 0.5:
 		# Stick direction is screen-relative; rotate into world space by camera yaw.
 		_last_aim = atan2(stick.y, stick.x) - cam_yaw_rad
