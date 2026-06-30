@@ -1443,6 +1443,8 @@ func _base_anim_needles(intent: String) -> Array[String]:
 			return ["attack", "strike", "punch", "slash", "hit"]
 		"cast", "bolt":
 			return ["cast", "spell", "throw", "pitch", "attack", "strike"]
+		"whirlwind":
+			return ["whirlwind", "spin", "twirl"]
 		"hit", "hurt":
 			return ["hit", "hurt", "damage", "impact", "react"]
 		"death":

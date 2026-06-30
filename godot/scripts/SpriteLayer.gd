@@ -274,6 +274,9 @@ func _self_action_for_ability(ability_idx: int) -> String:
 	if not (ability is Dictionary):
 		return "cast"
 	var ab := ability as Dictionary
+	var ability_id := str(ab.get("id", ""))
+	if ability_id == "whirlwind":
+		return "whirlwind"
 	var is_projectile := bool(ab.get("projectile", false))
 	var dmg := float(ab.get("dmg", 0.0))
 	var is_melee := not is_projectile and dmg > 0.0 and not bool(ab.get("taunt", false)) and str(ab.get("groupBuff", "")) == ""
