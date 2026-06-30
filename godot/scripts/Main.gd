@@ -757,9 +757,9 @@ func _process(dt: float) -> void:
 	# Right stick: X rotates the camera yaw, Y zooms (push up = zoom in).
 	# Uses InputCtl's event-cached axis values — polling is unreliable on Android.
 	const _STICK_DEAD := 0.15
-	var _rs := _inp.right_stick()
-	var _rs_x := _rs.x
-	var _rs_y := _rs.y
+	var _rs: Vector2 = _inp.right_stick()
+	var _rs_x: float = _rs.x
+	var _rs_y: float = _rs.y
 	if absf(_rs_x) > _STICK_DEAD:
 		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
 	if absf(_rs_y) > _STICK_DEAD:
@@ -785,7 +785,7 @@ func _process(dt: float) -> void:
 			_pad_cursor_pos = get_viewport().get_visible_rect().size * Vector2(0.5, 0.4)
 		const PAD_CURSOR_SPEED := 900.0
 		const PAD_CURSOR_DEAD := 0.15
-		var ls := _inp.left_stick()
+		var ls: Vector2 = _inp.left_stick()
 		if ls.length() > PAD_CURSOR_DEAD:
 			_pad_cursor_pos += ls * PAD_CURSOR_SPEED * dt
 		var vp_size := get_viewport().get_visible_rect().size

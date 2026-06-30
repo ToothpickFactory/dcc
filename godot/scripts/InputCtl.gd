@@ -55,8 +55,8 @@ var _axes: Dictionary = {}
 const _STICK_DEAD := 0.15  # standard gamepad dead zone
 
 # Latest cached value for a given axis, defaulting to 0.
-func _ax(a: JoyAxis) -> float:
-	return float(_axes.get(int(a), 0.0))
+func _ax(a: int) -> float:
+	return float(_axes.get(a, 0.0))
 
 # Right stick as a Vector2 (for camera control in Main.gd).
 func right_stick() -> Vector2:
@@ -120,7 +120,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	# so _axes is the source of truth for move_vec() and aim_from().
 	if event is InputEventJoypadMotion:
 		var joy_e := event as InputEventJoypadMotion
-		_axes[int(joy_e.axis)] = joy_e.axis_value
+		_axes[joy_e.axis as int] = joy_e.axis_value
 		# RT trigger: queue cast 5 on each threshold crossing.
 		if joy_e.axis == JOY_AXIS_TRIGGER_RIGHT:
 			var pressed := joy_e.axis_value > 0.5
