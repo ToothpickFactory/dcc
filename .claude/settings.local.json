@@ -124,7 +124,10 @@
       "PowerShell(& \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\" --headless --path \"D:\\\\Projects\\\\dcc\\\\godot\" --export-release \"Windows Desktop\" \"../builds/windows/dcc.exe\" 2>&1)",
       "PowerShell(& \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\" --headless --path \"D:\\\\Projects\\\\dcc\\\\godot\" --export-debug \"Android\" \"../builds/android/dcc.apk\" 2>&1)",
       "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices)",
-      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" 2>&1)"
+      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" 2>&1)",
+      "Bash(git rm *)",
+      "Bash(git commit *)",
+      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"

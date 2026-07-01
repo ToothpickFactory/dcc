@@ -662,6 +662,11 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 		var wi := _world.wall_instance()
 		var wc: int = wi.multimesh.instance_count if wi != null and wi.multimesh != null else -1
 		print("[DBG] floor built grid=", _world.grid.get("w"), "x", _world.grid.get("h"), " cell=", _world.grid.get("cell"), " walls=", wc, " stairs=", _floor_stairs)
+	# Background-load projectile models so the first in-game spawn doesn't block
+	# the main thread on disk IO. Godot's ResourceCache is shared, so load()
+	# calls in EntitySprite will return instantly once these requests complete.
+	ResourceLoader.load_threaded_request(EntitySprite.DAGGER_MODEL_PATH)
+	ResourceLoader.load_threaded_request(EntitySprite.ARROW_MODEL_PATH)
 
 func _mark_exit_on_minimap() -> void:
 	if _minimap == null:

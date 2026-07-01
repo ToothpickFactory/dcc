@@ -1309,7 +1309,11 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     if (!it?.consumable) return false; // only consumables are drinkable
     const amount = it.consumable.heal ?? Math.round(p.derived.maxHp * (it.consumable.healPct ?? 0));
     if (amount <= 0) return false;
-    p.inv.carried.splice(idx, 1); // consume it
+    if ((it.quantity ?? 1) > 1) {
+      it.quantity = (it.quantity ?? 1) - 1; // deplete one from the stack
+    } else {
+      p.inv.carried.splice(idx, 1); // last one — remove the slot
+    }
     p.potionReadyAt = this.now + POTION_CD;
     applyHeal(this, p, amount, p.id); // clamps to maxHp, pushes the heal fx
     this.persistPlayer(p);

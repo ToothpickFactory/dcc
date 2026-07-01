@@ -99,6 +99,7 @@ export interface Item {
   attrs: Partial<Attributes>; // stat bonuses while equipped
   bagSlots?: number; // bags only: extra carry slots this container grants
   consumable?: { heal?: number; healPct?: number }; // consumables: effect on use (drink)
+  quantity?: number; // consumables only: stack count (1 when absent)
   weaponType?: WeaponType; // weapons only: drives equip slot + held model
   weaponRarity?: WeaponVisualRarity; // weapons only: maps existing rarities to GLB asset variants
   icon?: string;
@@ -279,7 +280,16 @@ export function findCarried(inv: Inventory, itemId: string): number {
 }
 
 // Put an item in the first free carry slot. False if the bag is full.
+// Consumables of the same rarity stack onto an existing slot rather than
+// occupying a new one — potions never bloat the carry grid.
 export function addItem(inv: Inventory, item: Item): boolean {
+  if (item.slot === "consumable") {
+    const existing = inv.carried.find((c) => c.slot === "consumable" && c.rarity === item.rarity);
+    if (existing) {
+      existing.quantity = (existing.quantity ?? 1) + 1;
+      return true;
+    }
+  }
   if (carriedFree(inv) <= 0) return false;
   inv.carried.push(item);
   return true;

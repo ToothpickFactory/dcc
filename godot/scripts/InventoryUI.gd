@@ -321,6 +321,14 @@ func _render(msg: Dictionary) -> void:
 		# Consumables drink (heal self); everything else equips on tap.
 		var tap_msg := {"t": "useItem", "item": item_id} if is_consumable else {"t": "equip", "item": item_id}
 		tile.gui_input.connect(func(ev: InputEvent): if _is_tap(ev): _send(tap_msg))
+		# Stack count badge for consumables with quantity > 1.
+		if is_consumable:
+			var qty: int = int(it.get("quantity", 1))
+			if qty > 1:
+				var count_lbl := _corner_text("x%d" % qty, Color(1.0, 0.9, 0.4))
+				count_lbl.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+				count_lbl.position = Vector2(3, -14)
+				body.add_child(count_lbl)
 		# Consumables: a "+bar" toggle to park a potion slot on the hotbar.
 		if is_consumable:
 			var sd: Variant = _net.get("self_dto")
