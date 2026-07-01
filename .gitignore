@@ -184,3 +184,6 @@ godot/*.exe
 godot/*.pck
 godot/*.apk
 godot/build/
+
+# Platform build artifacts (APK, EXE, PCK — too large for GitHub)
+builds/

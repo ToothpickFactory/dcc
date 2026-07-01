@@ -38,13 +38,17 @@ const SLOT_ATTRS: Record<ItemSlot, AttrKey[]> = {
 const ALL_SLOTS: ItemSlot[] = ["helmet", "chest", "legs", "gloves", "weapon", "ring", "amulet", "bag"];
 const WEAPON_NOUN: Record<WeaponType, string> = {
   axe: "Axe",
+  bow: "Bow",
   flail: "Flail",
+  mace: "Mace",
   shield: "Shield",
   sword: "Sword",
 };
 const WEAPON_ICON: Record<WeaponType, string> = {
   axe: "🪓",
+  bow: "🏹",
   flail: "⛓",
+  mace: "🔨",
   shield: "🛡️",
   sword: "⚔️",
 };

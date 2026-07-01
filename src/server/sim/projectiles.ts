@@ -154,10 +154,20 @@ function projectileSpriteForAbility(ab: Ability): number | undefined {
 }
 
 function projectileRenderForAbility(ab: Ability): ProjectileRender | undefined {
+  if (isArrowProjectile(ab)) return "arrow";
+  if (isDaggerProjectile(ab)) return "dagger";
   if (isIceOrRockProjectile(ab)) return "ice";
   if (isPoisonProjectile(ab)) return "poison";
   if (isFireballProjectile(ab)) return "fire";
   return ab.projectile ? "ice" : undefined;
+}
+
+function isArrowProjectile(ab: Ability): boolean {
+  return ab.projectile === true && /\b(arrow|shot|scattershot|volley)\b/i.test(abilityTitle(ab));
+}
+
+function isDaggerProjectile(ab: Ability): boolean {
+  return ab.projectile === true && new Set(["rocks", "sharprocks", "boulder"]).has(ab.id);
 }
 
 function isAreaAbility(ab: Ability): boolean {
@@ -398,6 +408,8 @@ function statusForProjectile(proj: ProjectileState["proj"]) {
   if (proj === "shadow") return "shadow";
   if (proj === "bleed") return "bleed";
   if (proj === "stun") return "stun";
+  if (proj === "arrow") return "bleed";
+  if (proj === "dagger") return "bleed";
   return proj ?? "fire";
 }
 

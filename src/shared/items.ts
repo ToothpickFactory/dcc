@@ -54,9 +54,9 @@ export const EQUIP_SLOTS: EquipSlot[] = ["helmet", "chest", "legs", "gloves", "m
 // hand; `ring` fits either ring slot; `bag` goes into a bag-equip slot;
 // `consumable` is never equipped (carried-only; drink it via the useItem message).
 export type ItemSlot = "helmet" | "chest" | "legs" | "gloves" | "weapon" | "ring" | "amulet" | "bag" | "consumable";
-export type WeaponType = "axe" | "flail" | "shield" | "sword";
+export type WeaponType = "axe" | "bow" | "flail" | "mace" | "shield" | "sword";
 export type WeaponVisualRarity = "common" | "standard" | "rare" | "epic";
-export const WEAPON_TYPES: WeaponType[] = ["axe", "flail", "shield", "sword"];
+export const WEAPON_TYPES: WeaponType[] = ["axe", "bow", "flail", "mace", "shield", "sword"];
 
 export function normalizeWeaponType(value: unknown): WeaponType | undefined {
   const v = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -152,7 +152,9 @@ function coerceItem<T>(it: T): T {
 function inferWeaponType(item: Pick<Item, "name">): WeaponType | undefined {
   const name = item.name.toLowerCase();
   if (name.includes("axe")) return "axe";
+  if (name.includes("bow")) return "bow";
   if (name.includes("flail")) return "flail";
+  if (name.includes("mace") || name.includes("club") || name.includes("hammer")) return "mace";
   if (name.includes("shield")) return "shield";
   if (name.includes("sword") || name.includes("blade")) return "sword";
   return undefined;

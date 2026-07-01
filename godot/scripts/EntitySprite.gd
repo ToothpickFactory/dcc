@@ -150,6 +150,10 @@ const POISON_BOLT_MODEL_PATH := "res://assets/Bolt/Poison.glb"
 const ELECTRIC_BOLT_MODEL_PATH := "res://assets/Bolt/Electric.glb"
 const SHADOW_BOLT_MODEL_PATH := "res://assets/Bolt/Shadow.glb"
 const BLEED_BOLT_MODEL_PATH := "res://assets/Bolt/Shadow.glb"
+const ARROW_MODEL_PATH := "res://assets/Weapons/Arrow/Common.glb"
+const ARROW_MODEL_SCALE := 34.0
+const DAGGER_MODEL_PATH := "res://assets/Weapons/ThrowingDaggeer/Throwing dagger.glb"
+const DAGGER_MODEL_SCALE := 34.0
 const BOLT_MODEL_SCALE := 34.0
 const BOSS_BOLT_SPRITE := 99   # src/shared/constants.ts BOSS_BOLT_SPRITE
 const MONSTER_BOLT_SPRITE := 98 # MONSTER_BOLT_SPRITE
@@ -841,6 +845,30 @@ func _model_profile_for_entity() -> Dictionary:
 			"contrast": 1.3,
 			"saturation": 1.35,
 		}
+	if kind == "proj" and _projectile_render == "arrow":
+		return {
+			"label": "Arrow",
+			"path": ARROW_MODEL_PATH,
+			"scale": ARROW_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": 1.4,
+			"light_range": 80.0,
+			"light_y": 16.0,
+			"contrast": 1.2,
+			"saturation": 1.1,
+		}
+	if kind == "proj" and _projectile_render == "dagger":
+		return {
+			"label": "Dagger",
+			"path": DAGGER_MODEL_PATH,
+			"scale": DAGGER_MODEL_SCALE,
+			"y": 18.0,
+			"light_energy": 1.5,
+			"light_range": 80.0,
+			"light_y": 16.0,
+			"contrast": 1.2,
+			"saturation": 1.1,
+		}
 	if kind == "proj" and (_projectile_render == "electric" or _projectile_render == "shadow" or _projectile_render == "bleed" or _projectile_render == "stun"):
 		var bolt_path := ELECTRIC_BOLT_MODEL_PATH
 		var bolt_label := "Electric Bolt"
@@ -1259,13 +1287,17 @@ func _weapon_spec_from_item(item: Dictionary, fallback_type: String, fallback_ra
 
 func _weapon_type_from_item(item: Dictionary, fallback_type: String) -> String:
 	var raw := str(item.get("weaponType", item.get("type", ""))).strip_edges().to_lower()
-	if ["axe", "flail", "shield", "sword"].has(raw):
+	if ["axe", "bow", "flail", "mace", "shield", "sword"].has(raw):
 		return raw
 	var name := str(item.get("name", "")).to_lower()
 	if name.contains("axe"):
 		return "axe"
+	if name.contains("bow"):
+		return "bow"
 	if name.contains("flail"):
 		return "flail"
+	if name.contains("mace") or name.contains("club") or name.contains("hammer"):
+		return "mace"
 	if name.contains("shield"):
 		return "shield"
 	if name.contains("sword") or name.contains("blade"):
@@ -1282,8 +1314,12 @@ func _weapon_path_for_spec(spec: Dictionary) -> String:
 	match weapon_type:
 		"axe":
 			return "res://assets/Weapons/Axe/%s.glb" % rarity
+		"bow":
+			return "res://assets/Weapons/Bow/%s.glb" % rarity
 		"flail":
 			return HERO_FLAIL_SCENE_PATH
+		"mace":
+			return "res://assets/Weapons/Mace/%s.glb" % rarity
 		"shield":
 			return "res://assets/Weapons/Shield/%s.glb" % rarity
 		"sword":
@@ -1300,6 +1336,10 @@ func _weapon_scale_for(weapon_type: String) -> float:
 		"shield":
 			return 0.36
 		"axe":
+			return 0.65
+		"bow":
+			return 0.70
+		"mace":
 			return 0.65
 		"sword":
 			return 0.555
@@ -1678,6 +1718,9 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			# Bolts face their travel direction. PI - aim maps world-space atan2(z,x)
 			# to Godot rotation.y convention for this top-down camera setup.
 			_model_root.rotation.y = (PI - aim) + float(_model_profile.get("yaw_offset", 0.0))
+			if _projectile_render == "dagger":
+				# Tumble end-over-end as the dagger flies (~2 rotations/sec).
+				_model_root.rotation.x = fmod(float(now_ms) * 0.012, TAU)
 		else:
 			var model_dir := _action_facing_dir if _action != "" else _facing_dir
 			var model_flip := _action_flip if _action != "" else _flip
