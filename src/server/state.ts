@@ -157,6 +157,24 @@ export interface LootBagState {
   ownerUntil?: number; // wall-clock ms the owner-priority window closes (then free-for-all)
 }
 
+// A queued melee swing that resolves after a weapon-specific delay so the damage
+// fires when the weapon animation visually connects, not the instant the player
+// presses the button.
+export interface PendingSwing {
+  fireAt:    number;   // ctx.now value at which the cone check fires
+  casterId:  string;   // look up live caster position at fire time
+  aim:       number;   // attack direction locked at cast time
+  range:     number;   // ab.range × weapon range multiplier
+  cone:      number;   // already adjusted for combo finisher
+  dmg:       number;   // already scaled by stats + combo finisher
+  slowMs:    number;
+  stunMs?:   number;
+  rootMs?:   number;
+  freeze?:   boolean;
+  idx:       number;   // ability slot index (for XP)
+  knockMult: number;
+}
+
 // The slice of the world the simulation modules operate on. The Durable Object
 // implements this and passes itself as the context, so sim modules never import
 // the DO.
@@ -165,6 +183,7 @@ export interface WorldCtx {
   players: Map<string, PlayerState>;
   monsters: MonsterState[];
   projectiles: ProjectileState[];
+  pendingSwings: PendingSwing[];
   props: PropState[];
   boss: BossState | null;
   lootBags: LootBagState[];

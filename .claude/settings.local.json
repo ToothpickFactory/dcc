@@ -127,7 +127,17 @@
       "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" 2>&1)",
       "Bash(git rm *)",
       "Bash(git commit *)",
-      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\")"
+      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"D:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\")",
+      "Bash(grep \"\\\\.glb$\")",
+      "Bash(awk '{print $5, $9}')",
+      "PowerShell(cd d:\\\\Projects\\\\dcc\\\\godot; $env:GODOT=\"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Programs\\\\Godot\\\\Godot_v4.4.1-stable_win64.exe\"; & $env:GODOT --headless --export-release \"Windows Desktop\" \"../builds/windows/dcc.exe\" 2>&1 | Select-Object -Last 10)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Programs\\\\Godot\\\\\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Program Files\\\\Godot\\\\\" -ErrorAction SilentlyContinue; \\(Get-Command godot -ErrorAction SilentlyContinue\\).Source)",
+      "PowerShell($GODOT = \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\"; if \\(-not \\(Test-Path \"d:\\\\Projects\\\\dcc\\\\builds\\\\windows\"\\)\\) { New-Item -ItemType Directory -Force \"d:\\\\Projects\\\\dcc\\\\builds\\\\windows\" }; & $GODOT --headless --export-release \"Windows Desktop\" \"d:\\\\Projects\\\\dcc\\\\builds\\\\windows\\\\dcc.exe\" --path \"d:\\\\Projects\\\\dcc\\\\godot\" 2>&1 | Select-Object -Last 15)",
+      "PowerShell($GODOT = \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\"; if \\(-not \\(Test-Path \"d:\\\\Projects\\\\dcc\\\\builds\\\\android\"\\)\\) { New-Item -ItemType Directory -Force \"d:\\\\Projects\\\\dcc\\\\builds\\\\android\" }; & $GODOT --headless --export-release \"Android\" \"d:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" --path \"d:\\\\Projects\\\\dcc\\\\godot\" 2>&1 | Select-Object -Last 15)",
+      "PowerShell($GODOT = \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\"; & $GODOT --headless --export-debug \"Android\" \"d:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" --path \"d:\\\\Projects\\\\dcc\\\\godot\" 2>&1 | Select-Object -Last 10)",
+      "PowerShell(adb devices 2>&1)",
+      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb devices 2>&1)",
+      "PowerShell($adb = \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r \"d:\\\\Projects\\\\dcc\\\\builds\\\\android\\\\dcc.apk\" 2>&1)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"

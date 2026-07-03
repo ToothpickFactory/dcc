@@ -63,12 +63,12 @@ import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, Wea
 import { generateFloor, rng } from "../procgen";
 import { canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
-import type { BossState, LootBagState, MonsterState, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
+import type { BossState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
-import { castAbility, stepProjectiles } from "./sim/projectiles";
+import { castAbility, stepPendingSwings, stepProjectiles } from "./sim/projectiles";
 import { applyDamage, applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
@@ -107,6 +107,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   players = new Map<string, PlayerState>();
   monsters: MonsterState[] = [];
   projectiles: ProjectileState[] = [];
+  pendingSwings: PendingSwing[] = [];
   props: PropState[] = [];
   boss: BossState | null = null;
   lootBags: LootBagState[] = [];
@@ -1498,6 +1499,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     updateMonsters(this, dt);
     updateBoss(this, dt);
     for (const p of this.players.values()) if (p.status === "alive") this.autoCast(p);
+    stepPendingSwings(this);
     stepProjectiles(this, dt);
 
     // Despawn expired loot bags so a long floor doesn't litter forever.

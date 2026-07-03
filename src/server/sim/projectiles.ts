@@ -9,14 +9,18 @@ import {
   COMBO_LIGHT_CD_MULT,
   COMBO_WINDOW_MS,
   FIREBALL_PROJECTILE_SPRITE,
+  FIST_RANGE_MULT,
+  FIST_SWING_DELAY_MS,
   ICE_PROJECTILE_SPRITE,
   MONSTER_KINDS,
   POISON_PROJECTILE_SPRITE,
   PLAYER_RADIUS,
   PROJECTILE_RADIUS,
+  WEAPON_MELEE_RANGE_MULT,
+  WEAPON_SWING_DELAY_MS,
 } from "../../shared/constants";
 import type { Ability, ProjectileRender } from "../../shared/types";
-import type { BossState, MonsterState, PlayerState, ProjectileState, WorldCtx } from "../state";
+import type { BossState, MonsterState, PendingSwing, PlayerState, ProjectileState, WorldCtx } from "../state";
 import { blocked } from "../../procgen/collision";
 import { applyCc, applyDamage, applyHeal } from "./combat";
 import { propBlocking } from "./collision";
@@ -112,13 +116,35 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     return true;
   }
 
-  // Melee cone (non-projectile): hit monsters, the boss, and OTHER players. The cone
-  // widens with evolutions (blast blade / whirlwind). The combo finisher hits harder +
-  // wider + shoves more, then resets the chain (rhythm + weight).
+  // Melee cone: basic swing chains get a weapon-specific delay so damage fires
+  // when the animation visually connects. CC abilities (bash, hamstring) resolve
+  // instantly — their interrupt timing is intentional and feels wrong delayed.
   const baseCone = ab.cone ?? Math.PI / 3;
   const cone = isFinisher ? baseCone * COMBO_FINISHER_CONE_MULT : baseCone;
   const meleeDmg = isFinisher ? dmg * COMBO_FINISHER_DMG_MULT : dmg;
   const knockMult = isFinisher ? COMBO_FINISHER_KNOCK_MULT : 1;
+  if (isMelee) {
+    caster.comboStep = isFinisher ? 0 : caster.comboStep + 1;
+    caster.comboExpireAt = ctx.now + COMBO_WINDOW_MS;
+    // Queue delayed hit — weapon range scaling + swing timing applied here.
+    const weaponType = caster.inv.equipped.mainHand?.weaponType;
+    const rangeMult  = weaponType ? (WEAPON_MELEE_RANGE_MULT[weaponType] ?? 1.0) : FIST_RANGE_MULT;
+    const delayMs    = weaponType ? (WEAPON_SWING_DELAY_MS[weaponType]  ?? 120)  : FIST_SWING_DELAY_MS;
+    ctx.pendingSwings.push({
+      fireAt:    ctx.now + delayMs,
+      casterId:  caster.id,
+      aim,
+      range:     ab.range * rangeMult,
+      cone,
+      dmg:       meleeDmg,
+      slowMs:    ab.slowMs ?? 0,
+      idx,
+      knockMult,
+    });
+    return true;
+  }
+  // Non-combo melee (CC strikes like bash/hamstring): resolve instantly so the
+  // interrupt lands at the moment it looks like it should.
   for (const prop of ctx.props) {
     if (prop.hp > 0 && inCone(caster, prop, aim, ab.range, cone)) ctx.damageProp(prop, caster.id, true, idx);
   }
@@ -126,7 +152,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     if (m.dead) continue;
     if (inCone(caster, m, aim, ab.range, cone)) {
       applyDamage(ctx, m, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, m), knockMult);
-      applyCc(ctx, m, ab); // stun/root/freeze if this is a CC ability (no-op otherwise)
+      applyCc(ctx, m, ab);
     }
   }
   if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, aim, ab.range, cone)) {
@@ -137,12 +163,43 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     if (p.id === caster.id || p.status !== "alive" || p.reached) continue;
     if (inCone(caster, p, aim, ab.range, cone)) applyDamage(ctx, p, meleeDmg, caster.id, true, ab.slowMs, idx, dist(caster, p), knockMult);
   }
-  // Advance the chain (wrap after the finisher); keep it alive for COMBO_WINDOW_MS.
-  if (isMelee) {
-    caster.comboStep = isFinisher ? 0 : caster.comboStep + 1;
-    caster.comboExpireAt = ctx.now + COMBO_WINDOW_MS;
-  }
   return true;
+}
+
+// Resolve any pending melee swings whose delay has elapsed. Called each tick
+// after castAbility so at least one tick separates cast from impact.
+export function stepPendingSwings(ctx: WorldCtx): void {
+  if (!ctx.pendingSwings.length) return;
+  ctx.pendingSwings = ctx.pendingSwings.filter((sw) => {
+    if (ctx.now < sw.fireAt) return true; // still waiting
+    resolveMeleeSwing(ctx, sw);
+    return false;
+  });
+}
+
+function resolveMeleeSwing(ctx: WorldCtx, sw: PendingSwing): void {
+  const caster = ctx.players.get(sw.casterId);
+  if (!caster || caster.status !== "alive") return; // caster died before impact
+  for (const prop of ctx.props) {
+    if (prop.hp > 0 && inCone(caster, prop, sw.aim, sw.range, sw.cone))
+      ctx.damageProp(prop, sw.casterId, true, sw.idx);
+  }
+  for (const m of ctx.monsters) {
+    if (m.dead) continue;
+    if (inCone(caster, m, sw.aim, sw.range, sw.cone)) {
+      applyDamage(ctx, m, sw.dmg, sw.casterId, true, sw.slowMs, sw.idx, dist(caster, m), sw.knockMult);
+      applyCc(ctx, m, sw);
+    }
+  }
+  if (ctx.boss && !ctx.boss.dead && inCone(caster, ctx.boss, sw.aim, sw.range, sw.cone)) {
+    applyDamage(ctx, ctx.boss, sw.dmg, sw.casterId, true, sw.slowMs, sw.idx, dist(caster, ctx.boss), sw.knockMult);
+    applyCc(ctx, ctx.boss, sw);
+  }
+  for (const p of ctx.players.values()) {
+    if (p.id === sw.casterId || p.status !== "alive" || p.reached) continue;
+    if (inCone(caster, p, sw.aim, sw.range, sw.cone))
+      applyDamage(ctx, p, sw.dmg, sw.casterId, true, sw.slowMs, sw.idx, dist(caster, p), sw.knockMult);
+  }
 }
 
 function projectileSpriteForAbility(ab: Ability): number | undefined {

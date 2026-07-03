@@ -171,3 +171,26 @@ export function bossNameForDepth(depth: number, seed = 0): string {
   return BOSS_NAMES[x % BOSS_NAMES.length]!;
 }
 export const BOSS_BOLT_SPRITE = 99; // EntityDTO.sprite marker so the client styles boss bolts
+
+// Per-weapon melee range multiplier and swing delay, derived from measured GLB
+// extents × visual scale factors. Sword is the 1.00× baseline (~1.91 model units
+// at 0.555 scale). Flail chain + ball extends it to ~1.85× per user spec.
+// Fist constants apply when no mainHand weapon is equipped.
+export const WEAPON_MELEE_RANGE_MULT: Record<string, number> = {
+  mace:   0.75,  // compact head (~1.0 units at 0.65 scale) — shorter than sword
+  shield: 0.70,  // wide but defensive, little offensive reach
+  sword:  1.00,  // baseline — 1.91 units × 0.555 scale
+  bow:    1.20,  // long stave even when used as a club
+  axe:    1.15,  // 1.90 units × 0.65 scale — slightly more reach than sword
+  flail:  1.85,  // handle + chain(1.93) + ball radius — ~2× per user measurement
+};
+export const WEAPON_SWING_DELAY_MS: Record<string, number> = {
+  mace:   120,   // heavy head, compact arc
+  shield:  90,   // quick defensive bash
+  sword:  120,   // baseline swing
+  bow:    100,   // staff-strike, quick
+  axe:    150,   // larger arc, heavier
+  flail:  170,   // chain must extend on the swing
+};
+export const FIST_RANGE_MULT = 0.65;   // bare hands — shortest reach
+export const FIST_SWING_DELAY_MS = 80; // fastest — no weapon mass

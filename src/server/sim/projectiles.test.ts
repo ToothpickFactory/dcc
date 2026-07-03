@@ -41,7 +41,7 @@ function monster(id: string, x: number, y: number): MonsterState {
 function ctxOf(players: PlayerState[], monsters: MonsterState[], events: GameEvent[] = []): WorldCtx {
   const grid = { w: 40, h: 40, cell: 80, solid: new Uint8Array(40 * 40) }; // all open
   return {
-    now: 1000, players: new Map(players.map((p) => [p.id, p])), monsters, projectiles: [], boss: null,
+    now: 1000, players: new Map(players.map((p) => [p.id, p])), monsters, projectiles: [], pendingSwings: [], boss: null,
     lootBags: [], props: [], groupHasteReadyAt: 0, floor: { collision: grid } as WorldCtx["floor"],
     pushFx(e) { events.push(e); }, pushPlay() {}, dropLoot() {}, rollDrops() {}, gainXp() {},
   };
