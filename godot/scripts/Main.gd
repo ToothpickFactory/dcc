@@ -59,6 +59,7 @@ var _loot_prompt: Label
 var _floor_shop_pos := Vector2.ZERO
 var _near_floor_shop := false
 var _shop_prompt: Label
+var _shop_panel: Node  # ShopPanel — controller-navigable shop overlay
 var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
@@ -188,6 +189,10 @@ func _ready() -> void:
 	add_child(_inv)
 	_inv.setup(_net)
 
+	_shop_panel = load("res://scripts/ShopPanel.gd").new()
+	add_child(_shop_panel)
+	_shop_panel.setup(_net)
+
 	_skills = SkillsUI.new()
 	add_child(_skills)
 	_skills.setup(_net)
@@ -312,6 +317,7 @@ func _ready() -> void:
 	_net.floor_received.connect(_on_floor)
 	_net.inv_received.connect(func(m):
 		_inv.on_inv(m)
+		_shop_panel.on_inv(m)
 		var inv_data: Variant = (m as Dictionary).get("inv", {})
 		if inv_data is Dictionary:
 			var all_items: Array = []
@@ -331,7 +337,10 @@ func _ready() -> void:
 		if bag_items is Array:
 			_assign_weapon_damage_types(bag_items as Array)
 	)
-	_net.shop_received.connect(func(m): _inv.on_shop(m))
+	_net.shop_received.connect(func(m):
+		_inv.on_shop(m)
+		_shop_panel.on_shop(m)
+	)
 	_net.events_received.connect(_on_events)
 	_net.loot_received.connect(_on_loot)
 	_net.closed.connect(_on_net_closed)
@@ -697,7 +706,7 @@ func _process(dt: float) -> void:
 	# Keyed off wall-clock (unaffected by time_scale) so it always restores.
 	Engine.time_scale = 0.12 if Time.get_ticks_msec() < _hitstop_until else 1.0
 
-	var menu_open := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != ""
+	var menu_open := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _shop_panel.is_open()
 
 	var mv: Vector2 = _inp.move_vec()
 	if menu_open:
@@ -917,7 +926,7 @@ func _process(dt: float) -> void:
 		_inv.set_near_shop(_near_floor_shop)
 		if _near_floor_shop:
 			_net.send({ "t": "floorShop" })  # pre-load shop stock as soon as player enters range
-	_shop_prompt.visible = _near_floor_shop and not _inv.is_open()
+	_shop_prompt.visible = _near_floor_shop and not _inv.is_open() and not _shop_panel.is_open()
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()
@@ -1125,8 +1134,11 @@ func _unhandled_input(e: InputEvent) -> void:
 	#   LB -> inventory   LT -> character/skills
 	#   D-pad Up -> quick potion   D-pad Right -> loot
 	if e is InputEventJoypadButton and e.pressed:
-		var _any_menu := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != ""
+		var _any_menu := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _shop_panel.is_open()
 		if _any_menu:
+			# Shop panel uses Godot's native Button focus — A/B handled by the panel itself.
+			if _shop_panel.is_open():
+				return
 			match e.button_index:
 				JOY_BUTTON_A:
 					# Defer so push_input isn't called from inside an active dispatch.
@@ -1140,9 +1152,11 @@ func _unhandled_input(e: InputEvent) -> void:
 					return
 		match e.button_index:
 			JOY_BUTTON_LEFT_SHOULDER:
-				if _skills.is_open():
+				if _shop_panel.is_open():
+					_shop_panel.close()
+				elif _skills.is_open():
 					_skills.close()
-				if _near_floor_shop and not _inv.is_open():
+				elif _near_floor_shop and not _inv.is_open():
 					_open_floor_shop()
 				else:
 					_inv.toggle()
@@ -1169,9 +1183,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _open_floor_shop() -> void:
-	_inv.set_near_shop(true)
-	_inv.open()
 	_net.send({ "t": "floorShop" })
+	_shop_panel.open()
 
 func _pad_tap(pos: Vector2) -> void:
 	var ev := InputEventScreenTouch.new()
