@@ -23,7 +23,6 @@ var _shop_items: Array = []
 var _carried: Array = []
 var _gold := 0
 
-var _root: Control
 var _gold_label: Label
 var _buy_col: VBoxContainer
 var _sell_col: VBoxContainer
@@ -34,10 +33,8 @@ func setup(net: Node) -> void:
 
 func open() -> void:
 	visible = true
-	if _root != null:
-		_root.visible = true
 	_refresh()
-	# Auto-focus the first interactive button when opened via controller.
+	# Auto-focus the first interactive button after layout settles.
 	await get_tree().process_frame
 	_focus_first()
 
@@ -64,29 +61,33 @@ func _ready() -> void:
 	layer = 30
 	visible = false
 
-	# CanvasLayer children must be Control nodes; use a full-rect root to fill the viewport.
-	var container := Control.new()
-	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(container)
+	# Base Control fills the viewport (required — CanvasLayer children are positioned
+	# relative to the viewport, not relative to each other).
+	var base := Control.new()
+	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(base)
 
 	# Dim backdrop.
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0, 0, 0, 0.72)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	container.add_child(backdrop)
+	base.add_child(backdrop)
 
-	# Centered card.
-	_root = PanelContainer.new()
-	_root.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE, 0)
-	_root.custom_minimum_size = Vector2(460, 600)
-	container.add_child(_root)
+	# CenterContainer fills the viewport and centers the card reliably.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	base.add_child(center)
+
+	# Card panel.
+	var card := PanelContainer.new()
+	card.custom_minimum_size = Vector2(460, 600)
+	card.add_theme_stylebox_override("panel", _make_bg())
+	center.add_child(card)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 10)
-	_root.add_child(outer)
-
-	_root.add_theme_stylebox_override("panel", _make_bg())
+	card.add_child(outer)
 
 	# ── Header ──────────────────────────────────────────────────────────────
 	var header := HBoxContainer.new()
@@ -192,22 +193,18 @@ func _item_button(it: Dictionary, price_txt: String, enabled: bool) -> Button:
 	var rarity := str(it.get("rarity", "common"))
 	var name_txt := str(it.get("name", "Unknown item"))
 	var slot_txt := str(it.get("slot", ""))
-
 	var btn := Button.new()
 	btn.focus_mode = Control.FOCUS_ALL
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btn.disabled = not enabled
 	btn.custom_minimum_size = Vector2(0, 44)
-
-	# Left side: rarity-colored name + slot
 	var label_txt := name_txt
 	if slot_txt != "":
 		label_txt += "  [%s]" % slot_txt
-	btn.text = "%-32s  %s" % [label_txt, price_txt]
+	btn.text = "%-28s  %s" % [label_txt, price_txt]
 	btn.add_theme_color_override("font_color", RARITY_COLOR.get(rarity, Color.WHITE))
 	if not enabled:
-		btn.modulate = Color(0.5, 0.5, 0.5, 0.8)
-
+		btn.modulate = Color(0.6, 0.6, 0.6, 0.9)
 	return btn
 
 func _empty_label(txt: String) -> Label:
@@ -221,7 +218,6 @@ func _sell_value(it: Dictionary) -> int:
 	return int(SELL_PRICE.get(str(it.get("rarity", "")), 1))
 
 func _focus_first() -> void:
-	# Try to focus the first buy button, then sell, then close.
 	for child in _buy_col.get_children():
 		if child is Button and not child.disabled:
 			child.grab_focus()
