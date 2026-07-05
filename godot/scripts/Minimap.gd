@@ -15,6 +15,7 @@ const STAIRS_HIGHLIGHT_MS := 15000.0
 
 var _grid: Dictionary = {}
 var _stairs: Dictionary = {}
+var _shop: Dictionary = {}
 var _discovered: Dictionary = {}   # used as a Set: {cell_index: true}
 var _scale := 1.0                  # world px -> minimap px
 var _last_cell := -1               # recompute discovery only when the player's cell changes
@@ -42,6 +43,7 @@ func _ready() -> void:
 func set_floor(grid: Dictionary, stairs: Dictionary) -> void:
 	_grid = grid
 	_stairs = stairs
+	_shop = {}
 	_discovered.clear()
 	_last_cell = -1
 	_stairs_highlight_until = 0.0
@@ -55,6 +57,21 @@ func set_floor(grid: Dictionary, stairs: Dictionary) -> void:
 ## without clearing discovery or rebuilding the grid.
 func update_stairs(stairs: Dictionary) -> void:
 	_stairs = stairs
+
+func update_shop(pos: Dictionary) -> void:
+	_shop = pos
+	queue_redraw()
+
+func reveal_shop() -> void:
+	if _grid.is_empty() or _shop.is_empty():
+		return
+	var cell: float = _grid["cell"]
+	var w: int = _grid["w"]
+	var sx := int(floor(float(_shop.get("x", 0.0)) / cell))
+	var sy := int(floor(float(_shop.get("y", 0.0)) / cell))
+	_discovered[sy * w + sx] = true
+	_next_draw = 0.0
+	queue_redraw()
 
 func highlight_stairs() -> void:
 	if _grid.is_empty() or _stairs.is_empty():
@@ -146,6 +163,15 @@ func _draw() -> void:
 			if float(Time.get_ticks_msec()) < _stairs_highlight_until:
 				var pulse := 0.5 + 0.5 * sin(float(Time.get_ticks_msec()) * 0.012)
 				draw_arc(Vector2(stx * s, sty * s), 7.0 + pulse * 4.0, 0.0, TAU, 28, Color8(0xff, 0xd3, 0x4d), 2.0)
+
+	# Shop — gold dot, shown once the player has seen that cell.
+	if not _shop.is_empty():
+		var shx := float(_shop.get("x", 0.0))
+		var shy := float(_shop.get("y", 0.0))
+		var scx := int(floor(shx / cell))
+		var scy := int(floor(shy / cell))
+		if _discovered.has(scy * w + scx):
+			draw_circle(Vector2(shx * s, shy * s), 3.0, Color8(0xff, 0xd7, 0x00))
 
 	# Living teammates (always shown for co-op awareness).
 	var ally_col := Color8(0x4f, 0x8c, 0xff)

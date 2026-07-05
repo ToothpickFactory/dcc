@@ -56,8 +56,8 @@ const ICE_STAIRS_TARGET_FOOTPRINT := 150.0
 const ICE_STAIRS_TARGET_H := 125.0
 const ICE_STAIRS_SINK := 34.0
 const SHOP_SCENE := "res://assets/Tiles/3D/Shared/Shop.glb"
-const SHOP_TARGET_H := 160.0   # world-px height the shop model is scaled to
-const SHOP_TARGET_FOOTPRINT := 180.0
+const SHOP_TARGET_H := 125.0
+const SHOP_TARGET_FOOTPRINT := 150.0
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"]
@@ -671,10 +671,10 @@ func place_shop(pos: Vector2) -> void:
 	var bounds := _visual_aabb(model)
 	var max_footprint := maxf(bounds.size.x, bounds.size.z)
 	var model_scale := 1.0
-	if bounds.size.y > 0.001:
-		model_scale = SHOP_TARGET_H / bounds.size.y
 	if max_footprint > 0.001:
-		model_scale = minf(model_scale, SHOP_TARGET_FOOTPRINT / max_footprint)
+		model_scale = SHOP_TARGET_FOOTPRINT / max_footprint
+	if bounds.size.y > 0.001:
+		model_scale = minf(model_scale, SHOP_TARGET_H / bounds.size.y)
 	model_scale = clampf(model_scale, 0.01, 80.0)
 	model.scale = Vector3.ONE * model_scale
 	model.position = Vector3(

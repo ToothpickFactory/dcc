@@ -657,6 +657,7 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	if not shop_pos_d.is_empty():
 		_floor_shop_pos = Vector2(float(shop_pos_d.get("x", 0.0)), float(shop_pos_d.get("y", 0.0)))
 		_decor.place_shop(_floor_shop_pos)
+		_minimap.update_shop(shop_pos_d)
 	else:
 		_floor_shop_pos = Vector2.ZERO
 	_sprites.set_grid(_world.grid)
@@ -689,6 +690,7 @@ func _mark_exit_on_minimap() -> void:
 	if _minimap == null:
 		return
 	_minimap.highlight_stairs()
+	_minimap.reveal_shop()
 
 func _process(dt: float) -> void:
 	# Hit-stop: a brief global slow-mo on a nearby kill makes blows land (see _on_events).
