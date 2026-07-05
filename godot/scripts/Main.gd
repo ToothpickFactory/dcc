@@ -917,7 +917,7 @@ func _process(dt: float) -> void:
 		_near_floor_shop = near_shop
 		_inv.set_near_shop(_near_floor_shop)
 		if _near_floor_shop:
-			_net.send({ "t": "floorShop" })  # pre-load shop stock as soon as player enters range
+			_net.send_msg({ "t": "floorShop" })  # pre-load shop stock as soon as player enters range
 	_shop_prompt.visible = _near_floor_shop and not _inv.is_open() and not _inv.is_floor_shop_open()
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
@@ -1175,7 +1175,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 func _open_floor_shop() -> void:
-	_net.send({ "t": "floorShop" })
+	_net.send_msg({ "t": "floorShop" })
 	_inv.open_floor_shop()
 
 func _pad_tap(pos: Vector2) -> void:
