@@ -1128,8 +1128,11 @@ func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventJoypadButton and e.pressed:
 		var _any_menu: bool = _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _inv.is_floor_shop_open()
 		if _any_menu:
-			# Floor shop uses Godot's native Button focus — A/B/B handled by focus system itself.
+			# Floor shop uses Godot's native Button focus for A; LB and B close the panel.
 			if _inv.is_floor_shop_open():
+				if e.button_index == JOY_BUTTON_LEFT_SHOULDER or e.button_index == JOY_BUTTON_B:
+					_inv.close_floor_shop()
+					get_viewport().set_input_as_handled()
 				return
 			match e.button_index:
 				JOY_BUTTON_A:
