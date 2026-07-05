@@ -39,6 +39,9 @@ export interface PlayerState {
   hotUntil: number;       // holy HoT expiry
   shadowUntil: number;    // shadow damage-amplification expiry
   frostSlowUntil: number; // frost heavy-slow expiry
+  fireRate: number;       // fire DoT damage/sec = triggeringHit × DOT_HEAVY_FRAC
+  bleedRate: number;      // bleed DoT damage/sec = triggeringHit × DOT_HEAVY_FRAC
+  poisonRate: number;     // poison DoT damage/sec = triggeringHit × DOT_LIGHT_FRAC
   // ---- Dodge/dash (evade) ----
   dashUntil: number; // dash burst active while now < this (movement overridden)
   dashDirX: number; // unit dash direction
@@ -78,6 +81,9 @@ export interface MonsterState {
   hotUntil: number;
   shadowUntil: number;
   frostSlowUntil: number;
+  fireRate: number;
+  bleedRate: number;
+  poisonRate: number;
   base: Attributes; // innate attributes (per kind); gear adds on top
   inv: Inventory; // monsters carry gear too — dropped on death
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
@@ -126,6 +132,9 @@ export interface BossState {
   hotUntil: number;
   shadowUntil: number;
   frostSlowUntil: number;
+  fireRate: number;
+  bleedRate: number;
+  poisonRate: number;
   // ---- Hard crowd control (root / stun / freeze) ----
   ccUntil: number; // CC active while now < this (0 = free)
   ccKind: CcKind | ""; // stun/freeze fully lock the boss; root only stops its movement

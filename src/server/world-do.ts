@@ -1,14 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ATTR_POINTS_PER_LEVEL,
-  BLEED_DOT_PER_SEC,
   BOSS_MAX_HP,
   BOSS_RADIUS,
   BUY_MARKUP,
   DASH_CD,
   DASH_IFRAME_MS,
   DASH_MS,
-  FIRE_DOT_PER_SEC,
   FLOOR_DMG_SCALE,
   FLOOR_HP_SCALE,
   HOLY_HOT_PER_SEC,
@@ -22,7 +20,6 @@ import {
   MONSTER_RESPAWN_MS,
   PLAYER_MAX_HP,
   PLAYER_SPEED,
-  POISON_DOT_PER_SEC,
   POTION_PRICE,
   SHOP_GEAR_COUNT,
   SHOP_POTION_COUNT,
@@ -561,6 +558,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         hotUntil: 0,
         shadowUntil: 0,
         frostSlowUntil: 0,
+        fireRate: 0,
+        bleedRate: 0,
+        poisonRate: 0,
         base,
         inv: emptyInventory(),
         derived: deriveStats(def.hp, def.speed, base),
@@ -635,6 +635,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       hotUntil: 0,
       shadowUntil: 0,
       frostSlowUntil: 0,
+      fireRate: 0,
+      bleedRate: 0,
+      poisonRate: 0,
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
@@ -718,6 +721,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.hotUntil = 0;
       p.shadowUntil = 0;
       p.frostSlowUntil = 0;
+      p.fireRate = 0;
+      p.bleedRate = 0;
+      p.poisonRate = 0;
       p.seen.clear();
       p.abilities = starterAbilities(); // fresh run = base sword + rocks, all skill progress wiped
       p.charXp = 0;
@@ -849,6 +855,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.hotUntil = 0;
       p.shadowUntil = 0;
       p.frostSlowUntil = 0;
+      p.fireRate = 0;
+      p.bleedRate = 0;
+      p.poisonRate = 0;
       p.reached = false; // fresh floor: everyone back in play
       p.seen.clear(); // fresh floor = fresh exploration
       this.bumpLbFloor(p, this.floor.depth); // record deepest floor reached (all-time)
@@ -1084,6 +1093,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       hotUntil: 0,
       shadowUntil: 0,
       frostSlowUntil: 0,
+      fireRate: 0,
+      bleedRate: 0,
+      poisonRate: 0,
       dashUntil: 0,
       dashDirX: 0,
       dashDirY: 0,
@@ -1551,9 +1563,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const p of this.players.values()) {
       if (p.status !== "alive" || p.reached) continue;
       let dot = 0;
-      if (p.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
-      if (p.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
-      if (p.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (p.fireUntil   > this.now) dot += p.fireRate   * dt;
+      if (p.bleedUntil  > this.now) dot += p.bleedRate  * dt;
+      if (p.poisonUntil > this.now) dot += p.poisonRate * dt;
       if (dot > 0) {
         const taken = dot * (1 - p.derived.dr);
         p.hp -= taken;
@@ -1577,9 +1589,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     for (const m of this.monsters) {
       if (m.dead) continue;
       let dot = 0;
-      if (m.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
-      if (m.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
-      if (m.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (m.fireUntil   > this.now) dot += m.fireRate   * dt;
+      if (m.bleedUntil  > this.now) dot += m.bleedRate  * dt;
+      if (m.poisonUntil > this.now) dot += m.poisonRate * dt;
       if (dot > 0) {
         const taken = dot * (1 - m.derived.dr);
         m.hp -= taken;
@@ -1598,9 +1610,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
 
     if (this.boss && !this.boss.dead) {
       let dot = 0;
-      if (this.boss.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
-      if (this.boss.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
-      if (this.boss.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (this.boss.fireUntil   > this.now) dot += this.boss.fireRate   * dt;
+      if (this.boss.bleedUntil  > this.now) dot += this.boss.bleedRate  * dt;
+      if (this.boss.poisonUntil > this.now) dot += this.boss.poisonRate * dt;
       if (dot > 0) {
         this.boss.hp -= dot;
         if (showFx) this.pushFx({ e: "dmg", x: this.boss.x, y: this.boss.y, amount: Math.round(dot * 10) });

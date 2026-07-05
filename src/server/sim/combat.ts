@@ -1,4 +1,4 @@
-import { CRIT_MULT, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS, SHADOW_AMP, STATUS_EFFECT_MS, STUN_STATUS_MS } from "../../shared/constants";
+import { CRIT_MULT, DOT_HEAVY_FRAC, DOT_LIGHT_FRAC, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS, SHADOW_AMP, STATUS_EFFECT_MS, STUN_STATUS_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
 import type { StatusEffect } from "../../protocol";
 import type { Ability } from "../../shared/types";
@@ -76,7 +76,7 @@ export function applyDamage(
     }
     target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-    if (status) applyStatusEffect(ctx, target, status);
+    if (status) applyStatusEffect(ctx, target, status, taken);
     ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit, status });
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
@@ -107,7 +107,7 @@ export function applyDamage(
     }
     const bossDmg = target.shadowUntil > ctx.now ? dmg * (1 + SHADOW_AMP) : dmg;
     target.hp -= bossDmg;
-    if (status) applyStatusEffect(ctx, target, status);
+    if (status) applyStatusEffect(ctx, target, status, bossDmg);
     ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: bossDmg, by: sourceId, crit, status });
     if (target.hp <= 0) {
       target.dead = true;
@@ -146,7 +146,7 @@ export function applyDamage(
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
   const monTaken = target.shadowUntil > ctx.now ? taken * (1 + SHADOW_AMP) : taken;
   target.hp -= monTaken;
-  if (status) applyStatusEffect(ctx, target, status);
+  if (status) applyStatusEffect(ctx, target, status, monTaken);
   ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: monTaken, by: sourceId, crit, status });
   if (target.hp <= 0) {
     target.dead = true;
@@ -215,12 +215,26 @@ function applyStatusEffect(
   ctx: WorldCtx,
   target: PlayerState | MonsterState | BossState,
   status: StatusEffect,
+  dmg: number,
 ): void {
   const end = ctx.now + STATUS_EFFECT_MS;
   switch (status) {
-    case "fire":   target.fireUntil   = Math.max(target.fireUntil,   end); break;
-    case "bleed":  target.bleedUntil  = Math.max(target.bleedUntil,  end); break;
-    case "poison": target.poisonUntil = Math.max(target.poisonUntil, end); break;
+    case "fire":
+      // Refresh duration; if expired, reset rate; otherwise keep the higher rate.
+      if (ctx.now >= target.fireUntil) target.fireRate = dmg * DOT_HEAVY_FRAC;
+      else target.fireRate = Math.max(target.fireRate, dmg * DOT_HEAVY_FRAC);
+      target.fireUntil = Math.max(target.fireUntil, end);
+      break;
+    case "bleed":
+      if (ctx.now >= target.bleedUntil) target.bleedRate = dmg * DOT_HEAVY_FRAC;
+      else target.bleedRate = Math.max(target.bleedRate, dmg * DOT_HEAVY_FRAC);
+      target.bleedUntil = Math.max(target.bleedUntil, end);
+      break;
+    case "poison":
+      if (ctx.now >= target.poisonUntil) target.poisonRate = dmg * DOT_LIGHT_FRAC;
+      else target.poisonRate = Math.max(target.poisonRate, dmg * DOT_LIGHT_FRAC);
+      target.poisonUntil = Math.max(target.poisonUntil, end);
+      break;
     case "holy":   target.hotUntil    = Math.max(target.hotUntil,    end); break;
     case "shadow": target.shadowUntil = Math.max(target.shadowUntil, end); break;
     case "frost":  target.frostSlowUntil = Math.max(target.frostSlowUntil, end); break;

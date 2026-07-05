@@ -126,10 +126,10 @@ export const FREEZE_SLOW_TAIL_MS = 1200; // ms of SLOW_FACTOR movement after a f
 // Status effects: most last 3 s; electric stun is 1 s (parity with a hard CC burst).
 export const STATUS_EFFECT_MS   = 3000;
 export const STUN_STATUS_MS     = 1000;
-export const FIRE_DOT_PER_SEC   = 25;   // heavy fire tick
-export const BLEED_DOT_PER_SEC  = 20;   // heavy bleed tick
-export const POISON_DOT_PER_SEC = 8;    // light poison tick
-export const HOLY_HOT_PER_SEC   = 20;   // heavy holy regen tick
+// DoT rates scale with the hit that applied them (stored per-entity in *Rate fields).
+export const DOT_HEAVY_FRAC     = 0.20; // heavy DoT: 20% of triggering hit damage/sec (fire, bleed)
+export const DOT_LIGHT_FRAC     = 0.10; // light DoT: 10% of triggering hit damage/sec (poison)
+export const HOLY_HOT_PER_SEC   = 20;   // heavy holy regen tick (flat — heals scale with maxHp, not dmg)
 export const FROST_SLOW_FACTOR  = 0.35; // 65 % speed reduction (heavy — frost is punishing)
 export const POISON_SLOW_FACTOR = 0.70; // 30 % speed reduction (light)
 export const SHADOW_AMP         = 0.25; // 25 % bonus incoming damage while shadow debuff is active

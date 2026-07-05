@@ -3,6 +3,9 @@
 ## prop so gamepad players can buy and sell without requiring touch/tap input.
 ## All interactive elements are Godot Button nodes — D-pad navigates, A/Enter buys
 ## or sells the focused item, B/Escape closes.
+##
+## Mirrors the InventoryUI pattern: the CanvasLayer stays active always; visibility
+## is controlled by hiding/showing the inner _panel Control node.
 extends CanvasLayer
 
 const GOLD         := Color(1.0, 0.85, 0.0)
@@ -23,6 +26,8 @@ var _shop_items: Array = []
 var _carried: Array = []
 var _gold := 0
 
+# _panel is the root Control that holds everything — hidden when closed.
+var _panel: Control
 var _gold_label: Label
 var _buy_col: VBoxContainer
 var _sell_col: VBoxContainer
@@ -32,17 +37,17 @@ func setup(net: Node) -> void:
 	_net = net
 
 func open() -> void:
-	visible = true
+	_panel.visible = true
 	_refresh()
 	# Auto-focus the first interactive button after layout settles.
 	await get_tree().process_frame
 	_focus_first()
 
 func close() -> void:
-	visible = false
+	_panel.visible = false
 
 func is_open() -> bool:
-	return visible
+	return _panel != null and _panel.visible
 
 func on_shop(msg: Dictionary) -> void:
 	_shop_items = msg.get("items", [])
@@ -59,27 +64,26 @@ func on_inv(msg: Dictionary) -> void:
 
 func _ready() -> void:
 	layer = 30
-	visible = false
 
-	# Base Control fills the viewport (required — CanvasLayer children are positioned
-	# relative to the viewport, not relative to each other).
-	var base := Control.new()
-	base.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(base)
+	# Full-rect panel — hidden until open() is called.
+	_panel = Control.new()
+	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_panel.visible = false
+	add_child(_panel)
 
 	# Dim backdrop.
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0, 0, 0, 0.72)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	base.add_child(backdrop)
+	_panel.add_child(backdrop)
 
-	# CenterContainer fills the viewport and centers the card reliably.
+	# CenterContainer reliably centers the card regardless of its size at construction.
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	base.add_child(center)
+	_panel.add_child(center)
 
-	# Card panel.
+	# Card.
 	var card := PanelContainer.new()
 	card.custom_minimum_size = Vector2(460, 600)
 	card.add_theme_stylebox_override("panel", _make_bg())
