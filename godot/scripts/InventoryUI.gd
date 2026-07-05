@@ -67,6 +67,12 @@ var _has_inv := false
 var _reached := false
 var _near_floor_shop := false  # player is near the floor shop prop
 
+# Floor shop panel (controller-friendly — real Button nodes, no tap required).
+var _shop_root: Control = null
+var _shop_gold_label: Label = null
+var _shop_buy_col: VBoxContainer = null
+var _shop_sell_col: VBoxContainer = null
+
 # Loot bag (separate panel).
 var _open_bag_id := ""
 var _open_bag_items: Array = []
@@ -98,8 +104,10 @@ func _ready() -> void:
 	layer = 25
 	_build_inventory_panel()
 	_build_loot_panel()
+	_build_shop_panel()
 	_inv_root.visible = false
 	_loot_root.visible = false
+	_shop_root.visible = false
 
 # Called by Main right after .new() (or set externally) to inject the Net node.
 func setup(net: Node) -> void:
@@ -146,6 +154,8 @@ func on_inv(msg: Dictionary) -> void:
 	if is_open():
 		_render(_inv)
 		_render_bar()
+	if is_floor_shop_open():
+		_refresh_shop_panel()
 
 # Feed the raw net 'bag' message: {id, items}.
 func on_bag(msg: Dictionary) -> void:
@@ -167,6 +177,8 @@ func on_shop(msg: Dictionary) -> void:
 	_shop_reroll_cost = int(msg.get("rerollCost", 0))
 	if is_open() and _has_inv:
 		_render_shop()
+	if is_floor_shop_open() and _has_inv:
+		_refresh_shop_panel()
 
 # The vendor section: a buyable tile per stock entry (price corner; buy on tap) + a reroll button.
 # Shown only in the waiting room. Reuses _item_tile so the stat-delta vs equipped shows here too.
@@ -746,6 +758,162 @@ func _build_loot_panel() -> void:
 	col.add_child(take_all)
 
 	col.add_child(_hint("Tap an item to take it. You must be standing near the bag."))
+
+func _build_shop_panel() -> void:
+	_shop_root = _backdrop()
+	_shop_root.gui_input.connect(func(ev: InputEvent): if _is_backdrop_tap(ev, _shop_root): close_floor_shop())
+	add_child(_shop_root)
+
+	var content := _card(_shop_root)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(col)
+
+	# Header row: title + gold label.
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	var title := Label.new()
+	title.text = "\U0001f6cd Floor Shop"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", TEXT_NAME)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_shop_gold_label = Label.new()
+	_shop_gold_label.text = "\U01fa99 0"
+	_shop_gold_label.add_theme_font_size_override("font_size", 14)
+	_shop_gold_label.add_theme_color_override("font_color", GOLD)
+	var close_btn := Button.new()
+	close_btn.text = "Close (B / LB)"
+	close_btn.custom_minimum_size = Vector2(0, 44)
+	close_btn.pressed.connect(close_floor_shop)
+	head.add_child(title)
+	head.add_child(_shop_gold_label)
+	head.add_child(close_btn)
+	col.add_child(head)
+
+	col.add_child(_section("Buy"))
+	_shop_buy_col = VBoxContainer.new()
+	_shop_buy_col.add_theme_constant_override("separation", 6)
+	_shop_buy_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_shop_buy_col)
+
+	col.add_child(_section("Sell (tap item to sell)"))
+	_shop_sell_col = VBoxContainer.new()
+	_shop_sell_col.add_theme_constant_override("separation", 6)
+	_shop_sell_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_child(_shop_sell_col)
+
+	col.add_child(_hint("Use D-pad / controller to navigate. Press A to buy/sell, B or LB to close."))
+
+# =====================================================================
+# Floor Shop — public API
+# =====================================================================
+
+func is_floor_shop_open() -> bool:
+	return _shop_root != null and _shop_root.visible
+
+func open_floor_shop() -> void:
+	_fit_card_to_window(_shop_root)
+	if not _shop_root.visible:
+		_sfx_play("ui_open")
+	_shop_root.visible = true
+	_refresh_shop_panel()
+	_focus_shop_first()
+
+func close_floor_shop() -> void:
+	if _shop_root.visible:
+		_sfx_play("ui_close")
+	_shop_root.visible = false
+
+func _refresh_shop_panel() -> void:
+	if not is_floor_shop_open():
+		return
+	var gold := int(_inv.get("gold", 0))
+	_shop_gold_label.text = "\U01fa99 %d" % gold
+	_build_shop_buy(gold)
+	_build_shop_sell(gold)
+
+func _build_shop_buy(gold: int) -> void:
+	_clear(_shop_buy_col)
+	if _shop_items.is_empty():
+		_shop_buy_col.add_child(_hint("No stock — try again next floor."))
+		return
+	var buy_grid := GridContainer.new()
+	buy_grid.columns = 4
+	buy_grid.add_theme_constant_override("h_separation", 8)
+	buy_grid.add_theme_constant_override("v_separation", 8)
+	buy_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for entry in _shop_items:
+		if not (entry is Dictionary):
+			continue
+		var it: Dictionary = entry.get("item", {})
+		var price := int(entry.get("price", 0))
+		var item_id := str(it.get("id", ""))
+		var afford := gold >= price
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(120, 72)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var rarity := str(it.get("rarity", "common"))
+		var icon := str(it.get("icon", ""))
+		if icon == "":
+			icon = str(ITEM_EMOJI.get(str(it.get("slot", "")), "?"))
+		btn.text = "%s\n%s\n\U01fa99%d" % [icon, str(it.get("name", "")), price]
+		btn.modulate = Color(1, 1, 1, 1.0 if afford else 0.45)
+		btn.disabled = not afford
+		btn.pressed.connect(func():
+			_send({"t": "buyItem", "id": item_id})
+			_sfx_play("loot"))
+		buy_grid.add_child(btn)
+	_shop_buy_col.add_child(buy_grid)
+
+func _build_shop_sell(gold: int) -> void:
+	_clear(_shop_sell_col)
+	if not _has_inv:
+		return
+	var inv: Dictionary = _inv.get("inv", {})
+	var carried: Array = inv.get("carried", [])
+	if carried.is_empty():
+		_shop_sell_col.add_child(_hint("Nothing in your bag to sell."))
+		return
+	var sell_grid := GridContainer.new()
+	sell_grid.columns = 4
+	sell_grid.add_theme_constant_override("h_separation", 8)
+	sell_grid.add_theme_constant_override("v_separation", 8)
+	sell_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for it in carried:
+		if not (it is Dictionary):
+			continue
+		var item_id := str(it.get("id", ""))
+		var sv := _sell_value(it)
+		var icon := str(it.get("icon", ""))
+		if icon == "":
+			icon = str(ITEM_EMOJI.get(str(it.get("slot", "")), "?"))
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(120, 72)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.text = "%s\n%s\nSell \U01fa99%d" % [icon, str(it.get("name", "")), sv]
+		btn.pressed.connect(func():
+			_send({"t": "sell", "item": item_id})
+			_sfx_play("coin"))
+		sell_grid.add_child(btn)
+	_shop_sell_col.add_child(sell_grid)
+
+func _focus_shop_first() -> void:
+	await get_tree().process_frame
+	var first := _find_first_button(_shop_buy_col)
+	if first == null:
+		first = _find_first_button(_shop_sell_col)
+	if first != null:
+		first.grab_focus()
+
+func _find_first_button(node: Node) -> Button:
+	if node is Button:
+		return node
+	for child in node.get_children():
+		var found := _find_first_button(child)
+		if found != null:
+			return found
+	return null
 
 # Full-screen translucent backdrop that centers its child card.
 func _backdrop() -> Control:

@@ -187,3 +187,4 @@ godot/build/
 
 # Platform build artifacts (APK, EXE, PCK — too large for GitHub)
 builds/
+build/
