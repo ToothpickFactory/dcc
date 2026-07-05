@@ -706,7 +706,7 @@ func _process(dt: float) -> void:
 	# Keyed off wall-clock (unaffected by time_scale) so it always restores.
 	Engine.time_scale = 0.12 if Time.get_ticks_msec() < _hitstop_until else 1.0
 
-	var menu_open := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _shop_panel.is_open()
+	var menu_open: bool = _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or bool(_shop_panel.is_open())
 
 	var mv: Vector2 = _inp.move_vec()
 	if menu_open:
@@ -1134,7 +1134,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	#   LB -> inventory   LT -> character/skills
 	#   D-pad Up -> quick potion   D-pad Right -> loot
 	if e is InputEventJoypadButton and e.pressed:
-		var _any_menu := _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _shop_panel.is_open()
+		var _any_menu: bool = _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or bool(_shop_panel.is_open())
 		if _any_menu:
 			# Shop panel uses Godot's native Button focus — A/B handled by the panel itself.
 			if _shop_panel.is_open():

@@ -3,7 +3,7 @@
 ## prop so gamepad players can buy and sell without requiring touch/tap input.
 ## All interactive elements are Godot Button nodes — D-pad navigates, A/Enter buys
 ## or sells the focused item, B/Escape closes.
-extends Control
+extends CanvasLayer
 
 const GOLD         := Color(1.0, 0.85, 0.0)
 const GREEN        := Color(0.4, 1.0, 0.5)
@@ -33,17 +33,19 @@ func setup(net: Node) -> void:
 	_net = net
 
 func open() -> void:
-	_root.visible = true
+	visible = true
+	if _root != null:
+		_root.visible = true
 	_refresh()
 	# Auto-focus the first interactive button when opened via controller.
 	await get_tree().process_frame
 	_focus_first()
 
 func close() -> void:
-	_root.visible = false
+	visible = false
 
 func is_open() -> bool:
-	return _root != null and _root.visible
+	return visible
 
 func on_shop(msg: Dictionary) -> void:
 	_shop_items = msg.get("items", [])
@@ -60,21 +62,25 @@ func on_inv(msg: Dictionary) -> void:
 
 func _ready() -> void:
 	layer = 30
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	visible = false
 
-	# Dim backdrop — tapping it closes the panel.
+	# CanvasLayer children must be Control nodes; use a full-rect root to fill the viewport.
+	var container := Control.new()
+	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(container)
+
+	# Dim backdrop.
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0, 0, 0, 0.72)
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(backdrop)
+	container.add_child(backdrop)
 
 	# Centered card.
 	_root = PanelContainer.new()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE, 0)
 	_root.custom_minimum_size = Vector2(460, 600)
-	_root.visible = false
-	add_child(_root)
+	container.add_child(_root)
 
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 10)
