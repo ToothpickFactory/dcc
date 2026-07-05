@@ -55,6 +55,9 @@ const ICE_STAIRS_SCENE := "res://assets/Props/IceDungeonStairs.glb"
 const ICE_STAIRS_TARGET_FOOTPRINT := 150.0
 const ICE_STAIRS_TARGET_H := 125.0
 const ICE_STAIRS_SINK := 34.0
+const SHOP_SCENE := "res://assets/Tiles/3D/Shared/Shop.glb"
+const SHOP_TARGET_H := 160.0   # world-px height the shop model is scaled to
+const SHOP_TARGET_FOOTPRINT := 180.0
 
 # Valid themes (src/shared/types.ts: Theme). Anything else -> flat fallback.
 const THEMES := ["fantasy", "cyberpunk", "forest", "pirate", "clockwork", "nightmare", "icedungeon"]
@@ -102,6 +105,9 @@ static var _campfire_spark_tex: Texture2D
 static var _campfire_scene: PackedScene
 static var _ice_stairs_hole_tex: Texture2D
 static var _ice_stairs_scene: PackedScene
+static var _shop_scene: PackedScene
+
+var shop_node: Node3D  # the placed shop prop (for LoS culling by Main)
 
 # theme -> { "floor": Texture2D, "wall": Texture2D } where each texture carries
 # metadata telling the fog shader which half of the 4x4 sheet to randomize across.
@@ -286,6 +292,9 @@ func clear() -> void:
 	if is_instance_valid(stairs_node):
 		stairs_node.queue_free()
 	stairs_node = null
+	if is_instance_valid(shop_node):
+		shop_node.queue_free()
+	shop_node = null
 	_stairs_pulse = 0.0
 
 
@@ -624,6 +633,48 @@ func _place_ice_stairs(x: float, y: float) -> void:
 		model_scale = ICE_STAIRS_TARGET_FOOTPRINT / max_footprint
 	if bounds.size.y > 0.001:
 		model_scale = minf(model_scale, ICE_STAIRS_TARGET_H / bounds.size.y)
+	model_scale = clampf(model_scale, 0.01, 80.0)
+	model.scale = Vector3.ONE * model_scale
+	model.position = Vector3(
+		-(bounds.position.x + bounds.size.x * 0.5) * model_scale,
+		-bounds.position.y * model_scale,
+		-(bounds.position.z + bounds.size.z * 0.5) * model_scale
+	)
+
+## Place the floor Shop.glb model at world position `pos`. Called by Main after
+## parsing shopPos from the floor geometry. Fog-culled via atmo_sprites.
+func place_shop(pos: Vector2) -> void:
+	if is_instance_valid(shop_node):
+		shop_node.queue_free()
+		shop_node = null
+	if not ResourceLoader.exists(SHOP_SCENE):
+		push_warning("WorldDecor: shop model missing: %s" % SHOP_SCENE)
+		return
+	if _shop_scene == null:
+		var loaded := load(SHOP_SCENE)
+		if not (loaded is PackedScene):
+			push_warning("WorldDecor: shop model failed to load: %s" % SHOP_SCENE)
+			return
+		_shop_scene = loaded as PackedScene
+	var gh := _gh(pos.x, pos.y)
+	var holder := Node3D.new()
+	holder.name = "FloorShop"
+	holder.position = Vector3(pos.x, gh, pos.y)
+	holder.set_meta("dcc_world", pos)
+	add_child(holder)
+	atmo_sprites.append(holder)
+	shop_node = holder
+	var model := _shop_scene.instantiate() as Node3D
+	if model == null:
+		return
+	holder.add_child(model)
+	var bounds := _visual_aabb(model)
+	var max_footprint := maxf(bounds.size.x, bounds.size.z)
+	var model_scale := 1.0
+	if bounds.size.y > 0.001:
+		model_scale = SHOP_TARGET_H / bounds.size.y
+	if max_footprint > 0.001:
+		model_scale = minf(model_scale, SHOP_TARGET_FOOTPRINT / max_footprint)
 	model_scale = clampf(model_scale, 0.01, 80.0)
 	model.scale = Vector3.ONE * model_scale
 	model.position = Vector3(

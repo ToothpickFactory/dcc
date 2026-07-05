@@ -36,8 +36,9 @@ export type ClientMsg =
   | { t: "spendTalent"; node: string } // spend a talent point on a tree node
   | { t: "spendAttr"; attr: AttrKey } // spend one attribute point into STR/AGI/INT/STA/CRIT/HASTE/ARMOR
   | { t: "respec" } // refund all spent attribute + talent points (waiting room only)
-  | { t: "buyItem"; id: string } // buy a shop item by id (waiting-room vendor; costs gold)
-  | { t: "reroll" } // reroll the vendor's rotating gear stock (waiting room only; costs gold)
+  | { t: "buyItem"; id: string } // buy a shop item by id (vendor; costs gold)
+  | { t: "reroll" } // reroll the vendor's rotating gear stock (costs gold)
+  | { t: "floorShop" } // open the per-floor vendor (player must be within SHOP_REACH of the shop prop)
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -152,6 +153,7 @@ export interface FloorGeometry {
   ground?: string; // base64 of the gw*gh Int16Array (2 bytes/cell, little-endian) — per-cell px height (heightfield 2.5D). Absent = flat.
   entrance: { x: number; y: number };
   stairs: { x: number; y: number; r: number };
+  shopPos: { x: number; y: number }; // world position of the floor shop prop
   decorations: { x: number; y: number; variant: number; scale: number }[];
   hazards: HazardSpec[];
   portals: PortalSpec[];

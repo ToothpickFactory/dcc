@@ -211,12 +211,17 @@ function projectileSpriteForAbility(ab: Ability): number | undefined {
 }
 
 function projectileRenderForAbility(ab: Ability): ProjectileRender | undefined {
+  if (!ab.projectile) return undefined;
   if (isArrowProjectile(ab)) return "arrow";
   if (isDaggerProjectile(ab)) return "dagger";
-  if (isIceOrRockProjectile(ab)) return "ice";
-  if (isPoisonProjectile(ab)) return "poison";
-  if (isFireballProjectile(ab)) return "fire";
-  return ab.projectile ? "ice" : undefined;
+  const title = abilityTitle(ab).toLowerCase();
+  if (/\b(shadow|dark|void|necrotic|umbral|shade|umbra|midnight|reaper|oblivion|entropy|eclipse)\b/.test(title)) return "shadow";
+  if (/\b(lightning|electric|thunder|arc|static|storm|shock|charged|voltage|galvanic|zap|jolt)\b/.test(title)) return "electric";
+  if (/\b(poison|venom|toxic|acid|plague|verdant|vine|noxious|virulent|corrode|blight|rot|fungal)\b/.test(title)) return "poison";
+  if (/\b(fire|flame|burn|pyro|scorching|blazing|inferno|volcanic|magma|molten|ignite|smoldering|pyroclastic|blaze|conflagration)\b/.test(title)) return "fire";
+  if (/\b(frost|frozen|ice|blizzard|glacial|chill|snow|arctic|cryo|freeze|rime|permafrost)\b/.test(title)) return "ice";
+  if ((ab.slowMs ?? 0) > 0) return "ice"; // slow abilities default to cryo-themed
+  return "ice"; // generic projectile fallback
 }
 
 function isArrowProjectile(ab: Ability): boolean {
@@ -311,18 +316,6 @@ function spawnAreaBolts(ctx: WorldCtx, caster: PlayerState, idx: number, ab: Abi
   }
 }
 
-function isIceOrRockProjectile(ab: Ability): boolean {
-  const rockIds = new Set(["rocks", "sharprocks", "boulder", "multishot", "scattershot"]);
-  return ab.projectile === true && (rockIds.has(ab.id) || (ab.slowMs ?? 0) > 0);
-}
-
-function isPoisonProjectile(ab: Ability): boolean {
-  return ab.projectile === true && ab.dmg > 0 && ab.id.startsWith("loot-") && ab.category === "stealth";
-}
-
-function isFireballProjectile(ab: Ability): boolean {
-  return ab.projectile === true && ab.dmg > 0 && ab.id.startsWith("loot-") && (ab.category === "ranged" || ab.category === "aoe");
-}
 
 // Taunt: set every foe within range to top-threat + a margin on the caster, so
 // they peel onto the tank. Reuses the existing threat maps.

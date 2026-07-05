@@ -65,6 +65,7 @@ var _sfx: Node = null          # optional Sfx node (play(name)); set by Main
 var _inv: Dictionary = {}
 var _has_inv := false
 var _reached := false
+var _near_floor_shop := false  # player is near the floor shop prop
 
 # Loot bag (separate panel).
 var _open_bag_id := ""
@@ -172,7 +173,7 @@ func on_shop(msg: Dictionary) -> void:
 func _render_shop() -> void:
 	if _shop_grid == null:
 		return
-	var show_shop := _reached and not _shop_items.is_empty()
+	var show_shop := (_reached or _near_floor_shop) and not _shop_items.is_empty()
 	var header := _shop_section.get_parent() as Control # the HBox header row
 	if header != null:
 		header.visible = show_shop
@@ -209,6 +210,14 @@ func set_reached(b: bool) -> void:
 	if _reached == b:
 		return
 	_reached = b
+	if is_open() and _has_inv:
+		_render(_inv)
+
+# Toggle floor-shop proximity. Unlocks the shop/sell section while near the floor shop prop.
+func set_near_shop(b: bool) -> void:
+	if _near_floor_shop == b:
+		return
+	_near_floor_shop = b
 	if is_open() and _has_inv:
 		_render(_inv)
 
@@ -309,7 +318,7 @@ func _render(msg: Dictionary) -> void:
 	# Carried items grid.
 	_clear(_carry_grid)
 	_carry_hint.visible = carried.is_empty()
-	var can_sell := _reached
+	var can_sell := _reached or _near_floor_shop
 	for it in carried:
 		if not (it is Dictionary):
 			continue

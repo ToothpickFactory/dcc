@@ -56,6 +56,9 @@ var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
 var _loot_prompt: Label
+var _floor_shop_pos := Vector2.ZERO
+var _near_floor_shop := false
+var _shop_prompt: Label
 var _mhud: Node  # MobileHud — null on PC
 var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
@@ -204,6 +207,14 @@ func _ready() -> void:
 	_loot_prompt.position.y -= 170
 	_loot_prompt.visible = false
 	loot_layer.add_child(_loot_prompt)
+	_shop_prompt = Label.new()
+	_shop_prompt.text = "Shop (E)"
+	_shop_prompt.add_theme_font_size_override("font_size", 20)
+	_shop_prompt.add_theme_color_override("font_color", Color(0.45, 1.0, 0.65))
+	_shop_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_shop_prompt.position.y -= 200
+	_shop_prompt.visible = false
+	loot_layer.add_child(_shop_prompt)
 
 	# Boss-gate hint — the stairs stay shut until the floor's guardian is dead.
 	_gate_hint = Label.new()
@@ -642,6 +653,12 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
 	_decor.apply(theme, geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
+	var shop_pos_d: Dictionary = geometry.get("shopPos", {})
+	if not shop_pos_d.is_empty():
+		_floor_shop_pos = Vector2(float(shop_pos_d.get("x", 0.0)), float(shop_pos_d.get("y", 0.0)))
+		_decor.place_shop(_floor_shop_pos)
+	else:
+		_floor_shop_pos = Vector2.ZERO
 	_sprites.set_grid(_world.grid)
 	_minimap.set_floor(_world.grid, stairs)
 	if not stairs.is_empty():
@@ -889,6 +906,14 @@ func _process(dt: float) -> void:
 	_loot_prompt.visible = _nearest_bag_id != ""
 	if _mhud != null:
 		_mhud.set_loot_bag(_nearest_bag_id)
+	const SHOP_REACH_SQ := 150.0 * 150.0
+	var shop_dx := _floor_shop_pos.x - _pred.x
+	var shop_dy := _floor_shop_pos.y - _pred.y
+	var near_shop := alive and _floor_shop_pos != Vector2.ZERO and (shop_dx * shop_dx + shop_dy * shop_dy) <= SHOP_REACH_SQ
+	if near_shop != _near_floor_shop:
+		_near_floor_shop = near_shop
+		_inv.set_near_shop(_near_floor_shop)
+	_shop_prompt.visible = _near_floor_shop and not _inv.is_open()
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()
@@ -1033,13 +1058,8 @@ func _set_wall_model_visibility(wall: Node3D, x: float, y: float, vision_sq: flo
 	var dsq := dx * dx + dy * dy
 	const NEAR_SQ := 340.0 * 340.0
 	var lit := dsq <= NEAR_SQ or (dsq <= vision_sq and Geo.line_of_sight(_world.grid, x, y, world_pos.x, world_pos.y))
-	if lit:
-		wall.visible = true
-		_world.set_wall_model_shadowed(wall, false)
-		return
-	var on_screen := _node_on_screen(wall)
-	wall.visible = on_screen
-	_world.set_wall_model_shadowed(wall, on_screen)
+	wall.visible = lit
+	_world.set_wall_model_shadowed(wall, false)
 
 func _node_on_screen(node: Node3D) -> bool:
 	if _cam == null or node == null or not is_instance_valid(node):
@@ -1083,6 +1103,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_E:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
+				elif _near_floor_shop:
+					_open_floor_shop()
 			KEY_Q:
 				_inv.use_first_potion()
 			KEY_F2:
@@ -1121,6 +1143,8 @@ func _unhandled_input(e: InputEvent) -> void:
 			JOY_BUTTON_DPAD_RIGHT:
 				if _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
+				elif _near_floor_shop:
+					_open_floor_shop()
 				get_viewport().set_input_as_handled()
 	# LT is an axis trigger; toggle the skills menu on each press (threshold crossing).
 	if e is InputEventJoypadMotion:
@@ -1133,6 +1157,11 @@ func _unhandled_input(e: InputEvent) -> void:
 				_skills.toggle()
 			_lt_pressed = lt_pressed
 			get_viewport().set_input_as_handled()
+
+func _open_floor_shop() -> void:
+	_inv.set_near_shop(true)
+	_inv.open()
+	_net.send({ "t": "floorShop" })
 
 func _pad_tap(pos: Vector2) -> void:
 	var ev := InputEventScreenTouch.new()

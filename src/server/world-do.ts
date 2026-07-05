@@ -145,6 +145,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private _dirtyPlayers = new Set<string>();
   // Prevents the all-dead restart from scheduling multiple times.
   private _restartPending = false;
+  private floorShopX = 0;
+  private floorShopY = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -205,6 +207,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = `run-${Date.now().toString(36)}`;
     this.phase = "running";
     this.floor = this.makeFloor(FIRST_SEED, 1, false);
+    this.pickShopPosition();
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.seedLoot();
@@ -218,6 +221,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = run.runId;
     this.phase = isRunPhase(run.phase) ? run.phase : "running";
     this.floor = generateFloor(run.seed, run.currentFloor, { pvp: run.pvp });
+    this.pickShopPosition();
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.pvpExitOpen = this.floor.pvp ? run.pvpExitOpen !== false : true;
@@ -225,6 +229,22 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+  }
+
+  private pickShopPosition(): void {
+    const pos = randomWalkablePosition(this.floor.collision, 60);
+    this.floorShopX = pos.x;
+    this.floorShopY = pos.y;
+  }
+
+  private isNearFloorShop(p: PlayerState): boolean {
+    return Math.hypot(p.x - this.floorShopX, p.y - this.floorShopY) < 150;
+  }
+
+  private openFloorShop(p: PlayerState): void {
+    if (p.status !== "alive" || p.reached || !this.isNearFloorShop(p)) return;
+    this.generateShop(p);
+    this.sendShop(p);
   }
 
   private makeFloor(seed: number, depth: number, allowPvp = true): FloorDescriptor {
@@ -652,6 +672,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.runId = runId;
     this.phase = "running";
     this.floor = this.makeFloor(seed, 1, false);
+    this.pickShopPosition();
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.lootBags = []; // fresh run — wipe bags from the previous run
@@ -783,6 +804,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     // Floor-end reward — granted on the COMPLETED floor (its depth/theme/seed).
     for (const p of survivors) this.grantLoot(p, "floorEnd", this.floor.depth >= 10 ? "rare" : "uncommon");
     this.floor = this.makeFloor(this.floor.seed, this.floor.depth + 1); // same run seed, deeper
+    this.pickShopPosition();
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.lootBags = []; // previous floor's bags are now unreachable
@@ -1134,6 +1156,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.buyItem(player, String(msg.id));
     } else if (msg.t === "reroll") {
       this.reroll(player);
+    } else if (msg.t === "floorShop") {
+      this.openFloorShop(player);
     }
   }
 
@@ -1366,10 +1390,10 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     p.cds = cds;
   }
 
-  // Sell a CARRIED item for gold — a waiting-room action (you must be "reached").
+  // Sell a CARRIED item for gold — allowed in the waiting room OR near the floor shop.
   // Equipped gear must be unequipped first; selling never touches worn stats.
   private sellItem(p: PlayerState, itemId: string): void {
-    if (p.status !== "alive" || !p.reached) return;
+    if (p.status !== "alive" || (!p.reached && !this.isNearFloorShop(p))) return;
     const idx = findCarried(p.inv, itemId);
     if (idx < 0) return;
     const [it] = p.inv.carried.splice(idx, 1);
@@ -1406,9 +1430,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.send(p.ws, { t: "shop", items: p.shop, rerollCost: this.rerollCost() });
   }
 
-  // Buy a shop item: waiting-room only; validate gold + carry space BEFORE taking gold.
+  // Buy a shop item: allowed in the waiting room OR near the floor shop.
   private buyItem(p: PlayerState, id: string): void {
-    if (p.status !== "alive" || !p.reached) return;
+    if (p.status !== "alive" || (!p.reached && !this.isNearFloorShop(p))) return;
     const idx = p.shop.findIndex((e) => e.item.id === id);
     if (idx < 0) return;
     const entry = p.shop[idx];
@@ -1868,6 +1892,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         ground: encodeGround(this.floor.collision.ground),
         entrance: this.floor.entrance,
         stairs: this.floor.stairs,
+        shopPos: { x: this.floorShopX, y: this.floorShopY },
         decorations: this.floor.decorations,
         hazards: this.floor.hazards,
         portals: this.floor.portals,
