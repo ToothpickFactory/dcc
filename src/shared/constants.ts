@@ -123,6 +123,17 @@ export const KNOCK_RESIST: Record<string, number> = { swarm: 1.35, grunt: 1.0, p
 // rootMs); a freeze additionally leaves this slow tail once the foe thaws.
 export const FREEZE_SLOW_TAIL_MS = 1200; // ms of SLOW_FACTOR movement after a freeze ends
 
+// Status effects: most last 3 s; electric stun is 1 s (parity with a hard CC burst).
+export const STATUS_EFFECT_MS   = 3000;
+export const STUN_STATUS_MS     = 1000;
+export const FIRE_DOT_PER_SEC   = 25;   // heavy fire tick
+export const BLEED_DOT_PER_SEC  = 20;   // heavy bleed tick
+export const POISON_DOT_PER_SEC = 8;    // light poison tick
+export const HOLY_HOT_PER_SEC   = 20;   // heavy holy regen tick
+export const FROST_SLOW_FACTOR  = 0.35; // 65 % speed reduction (heavy — frost is punishing)
+export const POISON_SLOW_FACTOR = 0.70; // 30 % speed reduction (light)
+export const SHADOW_AMP         = 0.25; // 25 % bonus incoming damage while shadow debuff is active
+
 // Melee combo: chained swings build to a heavy finisher. Light swings chain fast; the
 // finisher hits harder + wider + shoves more, then a recovery resets the chain — rhythm + weight.
 export const COMBO_WINDOW_MS = 850; // keep the chain alive if you swing again within this

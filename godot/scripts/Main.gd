@@ -908,13 +908,15 @@ func _process(dt: float) -> void:
 	_loot_prompt.visible = _nearest_bag_id != ""
 	if _mhud != null:
 		_mhud.set_loot_bag(_nearest_bag_id)
-	const SHOP_REACH_SQ := 150.0 * 150.0
+	const SHOP_REACH_SQ := 300.0 * 300.0
 	var shop_dx := _floor_shop_pos.x - _pred.x
 	var shop_dy := _floor_shop_pos.y - _pred.y
 	var near_shop := alive and _floor_shop_pos != Vector2.ZERO and (shop_dx * shop_dx + shop_dy * shop_dy) <= SHOP_REACH_SQ
 	if near_shop != _near_floor_shop:
 		_near_floor_shop = near_shop
 		_inv.set_near_shop(_near_floor_shop)
+		if _near_floor_shop:
+			_net.send({ "t": "floorShop" })  # pre-load shop stock as soon as player enters range
 	_shop_prompt.visible = _near_floor_shop and not _inv.is_open()
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
@@ -1097,7 +1099,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			KEY_I:
 				if _skills.is_open():
 					_skills.close()
-				_inv.toggle()
+				if _near_floor_shop and not _inv.is_open():
+					_open_floor_shop()
+				else:
+					_inv.toggle()
 			KEY_K:
 				if _inv.is_open():
 					_inv.close()
@@ -1137,7 +1142,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			JOY_BUTTON_LEFT_SHOULDER:
 				if _skills.is_open():
 					_skills.close()
-				_inv.toggle()
+				if _near_floor_shop and not _inv.is_open():
+					_open_floor_shop()
+				else:
+					_inv.toggle()
 				get_viewport().set_input_as_handled()
 			JOY_BUTTON_DPAD_UP:
 				_inv.use_first_potion()

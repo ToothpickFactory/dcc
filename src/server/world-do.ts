@@ -1,14 +1,17 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ATTR_POINTS_PER_LEVEL,
+  BLEED_DOT_PER_SEC,
   BOSS_MAX_HP,
   BOSS_RADIUS,
   BUY_MARKUP,
   DASH_CD,
   DASH_IFRAME_MS,
   DASH_MS,
+  FIRE_DOT_PER_SEC,
   FLOOR_DMG_SCALE,
   FLOOR_HP_SCALE,
+  HOLY_HOT_PER_SEC,
   HOTBAR_SIZE,
   LOOT_BAG_TTL,
   LOOT_OWNER_MS,
@@ -16,8 +19,10 @@ import {
   MAX_ABILITY_SLOTS,
   MAX_FLOORS,
   MONSTER_KINDS,
+  MONSTER_RESPAWN_MS,
   PLAYER_MAX_HP,
   PLAYER_SPEED,
+  POISON_DOT_PER_SEC,
   POTION_PRICE,
   SHOP_GEAR_COUNT,
   SHOP_POTION_COUNT,
@@ -31,6 +36,7 @@ import {
   ATTR_KEYS,
   addItem,
   aggregateAttrs,
+  allItems,
   carriedFree,
   carryCapacity,
   deriveStats,
@@ -238,7 +244,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private isNearFloorShop(p: PlayerState): boolean {
-    return Math.hypot(p.x - this.floorShopX, p.y - this.floorShopY) < 150;
+    return Math.hypot(p.x - this.floorShopX, p.y - this.floorShopY) < 300;
   }
 
   private openFloorShop(p: PlayerState): void {
@@ -549,6 +555,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         attackReadyAt: 0,
         wanderAt: 0,
         slowUntil: 0,
+        fireUntil: 0,
+        bleedUntil: 0,
+        poisonUntil: 0,
+        hotUntil: 0,
+        shadowUntil: 0,
+        frostSlowUntil: 0,
         base,
         inv: emptyInventory(),
         derived: deriveStats(def.hp, def.speed, base),
@@ -617,6 +629,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       castTarget: "",
       ccUntil: 0,
       ccKind: "",
+      fireUntil: 0,
+      bleedUntil: 0,
+      poisonUntil: 0,
+      hotUntil: 0,
+      shadowUntil: 0,
+      frostSlowUntil: 0,
     };
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
@@ -694,6 +712,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.mvx = 0;
       p.mvy = 0;
       p.slowUntil = 0;
+      p.fireUntil = 0;
+      p.bleedUntil = 0;
+      p.poisonUntil = 0;
+      p.hotUntil = 0;
+      p.shadowUntil = 0;
+      p.frostSlowUntil = 0;
       p.seen.clear();
       p.abilities = starterAbilities(); // fresh run = base sword + rocks, all skill progress wiped
       p.charXp = 0;
@@ -819,6 +843,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       p.mvx = 0;
       p.mvy = 0;
       p.slowUntil = 0;
+      p.fireUntil = 0;
+      p.bleedUntil = 0;
+      p.poisonUntil = 0;
+      p.hotUntil = 0;
+      p.shadowUntil = 0;
+      p.frostSlowUntil = 0;
       p.reached = false; // fresh floor: everyone back in play
       p.seen.clear(); // fresh floor = fresh exploration
       this.bumpLbFloor(p, this.floor.depth); // record deepest floor reached (all-time)
@@ -1048,6 +1078,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       shieldUntil: 0,
       bloodlustUntil: 0,
       slowUntil: 0,
+      fireUntil: 0,
+      bleedUntil: 0,
+      poisonUntil: 0,
+      hotUntil: 0,
+      shadowUntil: 0,
+      frostSlowUntil: 0,
       dashUntil: 0,
       dashDirX: 0,
       dashDirY: 0,
@@ -1507,6 +1543,79 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private startLoop() {
     if (!this.loop) this.loop = setInterval(() => this.tick(), TICK_MS);
   }
+  private stepStatusEffects(): void {
+    const dt = TICK_MS / 1000;
+    // Emit visual fx at most once per 500ms per entity so numbers don't spam.
+    const showFx = this.now % 500 < TICK_MS;
+
+    for (const p of this.players.values()) {
+      if (p.status !== "alive" || p.reached) continue;
+      let dot = 0;
+      if (p.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
+      if (p.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
+      if (p.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (dot > 0) {
+        const taken = dot * (1 - p.derived.dr);
+        p.hp -= taken;
+        if (showFx) this.pushFx({ e: "dmg", x: p.x, y: p.y, amount: Math.round(taken * 10) });
+        if (p.hp <= 0) {
+          p.status = "spectator";
+          p.mvx = 0;
+          p.mvy = 0;
+          this.dropLoot(p.x, p.y, allItems(p.inv), p.id);
+          p.inv = emptyInventory();
+          this.pushFx({ e: "death", x: p.x, y: p.y, id: p.id });
+        }
+      }
+      if (p.hotUntil > this.now && p.status === "alive") {
+        const healed = HOLY_HOT_PER_SEC * dt;
+        p.hp = Math.min(p.derived.maxHp, p.hp + healed);
+        if (showFx) this.pushFx({ e: "heal", x: p.x, y: p.y, amount: Math.round(healed * 10) });
+      }
+    }
+
+    for (const m of this.monsters) {
+      if (m.dead) continue;
+      let dot = 0;
+      if (m.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
+      if (m.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
+      if (m.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (dot > 0) {
+        const taken = dot * (1 - m.derived.dr);
+        m.hp -= taken;
+        if (showFx) this.pushFx({ e: "dmg", x: m.x, y: m.y, amount: Math.round(taken * 10) });
+        if (m.hp <= 0 && !m.dead) {
+          m.dead = true;
+          m.respawnAt = this.now + MONSTER_RESPAWN_MS;
+          this.rollDrops(m);
+          this.pushFx({ e: "death", x: m.x, y: m.y, id: m.id });
+        }
+      }
+      if (m.hotUntil > this.now && !m.dead) {
+        m.hp = Math.min(m.maxHp, m.hp + HOLY_HOT_PER_SEC * dt);
+      }
+    }
+
+    if (this.boss && !this.boss.dead) {
+      let dot = 0;
+      if (this.boss.fireUntil  > this.now) dot += FIRE_DOT_PER_SEC  * dt;
+      if (this.boss.bleedUntil > this.now) dot += BLEED_DOT_PER_SEC * dt;
+      if (this.boss.poisonUntil > this.now) dot += POISON_DOT_PER_SEC * dt;
+      if (dot > 0) {
+        this.boss.hp -= dot;
+        if (showFx) this.pushFx({ e: "dmg", x: this.boss.x, y: this.boss.y, amount: Math.round(dot * 10) });
+        if (this.boss.hp <= 0 && !this.boss.dead) {
+          this.boss.dead = true;
+          this.pushFx({ e: "boss", x: this.boss.x, y: this.boss.y, state: "dead" });
+          this.pushFx({ e: "death", x: this.boss.x, y: this.boss.y, id: this.boss.id });
+        }
+      }
+      if (this.boss.hotUntil > this.now && !this.boss.dead) {
+        this.boss.hp = Math.min(this.boss.maxHp, this.boss.hp + HOLY_HOT_PER_SEC * dt);
+      }
+    }
+  }
+
   private stopLoop() {
     if (this.loop) {
       clearInterval(this.loop);
@@ -1518,6 +1627,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.now += TICK_MS;
     const dt = TICK_MS / 1000;
     for (const p of this.players.values()) stepPlayer(this, p, dt);
+    this.stepStatusEffects();
     this.stepPortals();
     this.stepHazards();
     updateMonsters(this, dt);

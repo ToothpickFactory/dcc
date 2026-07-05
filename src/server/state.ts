@@ -32,6 +32,13 @@ export interface PlayerState {
   shieldUntil: number; // shield expires at this tick
   bloodlustUntil: number; // group-haste buff active while now < this
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  // ---- Active status effects (applied on hit; tick in stepStatusEffects) ----
+  fireUntil: number;      // fire DoT expiry
+  bleedUntil: number;     // bleed DoT expiry
+  poisonUntil: number;    // poison DoT + light-slow expiry
+  hotUntil: number;       // holy HoT expiry
+  shadowUntil: number;    // shadow damage-amplification expiry
+  frostSlowUntil: number; // frost heavy-slow expiry
   // ---- Dodge/dash (evade) ----
   dashUntil: number; // dash burst active while now < this (movement overridden)
   dashDirX: number; // unit dash direction
@@ -65,6 +72,12 @@ export interface MonsterState {
   attackReadyAt: number;
   wanderAt: number;
   slowUntil: number; // movement slowed (e.g. frost) while now < slowUntil
+  fireUntil: number;
+  bleedUntil: number;
+  poisonUntil: number;
+  hotUntil: number;
+  shadowUntil: number;
+  frostSlowUntil: number;
   base: Attributes; // innate attributes (per kind); gear adds on top
   inv: Inventory; // monsters carry gear too — dropped on death
   derived: DerivedStats; // cached stats (maxHp mirrors derived.maxHp)
@@ -106,6 +119,13 @@ export interface BossState {
   meleeWindupUntil: number; // boss melee lands when now >= this
   castWindupUntil: number; // boss bolt-fan fires when now >= this
   castTarget: string; // player id the pending cast is aimed at
+  // ---- Active status effects ----
+  fireUntil: number;
+  bleedUntil: number;
+  poisonUntil: number;
+  hotUntil: number;
+  shadowUntil: number;
+  frostSlowUntil: number;
   // ---- Hard crowd control (root / stun / freeze) ----
   ccUntil: number; // CC active while now < this (0 = free)
   ccKind: CcKind | ""; // stun/freeze fully lock the boss; root only stops its movement

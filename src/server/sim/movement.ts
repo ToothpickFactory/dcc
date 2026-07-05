@@ -1,5 +1,5 @@
 import type { CollisionGrid } from "../../procgen/types";
-import { DASH_SPEED, PLAYER_RADIUS, SLOW_FACTOR } from "../../shared/constants";
+import { DASH_SPEED, FROST_SLOW_FACTOR, PLAYER_RADIUS, POISON_SLOW_FACTOR, SLOW_FACTOR } from "../../shared/constants";
 import type { PlayerState, WorldCtx } from "../state";
 import { movePlayerWithWorldCollisions } from "./collision";
 
@@ -14,8 +14,12 @@ export function stepPlayer(ctx: WorldCtx, p: PlayerState, dt: number): void {
   }
   const len = Math.hypot(p.mvx, p.mvy);
   if (len > 0) {
-    // moveSpeed comes from the player's gear/attributes (agility), not a constant.
-    const speed = p.derived.moveSpeed * (p.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    // Pick the most severe active slow across all sources.
+    let slowMult = 1.0;
+    if (p.slowUntil > ctx.now)       slowMult = Math.min(slowMult, SLOW_FACTOR);
+    if (p.frostSlowUntil > ctx.now)  slowMult = Math.min(slowMult, FROST_SLOW_FACTOR);
+    if (p.poisonUntil > ctx.now)     slowMult = Math.min(slowMult, POISON_SLOW_FACTOR);
+    const speed = p.derived.moveSpeed * slowMult;
     movePlayerWithWorldCollisions(ctx, p, (p.mvx / len) * speed * dt, (p.mvy / len) * speed * dt, PLAYER_RADIUS);
   }
   revealAround(ctx, p, grid);

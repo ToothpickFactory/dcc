@@ -1,4 +1,4 @@
-import { CRIT_MULT, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS } from "../../shared/constants";
+import { CRIT_MULT, FREEZE_SLOW_TAIL_MS, KNOCK_MS, KNOCK_RESIST, KNOCK_SPEED, MONSTER_RESPAWN_MS, SHADOW_AMP, STATUS_EFFECT_MS, STUN_STATUS_MS } from "../../shared/constants";
 import { allItems, emptyInventory } from "../../shared/items";
 import type { StatusEffect } from "../../protocol";
 import type { Ability } from "../../shared/types";
@@ -64,6 +64,7 @@ export function applyDamage(
     if (target.reached) return; // safe in the waiting room — out of play
     if (ctx.now < target.dashIframeUntil) return; // dodged — i-frames negate the hit
     let taken = dmg * (1 - target.derived.dr); // armor mitigates
+    if (target.shadowUntil > ctx.now) taken *= 1 + SHADOW_AMP; // shadow vulnerability
     // Absorb shield (support talent) soaks damage before HP.
     if (target.shieldUntil > ctx.now && target.shield > 0) {
       const absorbed = Math.min(target.shield, taken);
@@ -75,6 +76,7 @@ export function applyDamage(
     }
     target.hp -= taken;
     if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
+    if (status) applyStatusEffect(ctx, target, status);
     ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit, status });
     if (sourceIsPlayer && sourceId !== target.id) {
       ctx.pushPlay({ e: "friendlyFire", by: sourceId, amount: taken });
@@ -103,8 +105,10 @@ export function applyDamage(
       ctx.pushPlay({ e: "hit", by: sourceId, targetKind: "monster", range: hitRange, ability });
       ctx.gainXp(sourceId, ability, false);
     }
-    target.hp -= dmg;
-    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: dmg, by: sourceId, crit, status });
+    const bossDmg = target.shadowUntil > ctx.now ? dmg * (1 + SHADOW_AMP) : dmg;
+    target.hp -= bossDmg;
+    if (status) applyStatusEffect(ctx, target, status);
+    ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: bossDmg, by: sourceId, crit, status });
     if (target.hp <= 0) {
       target.dead = true;
       ctx.pushFx({ e: "boss", x: target.x, y: target.y, state: "dead", by: sourceId });
@@ -140,8 +144,10 @@ export function applyDamage(
     }
   }
   if (slowMs > 0) target.slowUntil = Math.max(target.slowUntil, ctx.now + slowMs);
-  target.hp -= taken;
-  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: taken, by: sourceId, crit, status });
+  const monTaken = target.shadowUntil > ctx.now ? taken * (1 + SHADOW_AMP) : taken;
+  target.hp -= monTaken;
+  if (status) applyStatusEffect(ctx, target, status);
+  ctx.pushFx({ e: "dmg", x: target.x, y: target.y, amount: monTaken, by: sourceId, crit, status });
   if (target.hp <= 0) {
     target.dead = true;
     target.respawnAt = ctx.now + MONSTER_RESPAWN_MS;
@@ -193,11 +199,36 @@ export function applyHeal(
 function statusForAbility(ab: Ability | undefined): StatusEffect | undefined {
   if (!ab || ab.dmg <= 0) return undefined;
   const text = `${ab.id} ${ab.name ?? ""} ${ab.flavor ?? ""} ${ab.twist ?? ""}`.toLowerCase();
+  if (ab.stunMs ?? 0 > 0) return "electric";
+  if (/\b(holy|sacred|divine|radiant|blessed|light|celestial|angelic|consecrated|sanctified)\b/.test(text)) return "holy";
+  if (/\b(shadow|dark|void|necrotic|umbral|shade|midnight|reaper|oblivion|eclipse)\b/.test(text)) return "shadow";
+  if (/\b(lightning|electric|thunder|arc|static|storm|shock|charged|voltage|galvanic|zap|jolt)\b/.test(text)) return "electric";
+  if (/\b(bleed|lacerate|rend|slash|hemorrhage|wound|gash|slice|cut|sever)\b/.test(text)) return "bleed";
   if (ab.category === "stealth" || /\b(poison|venom|toxin|toxic|acid|blight)\b/.test(text)) return "poison";
   if (ab.freeze || (ab.slowMs ?? 0) > 0 || /\b(frost|ice|icy|freeze|frozen|nova|snow|chill)\b/.test(text)) return "frost";
   if (ab.id.startsWith("loot-") && (ab.category === "ranged" || ab.category === "aoe")) return "fire";
   if (/\b(fire|flame|wildfire|burn|ember|inferno|blaze|detonation|explosion)\b/.test(text)) return "fire";
   return undefined;
+}
+
+function applyStatusEffect(
+  ctx: WorldCtx,
+  target: PlayerState | MonsterState | BossState,
+  status: StatusEffect,
+): void {
+  const end = ctx.now + STATUS_EFFECT_MS;
+  switch (status) {
+    case "fire":   target.fireUntil   = Math.max(target.fireUntil,   end); break;
+    case "bleed":  target.bleedUntil  = Math.max(target.bleedUntil,  end); break;
+    case "poison": target.poisonUntil = Math.max(target.poisonUntil, end); break;
+    case "holy":   target.hotUntil    = Math.max(target.hotUntil,    end); break;
+    case "shadow": target.shadowUntil = Math.max(target.shadowUntil, end); break;
+    case "frost":  target.frostSlowUntil = Math.max(target.frostSlowUntil, end); break;
+    case "electric":
+    case "stun":
+      if (!isPlayer(target)) applyCc(ctx, target, { stunMs: STUN_STATUS_MS });
+      break;
+  }
 }
 
 export function applyCc(

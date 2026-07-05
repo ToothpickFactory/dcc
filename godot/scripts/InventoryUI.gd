@@ -173,13 +173,14 @@ func on_shop(msg: Dictionary) -> void:
 func _render_shop() -> void:
 	if _shop_grid == null:
 		return
-	var show_shop := (_reached or _near_floor_shop) and not _shop_items.is_empty()
+	var is_shop_ctx := _reached or _near_floor_shop
+	var has_items := not _shop_items.is_empty()
 	var header := _shop_section.get_parent() as Control # the HBox header row
 	if header != null:
-		header.visible = show_shop
-	_shop_grid.visible = show_shop
+		header.visible = is_shop_ctx
+	_shop_grid.visible = is_shop_ctx and has_items
 	_clear(_shop_grid)
-	if not show_shop:
+	if not is_shop_ctx or not has_items:
 		return
 	var gold := int(_inv.get("gold", 0))
 	_shop_reroll_btn.text = "\U0001f3b2 Reroll (\U01fa99%d)" % _shop_reroll_cost

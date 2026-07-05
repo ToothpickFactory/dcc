@@ -1,5 +1,5 @@
 import { randomWalkablePosition } from "../../procgen/collision";
-import { BRUTE_WINDUP_MULT, KNOCK_MS, MELEE_WINDUP_MS, MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
+import { BRUTE_WINDUP_MULT, FROST_SLOW_FACTOR, KNOCK_MS, MELEE_WINDUP_MS, MONSTER_AGGRO, MONSTER_BOLT_SPRITE, MONSTER_KINDS, POISON_SLOW_FACTOR, SLOW_FACTOR, THREAT_DECAY } from "../../shared/constants";
 import { projectileRenderForDamage } from "../../shared/dungeon-rules";
 import type { BossState, MonsterState, PlayerState, WorldCtx } from "../state";
 import { applyDamage, applyHeal } from "./combat";
@@ -74,7 +74,11 @@ export function updateMonsters(ctx: WorldCtx, dt: number): void {
     // A root (the only CC still active here — stun/freeze returned above) pins movement
     // to 0 while letting attacks resolve; otherwise a slow halves speed.
     const rooted = m.ccUntil > ctx.now; // ccKind === "root" at this point
-    const speed = rooted ? 0 : m.derived.moveSpeed * (m.slowUntil > ctx.now ? SLOW_FACTOR : 1);
+    let monSlowMult = 1.0;
+    if (m.slowUntil > ctx.now)      monSlowMult = Math.min(monSlowMult, SLOW_FACTOR);
+    if (m.frostSlowUntil > ctx.now) monSlowMult = Math.min(monSlowMult, FROST_SLOW_FACTOR);
+    if (m.poisonUntil > ctx.now)    monSlowMult = Math.min(monSlowMult, POISON_SLOW_FACTOR);
+    const speed = rooted ? 0 : m.derived.moveSpeed * monSlowMult;
     const prey = pickTarget(ctx, m);
 
     if (def.heal) {
