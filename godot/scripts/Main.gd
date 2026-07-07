@@ -98,6 +98,7 @@ const WEAPON_DAMAGE_TYPES := ["fire", "frost", "poison", "bleed", "stun", "holy"
 var _weapon_damage_types: Dictionary = {}
 var _menu_was_open := false
 var _connect_banner: Label
+var _debug_draw: Node2D  # DebugDraw — hit/attack-box overlay, toggle F3
 
 func _ready() -> void:
 	randomize()
@@ -308,6 +309,14 @@ func _ready() -> void:
 
 	_vignette = DangerVignette.new()
 	add_child(_vignette)
+
+	var debug_layer := CanvasLayer.new()
+	debug_layer.layer = 50
+	add_child(debug_layer)
+	_debug_draw = preload("res://scripts/DebugDraw.gd").new()
+	_debug_draw.cam = _cam
+	_debug_draw.visible = false
+	debug_layer.add_child(_debug_draw)
 
 	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)
@@ -555,6 +564,8 @@ func _on_events(events: Array) -> void:
 				# Enemy attack telegraph: charge tint on the attacker + a warning marker.
 				_sprites.windup_id(str(ev.get("by", "")), float(ev.get("ms", 300.0)))
 				_fx.windup_marker(float(ev.get("x", 0.0)), float(ev.get("y", 0.0)), float(ev.get("ms", 300.0)))
+				if _debug_draw != null:
+					_debug_draw.register_windup(str(ev.get("by", "")), float(ev.get("ms", 300.0)))
 			"cc":
 				# Hard CC landed on a foe: a pop icon (stun/root/freeze) + a sfx if it's near you.
 				var ccx := float(ev.get("x", 0.0))
@@ -970,6 +981,14 @@ func _process(dt: float) -> void:
 			_sfx.play("evolve")
 			_sprites.flash_id(_net.you)
 
+	if _debug_draw != null and _debug_draw.visible:
+		_debug_draw.ents     = _net.ents
+		_debug_draw.you      = _net.you
+		_debug_draw.pred_x   = _pred.x
+		_debug_draw.pred_y   = _pred.y
+		_debug_draw.self_dto = _net.self_dto
+		_debug_draw.queue_redraw()
+
 	if OS.get_environment("DCC_DEBUG") != "":
 		_dbg_accum += dt
 		if _dbg_accum >= 1.0:
@@ -1117,6 +1136,9 @@ func _unhandled_input(e: InputEvent) -> void:
 				_inv.use_first_potion()
 			KEY_F2:
 				_reset_run()
+			KEY_F3:
+				if _debug_draw != null:
+					_debug_draw.visible = not _debug_draw.visible
 			KEY_TAB:
 				_spectate.cycle()
 			KEY_V:
