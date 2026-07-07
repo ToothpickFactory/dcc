@@ -55,7 +55,9 @@ var _seq := 0
 var _input_accum := 0.0
 var _dbg_accum := 0.0
 var _nearest_bag_id := ""
+var _nearest_companion_id := ""
 var _loot_prompt: Label
+var _companion_prompt: Label
 var _floor_shop_pos := Vector2.ZERO
 var _near_floor_shop := false
 var _shop_prompt: Label
@@ -217,6 +219,14 @@ func _ready() -> void:
 	_shop_prompt.position.y -= 200
 	_shop_prompt.visible = false
 	loot_layer.add_child(_shop_prompt)
+	_companion_prompt = Label.new()
+	_companion_prompt.text = "Recruit (E)"
+	_companion_prompt.add_theme_font_size_override("font_size", 20)
+	_companion_prompt.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
+	_companion_prompt.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_companion_prompt.position.y -= 230
+	_companion_prompt.visible = false
+	loot_layer.add_child(_companion_prompt)
 
 	# Boss-gate hint — the stairs stay shut until the floor's guardian is dead.
 	_gate_hint = Label.new()
@@ -945,6 +955,22 @@ func _process(dt: float) -> void:
 		if _near_floor_shop:
 			_net.send_msg({ "t": "floorShop" })  # pre-load shop stock as soon as player enters range
 	_shop_prompt.visible = _near_floor_shop and not _inv.is_open() and not _inv.is_floor_shop_open()
+	_nearest_companion_id = ""
+	const COMPANION_REACH_SQ := 110.0 * 110.0
+	if alive:
+		for e in _net.ents:
+			if typeof(e) != TYPE_DICTIONARY:
+				continue
+			if str(e.get("kind", "")) != "companion":
+				continue
+			if bool(e.get("recruited", false)):
+				continue
+			var cdx := float(e.get("x", 0.0)) - _pred.x
+			var cdy := float(e.get("y", 0.0)) - _pred.y
+			if cdx * cdx + cdy * cdy <= COMPANION_REACH_SQ:
+				_nearest_companion_id = str(e.get("id", ""))
+				break
+	_companion_prompt.visible = _nearest_companion_id != ""
 	var open_bag := _inv.loot_open_bag_id()
 	if open_bag != "" and not _bag_present(open_bag):
 		_inv.close_loot()
@@ -1147,7 +1173,9 @@ func _unhandled_input(e: InputEvent) -> void:
 					_inv.close()
 				_skills.toggle()
 			KEY_E:
-				if _nearest_bag_id != "":
+				if _nearest_companion_id != "":
+					_net.send_msg({ "t": "recruitCompanion", "companionId": _nearest_companion_id })
+				elif _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
 				elif _near_floor_shop:
 					_open_floor_shop()
@@ -1201,7 +1229,9 @@ func _unhandled_input(e: InputEvent) -> void:
 				_inv.use_first_potion()
 				get_viewport().set_input_as_handled()
 			JOY_BUTTON_DPAD_RIGHT:
-				if _nearest_bag_id != "":
+				if _nearest_companion_id != "":
+					_net.send_msg({ "t": "recruitCompanion", "companionId": _nearest_companion_id })
+				elif _nearest_bag_id != "":
 					_inv.request_loot(_nearest_bag_id)
 				elif _near_floor_shop:
 					_open_floor_shop()

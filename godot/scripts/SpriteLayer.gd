@@ -160,6 +160,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 				spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 			elif k == "monster":
 				spr.set_monster_kind(str(d.get("enemy", d.get("monKind", ""))))
+			elif k == "companion":
+				spr.set_companion_class(str(d.get("compKlass", "")))
 			spr.setup(id, k, is_self)
 			add_child(spr)
 			_sprites[id] = spr
@@ -170,6 +172,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.set_weapon_loadout(_player_weapon_loadout_from_dto(d, is_self))
 		elif k == "monster":
 			spr.set_monster_kind(str(d.get("enemy", d.get("monKind", ""))))
+		elif k == "companion":
+			spr.set_companion_class(str(d.get("compKlass", "")))
 		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.
@@ -241,7 +245,7 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 		var event: Dictionary = ev
 		var kind := str(event.get("e", ""))
 		if kind == "cast":
-			var caster := _nearest_entity(ents, float(event.get("x", 0.0)), float(event.get("y", 0.0)), ["player", "monster", "boss"], 90.0)
+			var caster := _nearest_entity(ents, float(event.get("x", 0.0)), float(event.get("y", 0.0)), ["player", "monster", "boss", "companion"], 90.0)
 			if caster.is_empty():
 				continue
 			var cid := str(caster.get("id", ""))
@@ -258,7 +262,7 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 			var spr2: EntitySprite = _sprites.get(by)
 			if spr2 == null:
 				continue
-			if spr2.kind != "monster" and spr2.kind != "boss":
+			if spr2.kind != "monster" and spr2.kind != "boss" and spr2.kind != "companion":
 				continue
 			spr2.queue_action("strike", now_ms)
 

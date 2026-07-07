@@ -7,7 +7,7 @@
 // Encoding is JSON in Phase 0. The binary delta protocol (Stream G / M6) changes
 // only client/net.ts + the DO's broadcast — never these types.
 // ===========================================================================
-import type { Ability, AbilityFlavor, CcKind, DamageType, EnemyVisualKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, ProjectileRender, Theme } from "./shared/types";
+import type { Ability, AbilityFlavor, CcKind, CompanionClass, DamageType, EnemyVisualKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, ProjectileRender, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec } from "./procgen/types";
 
@@ -39,6 +39,7 @@ export type ClientMsg =
   | { t: "buyItem"; id: string } // buy a shop item by id (vendor; costs gold)
   | { t: "reroll" } // reroll the vendor's rotating gear stock (costs gold)
   | { t: "floorShop" } // open the per-floor vendor (player must be within SHOP_REACH of the shop prop)
+  | { t: "recruitCompanion"; companionId: string } // recruit a nearby idle companion
   | { t: "ping"; ts: number };
 
 // ---------- Server -> Client ----------
@@ -64,7 +65,7 @@ export interface WorldInfo {
   h: number;
 }
 
-export type EntityKind = "player" | "monster" | "boss" | "proj" | "lootbag" | "prop";
+export type EntityKind = "player" | "monster" | "boss" | "proj" | "lootbag" | "prop" | "companion";
 export interface EntityDTO {
   id: string;
   kind: EntityKind;
@@ -89,6 +90,8 @@ export interface EntityDTO {
   variant?: number; // props: themed decoration sheet index
   scale?: number; // props: decoration scale
   cc?: CcKind; // monster/boss: active hard CC (stun/root/freeze) — drives the status tint
+  compKlass?: CompanionClass; // companion only: class that determines the GLB model
+  recruited?: boolean; // companion only: true once a player has recruited this companion
 }
 
 export interface SelfDTO {

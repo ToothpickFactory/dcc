@@ -66,12 +66,13 @@ import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, Wea
 import { generateFloor, rng } from "../procgen";
 import { canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
-import type { BossState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
+import type { BossState, CompanionState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
 import { castAbility, stepPendingSwings, stepProjectiles } from "./sim/projectiles";
+import { updateCompanions } from "./sim/companions";
 import { applyDamage, applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
@@ -114,6 +115,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   props: PropState[] = [];
   boss: BossState | null = null;
   lootBags: LootBagState[] = [];
+  companions: CompanionState[] = [];
   groupHasteReadyAt = 0; // shared cooldown for the group-haste (bloodlust) burst
 
   private events: GameEvent[] = [];
@@ -657,6 +659,23 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     return randomWalkablePosition(grid, BOSS_RADIUS, this.gearRng);
   }
 
+  private spawnCompanion(): void {
+    const CLASSES: CompanionState["klass"][] = ["barbarian", "cleric", "paladin", "ranger", "rogue", "wizard"];
+    const klass = CLASSES[Math.floor(this.gearRng() * CLASSES.length)];
+    const pos = randomWalkablePosition(this.floor.collision, 30, this.gearRng);
+    this.companions.push({
+      id: `comp_${this.floor.depth}_${Date.now().toString(36)}`,
+      x: pos.x,
+      y: pos.y,
+      aim: 0,
+      klass,
+      recruitedBy: null,
+      expiresAt: null,
+      attackCdUntil: 0,
+      supportCdUntil: 0,
+    });
+  }
+
   // RPC: wipe to a fresh vanilla run (admin /admin/new-run; auth in the Worker).
   async newRun(): Promise<{ runId: string; seed: number }> {
     const seed = Math.floor(Math.random() * 0x7fffffff);
@@ -697,10 +716,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.lootBags = []; // fresh run — wipe bags from the previous run
+    this.companions = [];
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+    this.spawnCompanion();
     this.projectiles = [];
     this.floorEndsAt = Date.now() + this.floor.durationMs;
     void this.ctx.storage.setAlarm(this.floorEndsAt);
@@ -838,10 +859,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.hazardNextHit.clear();
     this.portalReadyAt.clear();
     this.lootBags = []; // previous floor's bags are now unreachable
+    this.companions = [];
     this.seedLoot();
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+    this.spawnCompanion();
     this.projectiles = [];
     for (const p of survivors) {
       p.x = this.floor.entrance.x + (Math.random() - 0.5) * 200;
@@ -1206,6 +1229,17 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.reroll(player);
     } else if (msg.t === "floorShop") {
       this.openFloorShop(player);
+    } else if (msg.t === "recruitCompanion") {
+      const compId = msg.companionId;
+      const comp = this.companions.find((c) => c.id === compId && c.recruitedBy === null);
+      if (comp && player) {
+        const dx = comp.x - player.x;
+        const dy = comp.y - player.y;
+        if (Math.hypot(dx, dy) <= 110) {
+          comp.recruitedBy = player.id;
+          comp.expiresAt = this.now + 60_000;
+        }
+      }
     }
   }
 
@@ -1644,6 +1678,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.stepHazards();
     updateMonsters(this, dt);
     updateBoss(this, dt);
+    updateCompanions(this, dt);
     for (const p of this.players.values()) if (p.status === "alive") this.autoCast(p);
     stepPendingSwings(this);
     stepProjectiles(this, dt);
@@ -1929,6 +1964,18 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         dead: this.boss.dead,
         name: this.boss.name,
         cc: bcc,
+      });
+    }
+    for (const comp of this.companions) {
+      ents.push({
+        id: comp.id,
+        kind: "companion" as const,
+        compKlass: comp.klass,
+        name: comp.klass.charAt(0).toUpperCase() + comp.klass.slice(1),
+        x: r(comp.x),
+        y: r(comp.y),
+        aim: r2(comp.aim),
+        recruited: comp.recruitedBy !== null,
       });
     }
     const wallNow = Date.now(); // loot-bag times are wall-clock (like expiresAt), not the logical tick

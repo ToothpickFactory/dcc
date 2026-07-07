@@ -1,4 +1,4 @@
-import type { Ability, CcKind, DamageType, EnemyVisualKind, Klass, MonsterKind, ProjectileRender } from "../shared/types";
+import type { Ability, CcKind, CompanionClass, DamageType, EnemyVisualKind, Klass, MonsterKind, ProjectileRender } from "../shared/types";
 import type { Attributes, DerivedStats, Inventory, Item } from "../shared/items";
 import type { GameEvent } from "../protocol";
 import type { PlaystyleEvent } from "./events";
@@ -186,6 +186,18 @@ export interface LootBagState {
   ownerUntil?: number; // wall-clock ms the owner-priority window closes (then free-for-all)
 }
 
+export interface CompanionState {
+  id: string;
+  x: number;
+  y: number;
+  aim: number;
+  klass: CompanionClass;
+  recruitedBy: string | null; // player id who recruited this companion; null = idle/recruitable
+  expiresAt: number | null;   // tick at which the companion expires (null while idle)
+  attackCdUntil: number;
+  supportCdUntil: number;     // heal / shield / other class-specific support cooldown
+}
+
 // A queued melee swing that resolves after a weapon-specific delay so the damage
 // fires when the weapon animation visually connects, not the instant the player
 // presses the button.
@@ -216,6 +228,7 @@ export interface WorldCtx {
   props: PropState[];
   boss: BossState | null;
   lootBags: LootBagState[];
+  companions: CompanionState[];
   groupHasteReadyAt: number; // shared cooldown for the group-haste (bloodlust) burst
   floor: FloorDescriptor; // current floor — sim reads collision grid + dims
   pushFx(e: GameEvent): void;

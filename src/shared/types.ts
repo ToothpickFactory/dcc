@@ -39,6 +39,7 @@ export type CcKind = "stun" | "root" | "freeze";
 // emergent playstyle `PlayerClass` label above). Drives the main stat that scales
 // your abilities, your trinity role, and which talent tree you spend points in.
 export type Klass = "warrior" | "mage" | "priest" | "rogue" | "hunter";
+export type CompanionClass = "barbarian" | "cleric" | "paladin" | "ranger" | "rogue" | "wizard";
 export type TrinityRole = "tank" | "dps" | "healer";
 
 export interface Ability {

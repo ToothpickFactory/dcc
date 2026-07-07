@@ -318,6 +318,7 @@ var is_self := false
 var world_sprite_px: float = 84.0
 var _entity_name := ""
 var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue"|"hunter")
+var _companion_class := "" # CompanionClass for kind=="companion"
 var _model_root: Node3D
 var _model_inst: Node3D
 var _model_light: OmniLight3D
@@ -717,6 +718,39 @@ func set_chosen_class(klass: String) -> void:
 		_model_debug_logged = false
 	_ensure_model_for_entity()
 
+func set_companion_class(klass: String) -> void:
+	if _companion_class == klass:
+		return
+	_companion_class = klass
+	if kind != "companion":
+		return
+	if _model_light != null:
+		_model_light.queue_free()
+		_model_light = null
+	if _model_root != null:
+		remove_child(_model_root)
+		_model_root.free()
+		_model_root = null
+		_model_inst = null
+		_model_anim = null
+		_model_anim_name = ""
+		_model_profile = {}
+		_status_effects = null
+		_status_effect_nodes.clear()
+		_status_effect_until.clear()
+		_cc_effect = ""
+	_ensure_model_for_entity()
+
+func _companion_model_path() -> String:
+	match _companion_class:
+		"barbarian": return BARBARIAN_MODEL_PATH
+		"cleric":    return CLERIC_MODEL_PATH
+		"paladin":   return PALADIN_MODEL_PATH
+		"ranger":    return RANGER_MODEL_PATH
+		"rogue":     return ROGUE_MODEL_PATH
+		"wizard":    return WIZARD_MODEL_PATH
+		_:           return HERO_MODEL_PATH
+
 func set_weapon_loadout(loadout: Dictionary) -> void:
 	if kind != "player":
 		return
@@ -878,6 +912,19 @@ func _model_profile_for_entity() -> Dictionary:
 			"light_y": 16.0,
 			"contrast": 1.3,
 			"saturation": 1.35,
+		}
+	if kind == "companion":
+		return {
+			"label": _companion_class.capitalize() + " Companion",
+			"path": _companion_model_path(),
+			"anim_aliases": {},
+			"scale": HERO_MODEL_SCALE,
+			"model_y": 60.0,
+			"light_energy": HERO_LIGHT_ENERGY,
+			"light_range": 240.0,
+			"light_y": 95.0,
+			"contrast": 1.2,
+			"saturation": 1.2,
 		}
 	if kind == "lootbag":
 		return {
@@ -1126,6 +1173,9 @@ func _ensure_model_for_entity() -> void:
 	if is_self and kind == "player" and not _model_debug_logged:
 		print("[DCC] hero model active label=%s class=%s path=%s" % [label, _chosen_class, model_path])
 		_model_debug_logged = true
+		var _dbg_anim := _find_animation_player(_model_root)
+		if _dbg_anim != null:
+			print("[DCC] Kevin animations: ", _dbg_anim.get_animation_list())
 	_model_anim = _find_animation_player(_model_root)
 	_brighten_model(_model_root, float(profile.get("contrast", 1.0)), float(profile.get("saturation", 1.0)))
 	_attach_weapon_to_model(profile)
