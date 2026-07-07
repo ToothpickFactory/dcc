@@ -282,7 +282,7 @@ func _self_action_for_ability(ability_idx: int) -> String:
 	var is_projectile := bool(ab.get("projectile", false))
 	var dmg := float(ab.get("dmg", 0.0))
 	var is_melee := not is_projectile and dmg > 0.0 and not bool(ab.get("taunt", false)) and str(ab.get("groupBuff", "")) == ""
-	if not is_melee and is_projectile and _net != null:
+	if _net != null:
 		var equipped: Variant = _net.last_inv.get("equipped", {})
 		if equipped is Dictionary:
 			var main_hand: Variant = (equipped as Dictionary).get("mainHand", {})

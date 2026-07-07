@@ -9,7 +9,15 @@ var ents: Array = []         # _net.ents reference, updated each frame
 var you: String = ""         # local player id (_net.you)
 var pred_x: float = 0.0     # predicted player position
 var pred_y: float = 0.0
+var aim: float = 0.0         # local real-time aim angle (from input, not server-lagged)
 var self_dto: Dictionary = {}  # _net.self_dto — for player melee range
+var main_hand_type: String = ""  # equipped mainHand weapon type for range scaling
+
+const _WEAPON_RANGE_MULT := {
+	"mace": 0.75, "shield": 0.70, "sword": 1.00,
+	"bow": 1.20,  "axe": 1.15,   "flail": 1.85,
+}
+const _FIST_RANGE_MULT := 0.65
 
 # Active wind-ups: entity_id -> expiry ms (Time.get_ticks_msec).
 var _windups: Dictionary = {}
@@ -37,9 +45,8 @@ func _draw() -> void:
 	var player_melee_r := _player_melee_range()
 	var player_cone := _player_melee_cone()
 	if player_melee_r > 0.0:
-		var self_aim := float(self_dto.get("aim", 0.0))
 		_draw_circle_w(pred_x, pred_y, player_melee_r, COLOR_REACH, 1.0)
-		_draw_cone_w(pred_x, pred_y, player_melee_r, self_aim, player_cone, COLOR_SELF_CONE)
+		_draw_cone_w(pred_x, pred_y, player_melee_r, aim, player_cone, COLOR_SELF_CONE)
 
 	# ---- all other entities ----
 	for e in ents:
@@ -131,7 +138,9 @@ func _player_melee_range() -> float:
 			continue
 		var dmg := int(a.get("dmg", 0))
 		if dmg > 0 and not bool(a.get("isHeal", false)):
-			return float(a.get("range", 0.0))
+			var base := float(a.get("range", 0.0))
+			var mult := float(_WEAPON_RANGE_MULT.get(main_hand_type, _FIST_RANGE_MULT)) if main_hand_type != "" else _FIST_RANGE_MULT
+			return base * mult
 	return 0.0
 
 func _player_melee_cone() -> float:

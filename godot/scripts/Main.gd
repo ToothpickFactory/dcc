@@ -997,11 +997,15 @@ func _process(dt: float) -> void:
 			_sprites.flash_id(_net.you)
 
 	if _debug_draw != null and _debug_draw.visible:
-		_debug_draw.ents     = _net.ents
-		_debug_draw.you      = _net.you
-		_debug_draw.pred_x   = _pred.x
-		_debug_draw.pred_y   = _pred.y
-		_debug_draw.self_dto = _net.self_dto
+		_debug_draw.ents           = _net.ents
+		_debug_draw.you            = _net.you
+		_debug_draw.pred_x         = _pred.x
+		_debug_draw.pred_y         = _pred.y
+		_debug_draw.aim            = aim
+		_debug_draw.self_dto       = _net.self_dto
+		var _wl := _current_weapon_loadout()
+		var _mh: Variant = _wl.get("mainHand", {})
+		_debug_draw.main_hand_type = str((_mh as Dictionary).get("weaponType", "")) if _mh is Dictionary else ""
 		_debug_draw.queue_redraw()
 
 	if OS.get_environment("DCC_DEBUG") != "":

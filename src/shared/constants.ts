@@ -71,13 +71,13 @@ export interface MonsterKindDef {
   heal?: { amount: number; cd: number; range: number; kite: number };
 }
 export const MONSTER_KINDS: Record<MonsterKind, MonsterKindDef> = {
-  grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 20 },
-  brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 28 }, // slow tank, big hits
+  grunt: { hp: 60, speed: 95, dmg: 6, attackCd: 1200, meleeRange: 56, radius: 22 },
+  brute: { hp: 150, speed: 58, dmg: 16, attackCd: 1500, meleeRange: 74, radius: 40 }, // slow tank, big hits
   swarm: { hp: 24, speed: 158, dmg: 4, attackCd: 700, meleeRange: 42, radius: 13 }, // fast, fragile, weak
-  pirate: { hp: 72, speed: 104, dmg: 8, attackCd: 1050, meleeRange: 58, radius: 20 }, // agile cutlass-style brawler
-  sharkman: { hp: 115, speed: 84, dmg: 12, attackCd: 1250, meleeRange: 68, radius: 24 }, // sturdy bruiser
-  ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
-  healer: { hp: 50, speed: 92, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 18, heal: { amount: 14, cd: 1400, range: 320, kite: 240 } }, // mends its camp
+  pirate: { hp: 72, speed: 104, dmg: 8, attackCd: 1050, meleeRange: 58, radius: 22 }, // agile cutlass-style brawler
+  sharkman: { hp: 115, speed: 84, dmg: 12, attackCd: 1250, meleeRange: 68, radius: 30 }, // sturdy bruiser
+  ranged: { hp: 42, speed: 86, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 20, ranged: { shootRange: 470, kite: 280, projSpeed: 360, projDmg: 9 } },
+  healer: { hp: 50, speed: 92, dmg: 0, attackCd: 1500, meleeRange: 0, radius: 20, heal: { amount: 14, cd: 1400, range: 320, kite: 240 } }, // mends its camp
 };
 
 export const PROJECTILE_RADIUS = 7;

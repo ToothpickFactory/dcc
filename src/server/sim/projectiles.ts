@@ -126,8 +126,30 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   if (isMelee) {
     caster.comboStep = isFinisher ? 0 : caster.comboStep + 1;
     caster.comboExpireAt = ctx.now + COMBO_WINDOW_MS;
-    // Queue delayed hit — weapon range scaling + swing timing applied here.
     const weaponType = caster.inv.equipped.mainHand?.weaponType;
+    // Bow converts melee swings into arrow projectiles instead of a cone hit.
+    if (weaponType === "bow" && ab.id !== "whirlwind") {
+      const arrowSpeed = 700;
+      const arrowRange = 400;
+      ctx.projectiles.push({
+        id:       `pr_${(++seq).toString(36)}`,
+        ownerId:  caster.id,
+        x:        caster.x + Math.cos(aim) * (PLAYER_RADIUS + 4),
+        y:        caster.y + Math.sin(aim) * (PLAYER_RADIUS + 4),
+        vx:       Math.cos(aim) * arrowSpeed,
+        vy:       Math.sin(aim) * arrowSpeed,
+        dmg:      meleeDmg,
+        slowMs:   ab.slowMs ?? 0,
+        ability:  idx,
+        sprite:   undefined,
+        proj:     "arrow",
+        ttl:      arrowRange / arrowSpeed,
+        hitR:     PROJECTILE_RADIUS,
+        boss:     false,
+      });
+      return true;
+    }
+    // Queue delayed hit — weapon range scaling + swing timing applied here.
     const rangeMult  = weaponType ? (WEAPON_MELEE_RANGE_MULT[weaponType] ?? 1.0) : FIST_RANGE_MULT;
     const delayMs    = weaponType ? (WEAPON_SWING_DELAY_MS[weaponType]  ?? 120)  : FIST_SWING_DELAY_MS;
     const swingCount = ab.id === "whirlwind" ? 3 : 1;
