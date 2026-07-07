@@ -317,6 +317,21 @@ func _ready() -> void:
 	_debug_draw.cam = _cam
 	_debug_draw.visible = false
 	debug_layer.add_child(_debug_draw)
+	# "HB" button — top-left corner, visible on all platforms including Android.
+	var hb_root := Control.new()
+	hb_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hb_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	debug_layer.add_child(hb_root)
+	var hb_btn := Button.new()
+	hb_btn.text = "HB"
+	hb_btn.custom_minimum_size = Vector2(64, 44)
+	hb_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	hb_btn.position = Vector2(8, 8)
+	hb_btn.modulate = Color(1, 1, 1, 0.72)
+	hb_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	hb_btn.pressed.connect(func():
+		_debug_draw.visible = not _debug_draw.visible)
+	hb_root.add_child(hb_btn)
 
 	_net.protocol_mismatch.connect(_on_protocol_mismatch)
 	_net.floor_received.connect(_on_floor)

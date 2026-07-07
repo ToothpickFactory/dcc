@@ -778,22 +778,6 @@ func _model_profile_for_entity() -> Dictionary:
 		var anim_aliases: Dictionary = {}
 		var model_scale := HERO_MODEL_SCALE
 		var model_rot_deg: Variant = null
-		match _chosen_class:
-			"warrior":
-				model_path = BARBARIAN_MODEL_PATH
-				label = "Barbarian"
-			"mage":
-				model_path = WIZARD_MODEL_PATH
-				label = "Wizard"
-			"priest":
-				model_path = CLERIC_MODEL_PATH
-				label = "Cleric"
-			"hunter":
-				model_path = RANGER_MODEL_PATH
-				label = "Ranger"
-			"rogue":
-				model_path = ROGUE_MODEL_PATH
-				label = "Rogue"
 		var profile := {
 			"label": label,
 			"path": model_path,
@@ -1304,6 +1288,18 @@ func _weapon_type_from_item(item: Dictionary, fallback_type: String) -> String:
 		return "sword"
 	return fallback_type
 
+func _kevin_strike_anim() -> String:
+	var item := _equipped_item("mainHand")
+	if item.is_empty():
+		return "punch_jab"
+	match _weapon_type_from_item(item, ""):
+		"sword":  return "sword_attack"
+		"axe":    return "sword_regular_c"
+		"flail":  return "sword_regular_b"
+		"mace":   return "sword_regular_a"
+		"bow":    return "bow"
+		_:        return "punch_jab"
+
 func _weapon_asset_rarity(item: Dictionary, fallback_rarity: String) -> String:
 	var raw := str(item.get("weaponRarity", item.get("rarity", fallback_rarity))).strip_edges().to_lower()
 	return str(WEAPON_ASSET_RARITY.get(raw, WEAPON_ASSET_RARITY.get(fallback_rarity, "Rare")))
@@ -1485,6 +1481,20 @@ func _base_anim_needles(intent: String) -> Array[String]:
 			return ["cast", "spell", "throw", "pitch", "attack", "strike"]
 		"whirlwind":
 			return ["whirlwind", "spin", "twirl"]
+		"sword_attack":
+			return ["sword_attack"]
+		"sword_regular_a":
+			return ["sword_regular_a"]
+		"sword_regular_b":
+			return ["sword_regular_b"]
+		"sword_regular_c":
+			return ["sword_regular_c"]
+		"punch_jab":
+			return ["punch_jab", "jab", "punch"]
+		"bow":
+			return ["bow", "shoot", "arrow"]
+		"shield_bash":
+			return ["shield_bash", "bash"]
 		"hit", "hurt":
 			return ["hit", "hurt", "damage", "impact", "react"]
 		"death":
@@ -1627,13 +1637,23 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 			return
 		var model_action := action
 		if action == "strike":
-			var slash_names := ["slash_a", "slash_b", "slash_c"]
-			model_action = slash_names[_model_slash_index % slash_names.size()]
-			_model_slash_index += 1
+			if _model_profile.get("label", "") == "Kevin":
+				model_action = _kevin_strike_anim()
+			else:
+				var slash_names := ["slash_a", "slash_b", "slash_c"]
+				model_action = slash_names[_model_slash_index % slash_names.size()]
+				_model_slash_index += 1
 		_action = model_action
 		_action_until = now_ms + 650.0
 		_play_model_anim(model_action)
-		if action == "strike" and _weapon_inst != null and _weapon_inst.has_method("swing"):
+		if action == "whirlwind" and _model_anim != null:
+			# 3x faster, loops 3 times in the space of one normal rotation
+			var ww_anim := _model_anim.get_animation(_model_anim_name)
+			if ww_anim != null:
+				ww_anim.loop_mode = Animation.LOOP_LINEAR
+			_model_anim.speed_scale = 3.0
+			_action_until = now_ms + _model_anim_duration_ms("whirlwind", 800.0)
+		elif action == "strike" and _weapon_inst != null and _weapon_inst.has_method("swing"):
 			_weapon_inst.call("swing")
 		return
 	_action_frame_start = frame_start
@@ -1701,6 +1721,8 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 
 	# Expire a finished action.
 	if _action != "" and not _is_dead_body and now_ms >= _action_until:
+		if _action == "whirlwind" and _model_anim != null:
+			_model_anim.speed_scale = 1.0
 		_action = ""
 
 	if _model_root != null:

@@ -14,12 +14,13 @@ var self_dto: Dictionary = {}  # _net.self_dto — for player melee range
 # Active wind-ups: entity_id -> expiry ms (Time.get_ticks_msec).
 var _windups: Dictionary = {}
 
-const COLOR_SELF    := Color(0.15, 1.00, 0.15, 0.90)  # bright green  — your hit box
-const COLOR_ALLY    := Color(0.20, 0.70, 1.00, 0.80)  # cyan          — other players
-const COLOR_MONSTER := Color(1.00, 0.25, 0.25, 0.85)  # red           — monster hit box
-const COLOR_BOSS    := Color(1.00, 0.10, 0.90, 0.90)  # magenta       — boss hit box
-const COLOR_REACH   := Color(1.00, 0.65, 0.10, 0.40)  # orange        — melee reach ring
-const COLOR_WINDUP  := Color(1.00, 0.05, 0.05, 0.85)  # vivid red     — swing cone
+const COLOR_SELF       := Color(0.15, 1.00, 0.15, 0.90)  # bright green  — your hit box
+const COLOR_SELF_CONE  := Color(0.15, 1.00, 0.15, 0.50)  # green (dim)   — your melee cone (always shown)
+const COLOR_ALLY       := Color(0.20, 0.70, 1.00, 0.80)  # cyan          — other players
+const COLOR_MONSTER    := Color(1.00, 0.25, 0.25, 0.85)  # red           — monster hit box
+const COLOR_BOSS       := Color(1.00, 0.10, 0.90, 0.90)  # magenta       — boss hit box
+const COLOR_REACH      := Color(1.00, 0.65, 0.10, 0.40)  # orange        — melee reach ring
+const COLOR_WINDUP     := Color(1.00, 0.05, 0.05, 0.85)  # vivid red     — active enemy swing cone
 
 # Called from Main._on_events() for every "windup" event.
 func register_windup(entity_id: String, duration_ms: float) -> void:
@@ -31,14 +32,14 @@ func _draw() -> void:
 	var now := Time.get_ticks_msec()
 
 	# ---- local player (use predicted position, not server-lagged DTO) ----
+	# Player swings have no server windup event — show the cone always in aim direction.
 	_draw_circle_w(pred_x, pred_y, DccConst.PLAYER_RADIUS, COLOR_SELF, 2.0)
 	var player_melee_r := _player_melee_range()
 	var player_cone := _player_melee_cone()
 	if player_melee_r > 0.0:
-		_draw_circle_w(pred_x, pred_y, player_melee_r, COLOR_REACH, 1.0)
-	if _windups.get(you, 0) > now and player_melee_r > 0.0:
 		var self_aim := float(self_dto.get("aim", 0.0))
-		_draw_cone_w(pred_x, pred_y, player_melee_r, self_aim, player_cone, COLOR_WINDUP)
+		_draw_circle_w(pred_x, pred_y, player_melee_r, COLOR_REACH, 1.0)
+		_draw_cone_w(pred_x, pred_y, player_melee_r, self_aim, player_cone, COLOR_SELF_CONE)
 
 	# ---- all other entities ----
 	for e in ents:

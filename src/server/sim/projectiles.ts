@@ -130,17 +130,20 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     const weaponType = caster.inv.equipped.mainHand?.weaponType;
     const rangeMult  = weaponType ? (WEAPON_MELEE_RANGE_MULT[weaponType] ?? 1.0) : FIST_RANGE_MULT;
     const delayMs    = weaponType ? (WEAPON_SWING_DELAY_MS[weaponType]  ?? 120)  : FIST_SWING_DELAY_MS;
-    ctx.pendingSwings.push({
-      fireAt:    ctx.now + delayMs,
-      casterId:  caster.id,
-      aim,
-      range:     ab.range * rangeMult,
-      cone,
-      dmg:       meleeDmg,
-      slowMs:    ab.slowMs ?? 0,
-      idx,
-      knockMult,
-    });
+    const swingCount = ab.id === "whirlwind" ? 3 : 1;
+    for (let i = 0; i < swingCount; i++) {
+      ctx.pendingSwings.push({
+        fireAt:    ctx.now + delayMs + i * 250,
+        casterId:  caster.id,
+        aim,
+        range:     ab.range * rangeMult,
+        cone,
+        dmg:       meleeDmg,
+        slowMs:    ab.slowMs ?? 0,
+        idx,
+        knockMult,
+      });
+    }
     return true;
   }
   // Non-combo melee (CC strikes like bash/hamstring): resolve instantly so the
