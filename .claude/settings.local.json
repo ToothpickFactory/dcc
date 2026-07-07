@@ -180,7 +180,10 @@
       "PowerShell(& \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1-stable_win64.exe\" --path $proj --headless --export-debug \"Android\" $out 2>&1)",
       "PowerShell($godot = \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\"; $proj = \"D:\\\\Projects\\\\dcc\\\\godot\"; $out = \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\"; & $godot --path $proj --headless --export-debug \"Android\" $out 2>&1 | Select-Object -Last 15)",
       "PowerShell(adb install -r -t \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\" 2>&1)",
-      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r -t \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\" 2>&1 | Select-Object -Last 5)"
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r -t \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\" 2>&1 | Select-Object -Last 5)",
+      "PowerShell(Copy-Item \"D:\\\\Projects\\\\dcc\\\\assets\\\\Heroes\\\\Kevin\\\\Kevin.glb\" \"D:\\\\Projects\\\\dcc\\\\godot\\\\assets\\\\Heroes\\\\Kevin\\\\Kevin.glb\" -Force)",
+      "PowerShell($godot = \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\"; $proj = \"D:\\\\Projects\\\\dcc\\\\godot\"; $out = \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\"; & $godot --path $proj --headless --export-debug \"Android\" $out 2>&1 | Select-Object -Last 12)",
+      "PowerShell($adb = \"$env:LOCALAPPDATA\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; & $adb install -r -t \"D:\\\\Projects\\\\dcc\\\\build\\\\android\\\\DCC.apk\" 2>&1 | Select-Object -Last 3)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"

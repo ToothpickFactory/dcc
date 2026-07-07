@@ -42,7 +42,7 @@ const STATUS_EFFECT_NORMAL_HEIGHT := 260.0
 const STATUS_EFFECT_BOSS_HEIGHT := 520.0
 
 const HERO_ROOT := "res://assets/Heroes/Kevin"
-const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin-3d-animated.glb"
+const HERO_MODEL_PATH := "res://assets/Heroes/Kevin/Kevin.glb"
 const HERO_MODEL_SCALE := 84.0
 const HERO_LIGHT_ENERGY := 1.35
 const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb"
