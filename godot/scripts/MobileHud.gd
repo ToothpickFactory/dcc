@@ -156,7 +156,10 @@ func _layout_potion_button(vp: Vector2) -> void:
 	_potion_btn.size     = Vector2(MENU_W, MENU_H)
 
 func _layout_camera_button(vp: Vector2) -> void:
-	_cam_btn.position = Vector2(vp.x - MENU_W - MENU_PAD, MENU_PAD)
+	# Below the minimap (top-right, Minimap.SIZE square + its own 8px top/bottom margin)
+	# rather than overlapping it — top-right was already fully claimed.
+	var y := 8.0 + Minimap.SIZE + 8.0
+	_cam_btn.position = Vector2(vp.x - MENU_W - MENU_PAD, y)
 	_cam_btn.size      = Vector2(MENU_W, MENU_H)
 
 # ── Menu callbacks ────────────────────────────────────────────────────────────

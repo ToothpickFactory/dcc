@@ -882,10 +882,12 @@ func _process(dt: float) -> void:
 			_cam.position = Vector3(cx + orbit_x, zoom_height + fgz, cy + orbit_z)
 			_cam.look_at(Vector3(cx, fgz, cy), Vector3.UP)
 		CameraMode.OVER_SHOULDER:
-			var fwd := Vector3(sin(yaw), 0.0, cos(yaw))
-			var right_v := Vector3(fwd.z, 0.0, -fwd.x)
+			# Points from the player back toward the camera — same convention as the
+			# top-down orbit's offset-from-target (orbit_x/orbit_z above).
+			var behind := Vector3(sin(yaw), 0.0, cos(yaw))
+			var right_v := Vector3(behind.z, 0.0, -behind.x)
 			var pivot := Vector3(cx, fgz + tps_eye_height, cy)
-			_cam.position = pivot - fwd * tps_back + right_v * tps_shoulder_offset
+			_cam.position = pivot + behind * tps_back + right_v * tps_shoulder_offset
 			_cam.look_at(_cam.position + _look_dir_world(yaw, deg_to_rad(_fps_pitch_deg)), Vector3.UP)
 		CameraMode.FIRST_PERSON:
 			_cam.position = Vector3(cx, fgz + fps_eye_height, cy)
@@ -1218,12 +1220,15 @@ func _cycle_camera_mode() -> void:
 
 # World (x,y) maps to 3D (x,0,y) — see World.gd. Returns a normalized look direction
 # in that same 3D space, shared by camera orientation and reticle-aim so they can
-# never drift apart.
+# never drift apart. Matches movement's forward direction at pitch 0: mv=(0,-1)
+# (W key) rotated by -cam_yaw_rad works out to (-sin(yaw), -cos(yaw)) in world (x,y) —
+# the top-down orbit camera only matches that because it sits at +orbit and looks
+# back at the target (forward = -offset), not because "forward" is +orbit itself.
 func _look_dir_world(yaw_rad: float, pitch_rad: float) -> Vector3:
 	return Vector3(
-		cos(pitch_rad) * sin(yaw_rad),
+		-cos(pitch_rad) * sin(yaw_rad),
 		sin(pitch_rad),
-		cos(pitch_rad) * cos(yaw_rad))
+		-cos(pitch_rad) * cos(yaw_rad))
 
 # Captures/hides the cursor in over-shoulder/first-person (PC only, no menu open);
 # releases it otherwise. Only touches Input.mouse_mode when it actually needs to
@@ -1258,7 +1263,9 @@ func _unhandled_input(e: InputEvent) -> void:
 			return
 	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# Over-shoulder/first-person free-look: mouse always steers while captured.
-		cam_yaw_deg = wrapf(cam_yaw_deg + e.relative.x * cam_look_sensitivity, -180.0, 180.0)
+		# Increasing cam_yaw_deg turns the camera left (see _look_dir_world), so
+		# moving the mouse right must subtract to turn right.
+		cam_yaw_deg = wrapf(cam_yaw_deg - e.relative.x * cam_look_sensitivity, -180.0, 180.0)
 		_fps_pitch_deg = clampf(_fps_pitch_deg - e.relative.y * cam_look_sensitivity, cam_pitch_min_deg, cam_pitch_max_deg)
 		get_viewport().set_input_as_handled()
 		return
