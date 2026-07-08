@@ -9,6 +9,10 @@ var _inp          # InputCtl
 var _inv          # InventoryUI
 var _skills_ui    # SkillsUI
 
+## Emitted when the camera-mode button is tapped. Main owns camera_mode, so this
+## signals up rather than mutating it directly (mirrors Hud.auto_attack_toggled).
+signal camera_toggle_requested
+
 # ── Layout constants ──────────────────────────────────────────────────────────
 const JOY_BASE_R  := 100.0
 const JOY_KNOB_R  :=  42.0
@@ -32,6 +36,7 @@ var _ability_btns : Array[Button] = []
 var _menu_btns    : Array[Button] = []
 var _loot_btn     : Button
 var _potion_btn   : Button
+var _cam_btn      : Button
 var _loot_bag_id  := ""
 var _joy_touch_id := -1
 var _ability_key  := ""
@@ -62,6 +67,7 @@ func _build() -> void:
 	_build_ability_buttons()
 	_build_menu_buttons()
 	_build_potion_button()
+	_build_camera_button()
 
 func _build_joystick() -> void:
 	_joy_base = _circle_panel(JOY_BASE_R,
@@ -98,6 +104,11 @@ func _build_potion_button() -> void:
 	_root.add_child(_potion_btn)
 	_potion_btn.pressed.connect(_on_potion_pressed)
 
+func _build_camera_button() -> void:
+	_cam_btn = _menu_button("📷 View")
+	_root.add_child(_cam_btn)
+	_cam_btn.pressed.connect(func(): camera_toggle_requested.emit())
+
 # ── Layout (position + size from viewport, called after ready + on resize) ────
 
 func _do_layout() -> void:
@@ -108,6 +119,7 @@ func _do_layout() -> void:
 	_layout_ability_buttons(vp)
 	_layout_menu_buttons(vp)
 	_layout_potion_button(vp)
+	_layout_camera_button(vp)
 
 func _layout_joystick(vp: Vector2) -> void:
 	_joy_base.position = Vector2(JOY_PAD, vp.y - JOY_PAD - JOY_BASE_R * 2.0)
@@ -142,6 +154,10 @@ func _layout_menu_buttons(vp: Vector2) -> void:
 func _layout_potion_button(vp: Vector2) -> void:
 	_potion_btn.position = Vector2(MENU_PAD, MENU_PAD)
 	_potion_btn.size     = Vector2(MENU_W, MENU_H)
+
+func _layout_camera_button(vp: Vector2) -> void:
+	_cam_btn.position = Vector2(vp.x - MENU_W - MENU_PAD, MENU_PAD)
+	_cam_btn.size      = Vector2(MENU_W, MENU_H)
 
 # ── Menu callbacks ────────────────────────────────────────────────────────────
 

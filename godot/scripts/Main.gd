@@ -37,6 +37,21 @@ const WALL_MODEL_SCREEN_MARGIN := 180.0
 @export var cam_stick_rot_speed := 90.0   # degrees/sec for right-stick yaw
 @export var cam_stick_zoom_speed := 0.5   # zoom units/sec for right-stick Y
 
+# Third-person (over-the-shoulder) and first-person rig tuning. Both share cam_yaw_deg
+# (facing direction) with the top-down orbit camera; only the top-down orbit uses
+# cam_tilt_deg/_cam_zoom — these two rigs use _fps_pitch_deg (free-look) instead.
+@export var tps_back := 180.0             # distance behind the player (over-shoulder)
+@export var tps_eye_height := 130.0       # camera height above ground (over-shoulder)
+@export var tps_shoulder_offset := 32.0   # sideways offset (over-shoulder, GTA-style)
+@export var fps_eye_height := 90.0        # camera height above ground (first-person)
+@export var cam_look_sensitivity := 0.12  # degrees per pixel of mouse motion (free-look)
+@export var cam_pitch_min_deg := -85.0
+@export var cam_pitch_max_deg := 85.0
+
+enum CameraMode { TOP_DOWN, OVER_SHOULDER, FIRST_PERSON }
+const _CAMERA_MODE_COUNT := 3
+const _SETTINGS_PATH := "user://settings.cfg"
+
 var _net                       # Net (Node)
 var _world: World
 var _fog: Fog
@@ -93,6 +108,9 @@ var _decor_cached_live_props_key := ""
 var _cam_zoom := 1.0
 var _cam_zoom_target := 1.0
 var _cam_dragging := false
+var camera_mode: int = CameraMode.TOP_DOWN
+var _fps_pitch_deg := -8.0
+var _crosshair: Control = null
 var _lt_pressed := false  # tracks LT axis state for skills-menu toggle
 var _pad_cursor_pos := Vector2.ZERO
 var _pad_cursor_node: Control = null
@@ -127,6 +145,7 @@ func _ready() -> void:
 		if p.size() >= 1 and p[0] != "": cam_height = float(p[0])
 		if p.size() >= 2 and p[1] != "": cam_back = float(p[1])
 		if p.size() >= 3 and p[2] != "": cam_fov = float(p[2])
+	camera_mode = _load_camera_mode()
 	cam_zoom_min = maxf(0.1, cam_zoom_min)
 	cam_zoom_max = maxf(cam_zoom_min, cam_zoom_max)
 	_cam_zoom = clampf(_cam_zoom, cam_zoom_min, cam_zoom_max)
@@ -297,11 +316,22 @@ func _ready() -> void:
 	_skill_hint.visible = false
 	loot_layer.add_child(_skill_hint)
 
+	# Reticle — shown only in over-shoulder/first-person (crosshair aim), centered.
+	_crosshair = Label.new()
+	(_crosshair as Label).text = "+"
+	_crosshair.add_theme_font_size_override("font_size", 26)
+	_crosshair.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.85))
+	_crosshair.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crosshair.visible = false
+	loot_layer.add_child(_crosshair)
+
 	_inp = preload("res://scripts/InputCtl.gd").new()
 	add_child(_inp)
 
 	var mhud := preload("res://scripts/MobileHud.gd").new()
 	mhud.setup(_inp, _inv, _skills)
+	mhud.camera_toggle_requested.connect(_cycle_camera_mode)
 	add_child(mhud)
 	if OS.has_feature("mobile"):
 		_mhud = mhud
@@ -758,13 +788,25 @@ func _process(dt: float) -> void:
 			props.append({"x": float(e.get("x", 0.0)), "y": float(e.get("y", 0.0)), "r": er})
 	_pred.set_props(props)
 	_pred.update(_net.self_dto, mv, dt)
-	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
-	# the character. aim_from() is skipped entirely to avoid updating _last_aim.
-	var aim: float = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad) if not menu_open else _inp.last_aim
 
 	# Spectate/waiting state machine drives the camera target while out of play.
 	var sp: Dictionary = _spectate.update(_net, mv, Vector2(_pred.x, _pred.y), dt)
 	var spectating: bool = sp.get("spectating", false)
+	# TPS/FPS have no live local body to anchor to while spectating (waiting room / dead)
+	# — fall back to the top-down orbit and restore the chosen mode once back in play.
+	var effective_mode: int = CameraMode.TOP_DOWN if spectating else camera_mode
+
+	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
+	# the character. aim_from() is skipped entirely to avoid updating _last_aim.
+	var aim: float
+	if menu_open:
+		aim = _inp.last_aim
+	elif effective_mode == CameraMode.TOP_DOWN:
+		aim = _inp.aim_from(_cam, _pred.x, _pred.y, _cam_yaw_rad)
+	else:
+		# Over-shoulder/first-person: crosshair aim — wherever the camera looks.
+		var look_dir := _look_dir_world(_cam_yaw_rad, deg_to_rad(_fps_pitch_deg))
+		aim = atan2(look_dir.z, look_dir.x)
 
 	var alive := str(_net.self_dto.get("status", "")) == "alive" and not bool(_net.self_dto.get("reached", false))
 	if alive:
@@ -815,7 +857,8 @@ func _process(dt: float) -> void:
 	# Heightfield 2.5D: lift the camera + its look target by the focus point's ground height so the
 	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
-	# Right stick: X rotates the camera yaw, Y zooms (push up = zoom in).
+	# Right stick: X rotates the camera yaw (all modes), Y zooms — top-down only,
+	# TPS/FPS have no zoom concept.
 	# Uses InputCtl's event-cached axis values — polling is unreliable on Android.
 	const _STICK_DEAD := 0.15
 	var _rs: Vector2 = _inp.right_stick()
@@ -823,22 +866,34 @@ func _process(dt: float) -> void:
 	var _rs_y: float = _rs.y
 	if absf(_rs_x) > _STICK_DEAD:
 		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
-	if absf(_rs_y) > _STICK_DEAD:
+	if absf(_rs_y) > _STICK_DEAD and effective_mode == CameraMode.TOP_DOWN:
 		_cam_zoom_target = clampf(_cam_zoom_target + _rs_y * cam_stick_zoom_speed * dt, cam_zoom_min, cam_zoom_max)
 
-	_cam_zoom = lerpf(_cam_zoom, _cam_zoom_target, clampf(dt * cam_zoom_smooth, 0.0, 1.0))
-	var base_dist := sqrt(cam_height * cam_height + cam_back * cam_back) * _cam_zoom
-	var tilt := deg_to_rad(clampf(cam_tilt_deg, cam_tilt_min_deg, cam_tilt_max_deg))
 	var yaw := deg_to_rad(cam_yaw_deg)
-	var zoom_height := sin(tilt) * base_dist
-	var zoom_back := cos(tilt) * base_dist
-	var orbit_x := sin(yaw) * zoom_back
-	var orbit_z := cos(yaw) * zoom_back
-	_cam.position = Vector3(cx + orbit_x, zoom_height + fgz, cy + orbit_z)
-	_cam.look_at(Vector3(cx, fgz, cy), Vector3.UP)
+	match effective_mode:
+		CameraMode.TOP_DOWN:
+			_cam_zoom = lerpf(_cam_zoom, _cam_zoom_target, clampf(dt * cam_zoom_smooth, 0.0, 1.0))
+			var base_dist := sqrt(cam_height * cam_height + cam_back * cam_back) * _cam_zoom
+			var tilt := deg_to_rad(clampf(cam_tilt_deg, cam_tilt_min_deg, cam_tilt_max_deg))
+			var zoom_height := sin(tilt) * base_dist
+			var zoom_back := cos(tilt) * base_dist
+			var orbit_x := sin(yaw) * zoom_back
+			var orbit_z := cos(yaw) * zoom_back
+			_cam.position = Vector3(cx + orbit_x, zoom_height + fgz, cy + orbit_z)
+			_cam.look_at(Vector3(cx, fgz, cy), Vector3.UP)
+		CameraMode.OVER_SHOULDER:
+			var fwd := Vector3(sin(yaw), 0.0, cos(yaw))
+			var right_v := Vector3(fwd.z, 0.0, -fwd.x)
+			var pivot := Vector3(cx, fgz + tps_eye_height, cy)
+			_cam.position = pivot - fwd * tps_back + right_v * tps_shoulder_offset
+			_cam.look_at(_cam.position + _look_dir_world(yaw, deg_to_rad(_fps_pitch_deg)), Vector3.UP)
+		CameraMode.FIRST_PERSON:
+			_cam.position = Vector3(cx, fgz + fps_eye_height, cy)
+			_cam.look_at(_cam.position + _look_dir_world(yaw, deg_to_rad(_fps_pitch_deg)), Vector3.UP)
 	_update_scene_lighting(_cam_xy.x, _cam_xy.y)
 	_fog.set_vision(_cam_xy.x, _cam_xy.y)  # un-shaken so fog doesn't jitter
 	_update_decor_visibility(_cam_xy.x, _cam_xy.y)
+	_update_mouse_capture(menu_open)
 
 	# Gamepad cursor: move with the left stick when any menu is open.
 	if menu_open:
@@ -914,7 +969,7 @@ func _process(dt: float) -> void:
 	# Render + UI.
 	_sprites.set_you_class(str(_net.self_dto.get("chosenClass", "")))
 	_sprites.set_you_weapon_loadout(_current_weapon_loadout())
-	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y))
+	_sprites.sync(_net.ents, _net.you, Vector2(_pred.x, _pred.y), effective_mode == CameraMode.FIRST_PERSON)
 	_minimap.update_map(_pred.x, _pred.y, _net.ents, _net.you, alive)
 	_hud.update(_net)
 	if _mhud != null:
@@ -1140,27 +1195,77 @@ func _node_on_screen(node: Node3D) -> bool:
 	var rect := get_viewport().get_visible_rect().grow(WALL_MODEL_SCREEN_MARGIN)
 	return rect.has_point(screen_pos)
 
+# ── Camera mode (top-down / over-shoulder / first-person) ──────────────────────
+
+func _load_camera_mode() -> int:
+	var cfg := ConfigFile.new()
+	if cfg.load(_SETTINGS_PATH) != OK:
+		return CameraMode.TOP_DOWN
+	var m := int(cfg.get_value("camera", "mode", CameraMode.TOP_DOWN))
+	return m if m >= 0 and m < _CAMERA_MODE_COUNT else CameraMode.TOP_DOWN
+
+func _save_camera_mode() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(_SETTINGS_PATH)  # best-effort: keep any other settings already on disk
+	cfg.set_value("camera", "mode", camera_mode)
+	cfg.save(_SETTINGS_PATH)
+
+func _cycle_camera_mode() -> void:
+	camera_mode = (camera_mode + 1) % _CAMERA_MODE_COUNT
+	_save_camera_mode()
+	var menu_open: bool = _inv.is_open() or _skills.is_open() or _inv.loot_open_bag_id() != "" or _inv.is_floor_shop_open()
+	_update_mouse_capture(menu_open)
+
+# World (x,y) maps to 3D (x,0,y) — see World.gd. Returns a normalized look direction
+# in that same 3D space, shared by camera orientation and reticle-aim so they can
+# never drift apart.
+func _look_dir_world(yaw_rad: float, pitch_rad: float) -> Vector3:
+	return Vector3(
+		cos(pitch_rad) * sin(yaw_rad),
+		sin(pitch_rad),
+		cos(pitch_rad) * cos(yaw_rad))
+
+# Captures/hides the cursor in over-shoulder/first-person (PC only, no menu open);
+# releases it otherwise. Only touches Input.mouse_mode when it actually needs to
+# change, so it's safe to call every frame.
+func _update_mouse_capture(menu_open: bool) -> void:
+	var want_captured: bool = camera_mode != CameraMode.TOP_DOWN and not menu_open and not OS.has_feature("mobile")
+	var target_mode := Input.MOUSE_MODE_CAPTURED if want_captured else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != target_mode:
+		Input.mouse_mode = target_mode
+	if _crosshair != null:
+		_crosshair.visible = camera_mode != CameraMode.TOP_DOWN and not menu_open
+
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventMouseButton and e.pressed:
-		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_cam_zoom_target = clampf(_cam_zoom_target - cam_zoom_step, cam_zoom_min, cam_zoom_max)
+	if camera_mode == CameraMode.TOP_DOWN:
+		if e is InputEventMouseButton and e.pressed:
+			if e.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_cam_zoom_target = clampf(_cam_zoom_target - cam_zoom_step, cam_zoom_min, cam_zoom_max)
+				get_viewport().set_input_as_handled()
+				return
+			if e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_cam_zoom_target = clampf(_cam_zoom_target + cam_zoom_step, cam_zoom_min, cam_zoom_max)
+				get_viewport().set_input_as_handled()
+				return
+		if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_MIDDLE:
+			_cam_dragging = e.pressed
 			get_viewport().set_input_as_handled()
 			return
-		if e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_cam_zoom_target = clampf(_cam_zoom_target + cam_zoom_step, cam_zoom_min, cam_zoom_max)
+		if e is InputEventMouseMotion and _cam_dragging:
+			cam_yaw_deg = wrapf(cam_yaw_deg - e.relative.x * cam_drag_sensitivity, -180.0, 180.0)
+			cam_tilt_deg = clampf(cam_tilt_deg - e.relative.y * cam_drag_sensitivity, cam_tilt_min_deg, cam_tilt_max_deg)
 			get_viewport().set_input_as_handled()
 			return
-	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_MIDDLE:
-		_cam_dragging = e.pressed
-		get_viewport().set_input_as_handled()
-		return
-	if e is InputEventMouseMotion and _cam_dragging:
-		cam_yaw_deg = wrapf(cam_yaw_deg - e.relative.x * cam_drag_sensitivity, -180.0, 180.0)
-		cam_tilt_deg = clampf(cam_tilt_deg - e.relative.y * cam_drag_sensitivity, cam_tilt_min_deg, cam_tilt_max_deg)
+	elif e is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# Over-shoulder/first-person free-look: mouse always steers while captured.
+		cam_yaw_deg = wrapf(cam_yaw_deg + e.relative.x * cam_look_sensitivity, -180.0, 180.0)
+		_fps_pitch_deg = clampf(_fps_pitch_deg - e.relative.y * cam_look_sensitivity, cam_pitch_min_deg, cam_pitch_max_deg)
 		get_viewport().set_input_as_handled()
 		return
 	if e is InputEventKey and e.pressed and not e.echo:
 		match e.keycode:
+			KEY_C:
+				_cycle_camera_mode()
 			KEY_I:
 				if _skills.is_open():
 					_skills.close()

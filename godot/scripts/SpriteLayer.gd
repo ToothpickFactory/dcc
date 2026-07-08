@@ -128,7 +128,7 @@ func _nearest_sprite_id_at(x: float, y: float, radius: float) -> String:
 # Per-frame sync. ents = the latest server snapshot's entity list (Net.cur.ents).
 # you_id = local player id; self_pos = predicted local world position.
 # ---------------------------------------------------------------------------
-func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
+func sync(ents: Array, you_id: String, self_pos: Vector2, hide_self := false) -> void:
 	var now_ms := float(Time.get_ticks_msec())
 	var alpha := _interp_alpha(now_ms)
 	var seen := {}
@@ -223,6 +223,8 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.visible = dsq <= NEAR_REVEAL_SQ or (dsq <= VISION_RADIUS_SQ and _can_see(self_pos.x, self_pos.y, wpos.x, wpos.y))
 		else:
 			spr.visible = true
+		if is_self and hide_self:
+			spr.visible = false  # first-person: don't show your own billboard filling the screen
 
 	# Remove sprites for entities no longer in the snapshot.
 	for id in _sprites.keys():
