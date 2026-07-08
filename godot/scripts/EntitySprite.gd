@@ -319,6 +319,8 @@ var world_sprite_px: float = 84.0
 var _entity_name := ""
 var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue"|"hunter")
 var _companion_class := "" # CompanionClass for kind=="companion"
+var _is_recruited := false
+var _beacon_light: OmniLight3D = null
 var _model_root: Node3D
 var _model_inst: Node3D
 var _model_light: OmniLight3D
@@ -741,6 +743,9 @@ func set_companion_class(klass: String) -> void:
 		_cc_effect = ""
 	_ensure_model_for_entity()
 
+func set_recruited(v: bool) -> void:
+	_is_recruited = v
+
 func _companion_model_path() -> String:
 	match _companion_class:
 		"barbarian": return BARBARIAN_MODEL_PATH
@@ -1133,6 +1138,26 @@ func _model_profile_for_entity() -> Dictionary:
 				"saturation": 1.45,
 			}
 	return {}
+
+func _update_companion_beacon(now_ms: float) -> void:
+	if kind != "companion":
+		if _beacon_light != null:
+			_beacon_light.visible = false
+		return
+	if _is_recruited:
+		if _beacon_light != null:
+			_beacon_light.visible = false
+		return
+	if _beacon_light == null:
+		_beacon_light = OmniLight3D.new()
+		_beacon_light.light_color = Color(0.15, 0.95, 1.0)
+		_beacon_light.omni_range = 380.0
+		_beacon_light.shadow_enabled = false
+		add_child(_beacon_light)
+	_beacon_light.position = Vector3(0.0, 290.0, 0.0)
+	_beacon_light.visible = true
+	var pulse := 0.5 + 0.5 * sin(float(now_ms) * 0.004)
+	_beacon_light.light_energy = 2.2 + 2.2 * pulse
 
 func _ensure_model_for_entity() -> void:
 	if _model_root != null:
@@ -1800,6 +1825,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			_model_root.rotation.y = _model_yaw_for_facing(model_dir, model_flip, float(_model_profile.get("yaw_offset", 0.0)))
 			if _action == "":
 				_play_model_anim("run" if moving else "idle")
+		_update_companion_beacon(now_ms)
 		return
 
 	# Position. Height offset is kind-dependent (render.ts h), plus the terrain ground height.

@@ -174,6 +174,7 @@ func sync(ents: Array, you_id: String, self_pos: Vector2) -> void:
 			spr.set_monster_kind(str(d.get("enemy", d.get("monKind", ""))))
 		elif k == "companion":
 			spr.set_companion_class(str(d.get("compKlass", "")))
+			spr.set_recruited(bool(d.get("recruited", false)))
 		spr.set_entity_name(str(d.get("name", "")))
 
 		# Resolve display world position.
