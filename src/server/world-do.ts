@@ -72,7 +72,7 @@ import { stepPlayer } from "./sim/movement";
 import { updateMonsters } from "./sim/monsters";
 import { updateBoss } from "./sim/boss";
 import { castAbility, stepPendingSwings, stepProjectiles } from "./sim/projectiles";
-import { updateCompanions } from "./sim/companions";
+import { updateCompanions, spawnCompanionFields } from "./sim/companions";
 import { applyDamage, applyHeal } from "./sim/combat";
 import { HmacIdentity, type Identity } from "./identity";
 import { SqlRunStore, type LeaderboardEntry, type PlayerRecord, type RunCheckpoint } from "./persistence";
@@ -670,9 +670,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       aim: 0,
       klass,
       recruitedBy: null,
-      expiresAt: null,
-      attackCdUntil: 0,
-      supportCdUntil: 0,
+      ...spawnCompanionFields(klass),
     });
   }
 
@@ -1237,7 +1235,6 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         const dy = comp.y - player.y;
         if (Math.hypot(dx, dy) <= 110) {
           comp.recruitedBy = player.id;
-          comp.expiresAt = this.now + 60_000;
         }
       }
     }
@@ -1975,6 +1972,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         x: r(comp.x),
         y: r(comp.y),
         aim: r2(comp.aim),
+        hp: Math.max(0, r(comp.hp)),
+        maxHp: comp.maxHp,
+        dead: comp.dead,
         recruited: comp.recruitedBy !== null,
       });
     }

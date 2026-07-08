@@ -1,9 +1,18 @@
-import { blocked } from "../../procgen/collision";
+import { blocked, canOccupy } from "../../procgen/collision";
+import { MONSTER_KINDS } from "../../shared/constants";
 import { applyDamage, applyHeal } from "./combat";
-import type { CompanionState, PlayerState, WorldCtx } from "../state";
+import type { CompanionState, MonsterState, BossState, PlayerState, WorldCtx } from "../state";
 
-const COMPANION_SPEED = 195;
-const COMPANION_FOLLOW_DIST = 95;
+const COMPANION_SPEED = 210;
+const COMPANION_FOLLOW_DIST = 60;   // stop wandering toward owner when this close
+const COMPANION_TELEPORT_DIST = 260; // teleport if stuck AND farther than this from owner
+const COMPANION_STUCK_THRESHOLD = 8; // px moved in STUCK_WINDOW_MS to count as "not stuck"
+const COMPANION_STUCK_WINDOW_MS = 2000;
+const COMPANION_WANDER_RADIUS_MIN = 70;
+const COMPANION_WANDER_RADIUS_MAX = 190;
+const COMPANION_WANDER_RETARGET_MS = 2800;
+const COMPANION_PURSUIT_RANGE = 300; // chase enemies within this distance
+const COMPANION_RADIUS = 28;         // collision radius for hit detection from monsters
 const COMPANION_MELEE_RANGE = 155;
 const COMPANION_RANGED_RANGE = 370;
 const COMPANION_ATTACK_CD: Record<string, number> = {
@@ -22,35 +31,97 @@ const COMPANION_DMG: Record<string, number> = {
   rogue:     17,
   wizard:    13,
 };
+const COMPANION_MAX_HP: Record<string, number> = {
+  barbarian: 220,
+  cleric:    140,
+  paladin:   200,
+  ranger:    150,
+  rogue:     160,
+  wizard:    130,
+};
 const COMPANION_MELEE_CONE = 1.1;
 const BARBARIAN_MELEE_CONE = 2.0;
+const COMPANION_HIT_CD = 1200;     // ms between hits from monsters
 const COMPANION_HEAL_CD = 5000;
 const COMPANION_HEAL_AMOUNT = 30;
 const COMPANION_SHIELD_CD = 8000;
 const COMPANION_SHIELD_AMOUNT = 40;
 let cseq = 0;
 
+export function spawnCompanionFields(klass: CompanionState["klass"]): Pick<CompanionState,
+  "hp" | "maxHp" | "dead" | "attackCdUntil" | "supportCdUntil" | "hitCdUntil" |
+  "wanderX" | "wanderY" | "wanderUntil" | "stuckCheckAt" | "stuckLastX" | "stuckLastY"
+> {
+  const maxHp = COMPANION_MAX_HP[klass] ?? 150;
+  return {
+    hp: maxHp,
+    maxHp,
+    dead: false,
+    attackCdUntil: 0,
+    supportCdUntil: 0,
+    hitCdUntil: 0,
+    wanderX: 0,
+    wanderY: 0,
+    wanderUntil: 0,
+    stuckCheckAt: 0,
+    stuckLastX: 0,
+    stuckLastY: 0,
+  };
+}
+
 export function updateCompanions(ctx: WorldCtx, dt: number): void {
   ctx.companions = ctx.companions.filter((comp) => {
-    if (comp.recruitedBy !== null && comp.expiresAt !== null && ctx.now >= comp.expiresAt) {
-      return false;
-    }
+    if (comp.dead) return false;
     if (comp.recruitedBy === null) return true;
     const owner = ctx.players.get(comp.recruitedBy);
     if (!owner || owner.status !== "alive") return true;
-    moveTowardOwner(ctx, comp, owner, dt);
+
+    const distToOwner = Math.hypot(owner.x - comp.x, owner.y - comp.y);
+
+    if (!teleportIfStuck(ctx, comp, owner, distToOwner)) {
+      const target = nearestEnemy(ctx, comp, COMPANION_PURSUIT_RANGE);
+      if (target) {
+        moveToward(ctx, comp, target.x, target.y, dt);
+      } else {
+        wanderNearOwner(ctx, comp, owner, distToOwner, dt);
+      }
+    }
+
     attackNearestEnemy(ctx, comp, owner);
     runSupportAbility(ctx, comp, owner);
-    return true;
+    takeDamageFromMonsters(ctx, comp);
+    return !comp.dead;
   });
 }
 
-function moveTowardOwner(ctx: WorldCtx, comp: CompanionState, owner: PlayerState, dt: number): void {
-  const dx = owner.x - comp.x;
-  const dy = owner.y - comp.y;
+// ---- movement ---------------------------------------------------------------
+
+function teleportIfStuck(ctx: WorldCtx, comp: CompanionState, owner: PlayerState, distToOwner: number): boolean {
+  if (ctx.now < comp.stuckCheckAt) return false;
+  comp.stuckCheckAt = ctx.now + COMPANION_STUCK_WINDOW_MS;
+  const movedSq = (comp.x - comp.stuckLastX) ** 2 + (comp.y - comp.stuckLastY) ** 2;
+  comp.stuckLastX = comp.x;
+  comp.stuckLastY = comp.y;
+  if (movedSq > COMPANION_STUCK_THRESHOLD ** 2 || distToOwner <= COMPANION_TELEPORT_DIST) return false;
+  // Teleport to a spot near the owner
+  const angle = Math.random() * Math.PI * 2;
+  const r = 80 + Math.random() * 60;
+  const tx = owner.x + Math.cos(angle) * r;
+  const ty = owner.y + Math.sin(angle) * r;
+  if (canOccupy(ctx.floor.collision, tx, ty, COMPANION_RADIUS)) {
+    comp.x = tx;
+    comp.y = ty;
+    comp.wanderUntil = 0; // force new wander target after teleport
+  }
+  return true;
+}
+
+function moveToward(ctx: WorldCtx, comp: CompanionState, tx: number, ty: number, dt: number): void {
+  const dx = tx - comp.x;
+  const dy = ty - comp.y;
   const dist = Math.hypot(dx, dy);
-  if (dist <= COMPANION_FOLLOW_DIST) return;
-  const step = Math.min(COMPANION_SPEED * dt, dist - COMPANION_FOLLOW_DIST);
+  if (dist < 2) return;
+  const step = Math.min(COMPANION_SPEED * dt, dist);
   const nx = dx / dist;
   const ny = dy / dist;
   const newX = comp.x + nx * step;
@@ -62,6 +133,46 @@ function moveTowardOwner(ctx: WorldCtx, comp: CompanionState, owner: PlayerState
   }
 }
 
+function wanderNearOwner(
+  ctx: WorldCtx,
+  comp: CompanionState,
+  owner: PlayerState,
+  distToOwner: number,
+  dt: number,
+): void {
+  // Pick a new wander target when the old one expired or companion reached it
+  const atTarget = Math.hypot(comp.wanderX - comp.x, comp.wanderY - comp.y) < 25;
+  const needNew = ctx.now >= comp.wanderUntil || atTarget || distToOwner > COMPANION_WANDER_RADIUS_MAX * 2;
+  if (needNew) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = COMPANION_WANDER_RADIUS_MIN + Math.random() * (COMPANION_WANDER_RADIUS_MAX - COMPANION_WANDER_RADIUS_MIN);
+    comp.wanderX = owner.x + Math.cos(angle) * r;
+    comp.wanderY = owner.y + Math.sin(angle) * r;
+    comp.wanderUntil = ctx.now + COMPANION_WANDER_RETARGET_MS;
+  }
+  // Only move if outside the follow deadzone
+  if (distToOwner >= COMPANION_FOLLOW_DIST) {
+    moveToward(ctx, comp, comp.wanderX, comp.wanderY, dt);
+  }
+}
+
+// ---- combat -----------------------------------------------------------------
+
+function nearestEnemy(ctx: WorldCtx, comp: CompanionState, range: number): { x: number; y: number } | null {
+  let nearestDist = range;
+  let result: { x: number; y: number } | null = null;
+  for (const m of ctx.monsters) {
+    if (m.dead) continue;
+    const d = Math.hypot(m.x - comp.x, m.y - comp.y);
+    if (d < nearestDist) { nearestDist = d; result = m; }
+  }
+  if (ctx.boss && !ctx.boss.dead) {
+    const d = Math.hypot(ctx.boss.x - comp.x, ctx.boss.y - comp.y);
+    if (d < nearestDist) { nearestDist = d; result = ctx.boss; }
+  }
+  return result;
+}
+
 function attackNearestEnemy(ctx: WorldCtx, comp: CompanionState, owner: PlayerState): void {
   if (ctx.now < comp.attackCdUntil) return;
   const isRanger = comp.klass === "ranger";
@@ -69,32 +180,10 @@ function attackNearestEnemy(ctx: WorldCtx, comp: CompanionState, owner: PlayerSt
   const dmg = COMPANION_DMG[comp.klass] ?? 15;
   const cd = COMPANION_ATTACK_CD[comp.klass] ?? 1200;
 
-  let nearestDist = atkRange;
-  let tx = 0;
-  let ty = 0;
-  let found = false;
+  const target = nearestEnemy(ctx, comp, atkRange);
+  if (!target) return;
 
-  for (const m of ctx.monsters) {
-    if (m.dead) continue;
-    const d = Math.hypot(m.x - comp.x, m.y - comp.y);
-    if (d < nearestDist) {
-      nearestDist = d;
-      tx = m.x;
-      ty = m.y;
-      found = true;
-    }
-  }
-  if (!found && ctx.boss && !ctx.boss.dead) {
-    const d = Math.hypot(ctx.boss.x - comp.x, ctx.boss.y - comp.y);
-    if (d < atkRange) {
-      tx = ctx.boss.x;
-      ty = ctx.boss.y;
-      found = true;
-    }
-  }
-  if (!found) return;
-
-  comp.aim = Math.atan2(ty - comp.y, tx - comp.x);
+  comp.aim = Math.atan2(target.y - comp.y, target.x - comp.x);
   comp.attackCdUntil = ctx.now + cd;
 
   if (isRanger) {
@@ -130,6 +219,25 @@ function attackNearestEnemy(ctx: WorldCtx, comp: CompanionState, owner: PlayerSt
   }
 }
 
+function takeDamageFromMonsters(ctx: WorldCtx, comp: CompanionState): void {
+  if (ctx.now < comp.hitCdUntil) return;
+  for (const m of ctx.monsters) {
+    if (m.dead) continue;
+    const def = MONSTER_KINDS[m.kind];
+    if (!def || def.meleeRange === 0) continue;
+    const dist = Math.hypot(m.x - comp.x, m.y - comp.y);
+    if (dist > def.meleeRange + COMPANION_RADIUS) continue;
+    const dmg = def.dmg * m.dmgMult;
+    comp.hp = Math.max(0, comp.hp - dmg);
+    comp.hitCdUntil = ctx.now + COMPANION_HIT_CD;
+    if (comp.hp <= 0) {
+      comp.dead = true;
+      ctx.pushFx({ e: "death", x: comp.x, y: comp.y, id: comp.id });
+    }
+    return;
+  }
+}
+
 function runSupportAbility(ctx: WorldCtx, comp: CompanionState, owner: PlayerState): void {
   if (ctx.now < comp.supportCdUntil) return;
   switch (comp.klass) {
@@ -151,6 +259,8 @@ function runSupportAbility(ctx: WorldCtx, comp: CompanionState, owner: PlayerSta
       break;
   }
 }
+
+// ---- helpers ----------------------------------------------------------------
 
 function inCone(
   from: { x: number; y: number },

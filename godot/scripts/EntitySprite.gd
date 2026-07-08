@@ -48,7 +48,7 @@ const HERO_LIGHT_ENERGY := 1.35
 const BARBARIAN_MODEL_PATH := "res://assets/Heroes/Barbarian/Barbarian-3d-animated.glb"
 const CLERIC_MODEL_PATH := "res://assets/Heroes/Cleric/Cleric-3d-animated.glb"
 const PALADIN_MODEL_PATH := "res://assets/Heroes/Paladin/Paladin-3d-animated.glb"
-const RANGER_MODEL_PATH := "res://assets/Heroes/Ranger/Ranger-3d-animated.glb"
+const RANGER_MODEL_PATH := "res://assets/Heroes/Ranger/Hunter-3d-animated.glb"
 const ROGUE_MODEL_PATH := "res://assets/Heroes/Rogue/Rogue - Assassin-3d-animated.glb"
 const WIZARD_MODEL_PATH := "res://assets/Heroes/Wizard/Wizard-3d-animated.glb"
 const HERO_CLASS_IDS := ["warrior", "mage", "priest", "hunter", "rogue"]
@@ -64,7 +64,7 @@ const PRIMAL_CONFLUX_MODEL_PATH := "res://assets/Bosses/PrimalConflux/Primal Con
 const JUGGERNAUT_NAME := "Juggernaut"
 const JUGGERNAUT_MODEL_PATH := "res://assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb"
 const TERRORBOT_NAME := "TerrorBot"
-const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot.glb"
+const TERRORBOT_MODEL_PATH := "res://assets/Bosses/TerrorBot/TerrorBot-V2.glb"
 const TERRORBOT_MODEL_SCALE := 297.0
 const ICE_GOLEM_NAME := "Ice Golem"
 const ICE_GOLEM_MODEL_PATH := "res://assets/Bosses/IceGolem/IceGolem.glb"
@@ -925,6 +925,7 @@ func _model_profile_for_entity() -> Dictionary:
 			"light_y": 95.0,
 			"contrast": 1.2,
 			"saturation": 1.2,
+			"movement_anim_needles": ["jog", "run", "walk", "move"],
 		}
 	if kind == "lootbag":
 		return {

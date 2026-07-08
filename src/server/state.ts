@@ -193,9 +193,18 @@ export interface CompanionState {
   aim: number;
   klass: CompanionClass;
   recruitedBy: string | null; // player id who recruited this companion; null = idle/recruitable
-  expiresAt: number | null;   // tick at which the companion expires (null while idle)
+  hp: number;
+  maxHp: number;
+  dead: boolean;
   attackCdUntil: number;
   supportCdUntil: number;     // heal / shield / other class-specific support cooldown
+  hitCdUntil: number;         // companion can only receive a hit once per window
+  wanderX: number;            // current wander target (world px)
+  wanderY: number;
+  wanderUntil: number;        // pick a new wander target when now exceeds this
+  stuckCheckAt: number;       // next time to run stuck detection
+  stuckLastX: number;         // position at the last stuck check
+  stuckLastY: number;
 }
 
 // A queued melee swing that resolves after a weapon-specific delay so the damage
