@@ -65,7 +65,7 @@ import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, WeaponLoadoutDTO } from "../protocol";
 import { generateFloor, rng } from "../procgen";
 import { campfireSpots, canOccupy, randomWalkablePosition } from "../procgen/collision";
-import { TERRAIN_ZONE_IDS, type FloorDescriptor } from "../procgen/types";
+import { TERRAIN_ZONE_IDS, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
 import type { BossState, CompanionState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
@@ -219,6 +219,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+    this.spawnCompanion();
     this.store.checkpointSync({ runId: this.runId, currentFloor: 1, seed: FIRST_SEED, phase: this.phase, savedAt: Date.now() });
   }
 
@@ -234,12 +235,37 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.spawnProps();
     this.spawnMonsters();
     this.spawnBoss();
+    this.spawnCompanion();
   }
 
   private pickShopPosition(): void {
-    const pos = randomWalkablePosition(this.floor.collision, 60);
+    const pos = this.terrainZonePosition(["docks"], 60) ?? randomWalkablePosition(this.floor.collision, 60);
     this.floorShopX = pos.x;
     this.floorShopY = pos.y;
+  }
+
+  private terrainZonePosition(zones: readonly TerrainZoneKind[], radius: number): { x: number; y: number } | undefined {
+    const grid = this.floor.collision;
+    const terrain = grid.terrain;
+    if (this.floor.theme !== "pirate" || !terrain) return undefined;
+    const ids = new Set(zones.map((zone) => TERRAIN_ZONE_IDS.indexOf(zone)).filter((id) => id >= 0));
+    let best: { x: number; y: number } | undefined;
+    let bestDist = Infinity;
+    for (let cy = 0; cy < grid.h; cy++) {
+      for (let cx = 0; cx < grid.w; cx++) {
+        const i = cy * grid.w + cx;
+        if (grid.solid[i] !== 0 || !ids.has(terrain[i]!)) continue;
+        const x = (cx + 0.5) * grid.cell;
+        const y = (cy + 0.5) * grid.cell;
+        if (!canOccupy(grid, x, y, radius)) continue;
+        const dist = Math.hypot(x - this.floor.entrance.x, y - this.floor.entrance.y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { x, y };
+        }
+      }
+    }
+    return best;
   }
 
   private isNearFloorShop(p: PlayerState): boolean {
@@ -680,6 +706,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   // the exact same spots the client will independently render, with no extra sync needed.
   private companionSpawnPosition(): { x: number; y: number } {
     const grid = this.floor.collision;
+    const pirateAnchor = this.terrainZonePosition(["beach"], 30);
+    if (pirateAnchor) return pirateAnchor;
     const spots = campfireSpots(grid);
     if (spots.length > 0) {
       const anchor = spots[Math.floor(this.gearRng() * spots.length)]!;

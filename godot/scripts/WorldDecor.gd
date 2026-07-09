@@ -1263,6 +1263,8 @@ func _load_tiles(theme: String) -> Dictionary:
 	return result
 
 func _tile_sheet_path(theme: String) -> String:
+	if theme == "pirate":
+		return "%s/pirate-ship-seamless-tiles.png" % [tiles_dir]
 	return "%s/%s-tiles.png" % [tiles_dir, theme]
 
 

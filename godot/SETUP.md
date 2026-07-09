@@ -171,6 +171,40 @@ distribution, add a signing identity + notarization in `export_presets.cfg`.
 > upgrade). The universal macOS export needs `rendering/textures/vram_compression/import_etc2_astc`
 > (already set in `project.godot`). The server URL defaults to the deployed worker; override with `DCC_WS`.
 
+### Build from scratch — Android (one copy-paste, PowerShell, run from repo root)
+```powershell
+$Godot = if ($env:GODOT) { $env:GODOT } else { "godot" }         # or full path to Godot.exe
+
+pwsh godot/setup.ps1                                             # GdUnit4 + assets + import
+                                                                   # (export templates: same TPL block as the
+                                                                   #  Windows build above — Android ships in the same .tpz)
+
+New-Item -ItemType Directory -Force "$PWD\godot\build\android" | Out-Null
+& $Godot --headless --path godot --export-debug "Android" "$PWD\godot\build\android\DCC.apk"
+
+adb devices                                                       # confirm your device shows as `device`, not `unauthorized`
+adb install -r "$PWD\godot\build\android\DCC.apk"
+```
+
+> **Android-specific one-time prereqs (per machine, not in git):** an Android SDK
+> (`platform-tools` + a `build-tools` version, e.g. `34.0.0`) and JDK 17+, with their paths
+> set in Godot's editor under **Editor Settings → Export → Android**
+> (`android_sdk_path`, `java_sdk_path`, `debug_keystore`). Installing Android Studio once and
+> pointing these three fields at its SDK/JDK is the easiest path. Godot auto-generates a debug
+> keystore (`%APPDATA%\Godot\keystores\debug.keystore`) the first time you export if one is
+> missing — no action needed for local installs.
+
+> **Use `--export-debug`, not `--export-release`, unless you've set up a release keystore.**
+> `export_presets.cfg` has `package/signed=true` but ships **no** `keystore/release*` fields —
+> a signing key is a secret and deliberately isn't committed. Running `--export-release`
+> without one fails with `Could not find release keystore, unable to export.`, and Godot still
+> writes a broken/unsigned `DCC.apk` to the output path anyway (delete it; it won't install).
+> The debug-signed APK from `--export-debug` above installs and runs fine for sideloading/testing.
+> For an actual Play Store release, generate your own keystore once —
+> `keytool -genkeypair -v -keystore release.keystore -alias dcc -keyalg RSA -keysize 2048 -validity 10000` —
+> then fill in `keystore/release`, `keystore/release_user`, `keystore/release_password` on the
+> `Android` preset (Project → Export, in the editor) before using `--export-release`.
+
 ### Click-to-play launcher — the single command (recommended)
 Instead of the blocks above, devs can just run the launcher: it **self-installs everything the
 first time** (GdUnit4 + assets + the ~1.2 GB export templates), then on every run fast-forwards
@@ -195,4 +229,10 @@ If your tree has local changes it skips the auto-update and launches your curren
   running client caches missing clips and won't re-probe them.
 - **`GdUnitCmdTool.gd` not found / tests won't run** → you skipped step 3a (GdUnit4 vendor).
 - **UI too big/small** → it scales with window size; resize the window (it re-scales live).
-- **`godot: command not found`** → use the full app path, or symlink the CLI (step 2).
+- **`godot: command not found`** → use the full app path, or symlink the CLI (step 2). On
+  Windows, a manually downloaded zip sometimes extracts to a folder with the **same name**
+  as the exe (e.g. `Godot_v4.6.1-stable_win64.exe\Godot_v4.6.1-stable_win64_console.exe`) —
+  `Get-ChildItem` the download to find the real binary before setting `$env:GODOT`.
+- **`Could not find release keystore, unable to export.`** (Android) → you ran
+  `--export-release` without a release keystore configured (see the callout in §9 above).
+  Use `--export-debug` for local sideload installs, or set up your own release keystore first.

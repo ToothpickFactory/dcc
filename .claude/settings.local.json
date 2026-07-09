@@ -210,7 +210,24 @@
       "Read(//c/Users/dalla/AppData/Roaming/Microsoft/Windows/Start Menu/**)",
       "Read(//c/ProgramData/Microsoft/Windows/Start Menu/**)",
       "PowerShell(Get-Process -Name \"DCC\" -ErrorAction SilentlyContinue)",
-      "PowerShell(& \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\" --headless --path \"d:\\\\Projects\\\\dcc\\\\godot\" -s \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Projects-dcc\\\\462a920a-0a31-469c-ba7f-999b71ebfff4\\\\scratchpad\\\\camera_check3.gd\" 2>&1)"
+      "PowerShell(& \"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1\\\\Godot_v4.6.1-stable_win64.exe\" --headless --path \"d:\\\\Projects\\\\dcc\\\\godot\" -s \"C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Projects-dcc\\\\462a920a-0a31-469c-ba7f-999b71ebfff4\\\\scratchpad\\\\camera_check3.gd\" 2>&1)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Users/dalla/AppData/Roaming/Godot/keystores/**)",
+      "Read(//c/Users/dalla/AppData/Local/Android/Sdk/**)",
+      "Read(//c/Users/dalla/AppData/Local/Android/Sdk/build-tools/**)",
+      "Bash(find \"/c/Program Files\" -maxdepth 3 -iname \"Godot_v4.6*.exe\" 2>/dev/null *)",
+      "Bash(\"C:\\\\Users\\\\dalla\\\\Downloads\\\\Godot_v4.6.1-stable_win64.exe\" --version)",
+      "Bash(\"/c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe\" devices *)",
+      "Bash(ls \"/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe\")",
+      "Read(//c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/**)",
+      "Bash(/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe --version)",
+      "Bash(export GODOT=\"/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe\")",
+      "Bash(powershell -ExecutionPolicy Bypass -File \"godot/setup.ps1\")",
+      "Bash(grep -i \"release_keystore\\\\|debug_keystore\" \"/c/Users/dalla/AppData/Roaming/Godot/editor_settings-4.6.tres\")",
+      "Read(//c/Users/dalla/**)",
+      "Bash(/c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe install *)",
+      "Bash(cmd //c start \"\" \"DCC.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq DCC.exe\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"
