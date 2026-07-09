@@ -321,6 +321,9 @@ var _chosen_class := ""  # Klass from self_dto ("warrior"|"mage"|"priest"|"rogue
 var _companion_class := "" # CompanionClass for kind=="companion"
 var _is_recruited := false
 var _beacon_light: OmniLight3D = null
+var _quip_label: Label3D = null
+var _quip_next_at_ms := 0.0  # 0 = not yet scheduled (seeded on first recruited frame)
+var _quip_hide_at_ms := 0.0
 var _model_root: Node3D
 var _model_inst: Node3D
 var _model_light: OmniLight3D
@@ -1159,6 +1162,50 @@ func _update_companion_beacon(now_ms: float) -> void:
 	var pulse := 0.5 + 0.5 * sin(float(now_ms) * 0.004)
 	_beacon_light.light_energy = 2.2 + 2.2 * pulse
 
+# Opposite gating from the beacon above: the beacon helps you find an unrecruited
+# companion, this is post-recruit ambient flavor while it's traveling with you —
+# no overlap. Purely cosmetic/local; every client rolls its own timing independently.
+const _QUIP_INTERVAL_MIN_MS := 30000.0
+const _QUIP_INTERVAL_MAX_MS := 60000.0
+const _QUIP_DISPLAY_MS := 4000.0
+
+func _ensure_quip_label() -> void:
+	if _quip_label != null:
+		return
+	_quip_label = Label3D.new()
+	_quip_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_quip_label.no_depth_test = true
+	_quip_label.font_size = 24
+	_quip_label.outline_size = 8
+	_quip_label.outline_modulate = Color(0, 0, 0, 0.8)
+	_quip_label.modulate = Color(1.0, 0.92, 0.7)
+	_quip_label.pixel_size = 1.0
+	_quip_label.width = 340
+	_quip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_quip_label.position = Vector3(0.0, 190.0, 0.0)
+	_quip_label.render_priority = 6
+	_quip_label.visible = false
+	add_child(_quip_label)
+
+func _update_companion_quip(now_ms: float) -> void:
+	if kind != "companion" or not _is_recruited:
+		if _quip_label != null:
+			_quip_label.visible = false
+		_quip_next_at_ms = 0.0
+		return
+	if _quip_next_at_ms <= 0.0:
+		_quip_next_at_ms = now_ms + randf_range(_QUIP_INTERVAL_MIN_MS, _QUIP_INTERVAL_MAX_MS)
+	if now_ms >= _quip_next_at_ms:
+		var line := CompanionQuips.random_line(_companion_class)
+		if line != "":
+			_ensure_quip_label()
+			_quip_label.text = line
+			_quip_label.visible = true
+			_quip_hide_at_ms = now_ms + _QUIP_DISPLAY_MS
+		_quip_next_at_ms = now_ms + randf_range(_QUIP_INTERVAL_MIN_MS, _QUIP_INTERVAL_MAX_MS)
+	elif _quip_label != null and _quip_label.visible and now_ms >= _quip_hide_at_ms:
+		_quip_label.visible = false
+
 func _ensure_model_for_entity() -> void:
 	if _model_root != null:
 		return
@@ -1826,6 +1873,7 @@ func update_visual(wx: float, wy: float, dx: float, dy: float, aim: float, now_m
 			if _action == "":
 				_play_model_anim("run" if moving else "idle")
 		_update_companion_beacon(now_ms)
+		_update_companion_quip(now_ms)
 		return
 
 	# Position. Height offset is kind-dependent (render.ts h), plus the terrain ground height.

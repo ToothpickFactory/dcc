@@ -64,7 +64,7 @@ import { TALENT_TREES, canSpendTalent, pointsForLevel, talentSpent } from "../sh
 import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, WeaponLoadoutDTO } from "../protocol";
 import { generateFloor, rng } from "../procgen";
-import { canOccupy, randomWalkablePosition } from "../procgen/collision";
+import { campfireSpots, canOccupy, randomWalkablePosition } from "../procgen/collision";
 import type { FloorDescriptor } from "../procgen/types";
 import type { BossState, CompanionState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
@@ -662,7 +662,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private spawnCompanion(): void {
     const CLASSES: CompanionState["klass"][] = ["barbarian", "cleric", "paladin", "ranger", "rogue", "wizard"];
     const klass = CLASSES[Math.floor(this.gearRng() * CLASSES.length)];
-    const pos = randomWalkablePosition(this.floor.collision, 30, this.gearRng);
+    const pos = this.companionSpawnPosition();
     this.companions.push({
       id: `comp_${this.floor.depth}_${Date.now().toString(36)}`,
       x: pos.x,
@@ -672,6 +672,27 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       recruitedBy: null,
       ...spawnCompanionFields(klass),
     });
+  }
+
+  // Prefer spawning near one of this floor's campfires (already-glowing landmarks the client
+  // renders — see WorldDecor.gd) so companions are easier to spot, same ring-search pattern as
+  // bossSpawnNearStairs(). campfireSpots() is a pure function of the grid, so the server derives
+  // the exact same spots the client will independently render, with no extra sync needed.
+  private companionSpawnPosition(): { x: number; y: number } {
+    const grid = this.floor.collision;
+    const spots = campfireSpots(grid);
+    if (spots.length > 0) {
+      const anchor = spots[Math.floor(this.gearRng() * spots.length)]!;
+      for (const radius of [40, 90, 150, 220]) {
+        for (let i = 0; i < 16; i++) {
+          const angle = (i / 16) * Math.PI * 2;
+          const x = anchor.x + Math.cos(angle) * radius;
+          const y = anchor.y + Math.sin(angle) * radius;
+          if (canOccupy(grid, x, y, 30)) return { x, y };
+        }
+      }
+    }
+    return randomWalkablePosition(grid, 30, this.gearRng);
   }
 
   // RPC: wipe to a fresh vanilla run (admin /admin/new-run; auth in the Worker).

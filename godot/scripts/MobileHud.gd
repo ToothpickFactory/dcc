@@ -13,6 +13,11 @@ var _skills_ui    # SkillsUI
 ## signals up rather than mutating it directly (mirrors Hud.auto_attack_toggled).
 signal camera_toggle_requested
 
+## Emitted on each drag-frame of a right-half-of-screen touch (over-shoulder/
+## first-person look control). Main decides whether to apply it (no-ops in
+## top-down) since MobileHud doesn't know camera_mode.
+signal camera_look_delta(delta: Vector2)
+
 # ── Layout constants ──────────────────────────────────────────────────────────
 const JOY_BASE_R  := 100.0
 const JOY_KNOB_R  :=  42.0
@@ -28,6 +33,10 @@ const MENU_W      := 160.0
 const MENU_H      :=  60.0
 const MENU_PAD    :=  14.0
 
+# Slot index -> the gamepad button that fires it (mirrors InputCtl.gd's
+# _PAD_BTN_CASTS: A/B/X/Y/RB, plus RT for index 5 via the trigger axis).
+const _SLOT_BTN_LABELS := ["A", "B", "X", "Y", "RB", "RT"]
+
 # ── State ─────────────────────────────────────────────────────────────────────
 var _root         : Control
 var _joy_base     : Panel
@@ -39,6 +48,7 @@ var _potion_btn   : Button
 var _cam_btn      : Button
 var _loot_bag_id  := ""
 var _joy_touch_id := -1
+var _look_touch_id := -1
 var _ability_key  := ""
 
 # ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -152,7 +162,9 @@ func _layout_menu_buttons(vp: Vector2) -> void:
 	_loot_btn.size     = Vector2(MENU_W, MENU_H)
 
 func _layout_potion_button(vp: Vector2) -> void:
-	_potion_btn.position = Vector2(MENU_PAD, MENU_PAD)
+	# Shifted down from MENU_PAD so it clears the HP status line (Hud.gd's
+	# top-left status text, offset_top=12..offset_bottom=40).
+	_potion_btn.position = Vector2(MENU_PAD, 62.0)
 	_potion_btn.size     = Vector2(MENU_W, MENU_H)
 
 func _layout_camera_button(vp: Vector2) -> void:
@@ -196,14 +208,14 @@ func update_abilities(abilities: Array) -> void:
 	for i in SLOT_COUNT:
 		var btn: Button = _ability_btns[i]
 		if i >= abilities.size():
-			btn.text = str(i + 1)
+			btn.text = _SLOT_BTN_LABELS[i]
 			btn.add_theme_font_size_override("font_size", 28)
 			continue
 		var a: Dictionary = abilities[i]
 		var icon := str(a.get("icon", ""))
 		var nm   := str(a.get("name", ""))
 		if icon == "" and nm == "":
-			btn.text = str(i + 1)
+			btn.text = _SLOT_BTN_LABELS[i]
 			btn.add_theme_font_size_override("font_size", 28)
 		elif nm == "":
 			btn.text = icon
@@ -233,6 +245,14 @@ func _input(event: InputEvent) -> void:
 				_joy_touch_id = event.index
 				_apply_joy(event.position, vp)
 				get_viewport().set_input_as_handled()
+			elif _look_touch_id == -1 \
+					and event.position.x > vp.x * 0.5 \
+					and not _hits_button(event.position):
+				# Camera-look drag (over-shoulder/first-person). Claimed even in
+				# top-down (Main no-ops the delta there) so a stray drag here never
+				# falls through to something else.
+				_look_touch_id = event.index
+				get_viewport().set_input_as_handled()
 		else:
 			if event.index == _joy_touch_id:
 				_joy_touch_id = -1
@@ -240,11 +260,34 @@ func _input(event: InputEvent) -> void:
 				if _inp != null:
 					_inp.set_virtual_stick(Vector2.ZERO)
 				get_viewport().set_input_as_handled()
+			elif event.index == _look_touch_id:
+				_look_touch_id = -1
+				get_viewport().set_input_as_handled()
 
 	elif event is InputEventScreenDrag:
 		if event.index == _joy_touch_id:
 			_apply_joy(event.position, vp)
 			get_viewport().set_input_as_handled()
+		elif event.index == _look_touch_id:
+			camera_look_delta.emit(event.relative)
+			get_viewport().set_input_as_handled()
+
+## True if pos lands on a currently-visible on-screen button, so the look-drag
+## zone (right half of the screen) doesn't swallow taps meant for them.
+func _hits_button(pos: Vector2) -> bool:
+	var buttons: Array[Button] = []
+	buttons.append_array(_ability_btns)
+	buttons.append_array(_menu_btns)
+	if _loot_btn != null:
+		buttons.append(_loot_btn)
+	if _potion_btn != null:
+		buttons.append(_potion_btn)
+	if _cam_btn != null:
+		buttons.append(_cam_btn)
+	for btn in buttons:
+		if btn.visible and btn.get_global_rect().has_point(pos):
+			return true
+	return false
 
 func _apply_joy(pos: Vector2, vp: Vector2) -> void:
 	var center := Vector2(JOY_PAD + JOY_BASE_R, vp.y - JOY_PAD - JOY_BASE_R)
@@ -285,7 +328,7 @@ func _circle_panel(r: float, bg: Color, border: Color = Color.TRANSPARENT, borde
 
 func _slot_button(idx: int) -> Button:
 	var btn := Button.new()
-	btn.text = str(idx + 1)
+	btn.text = _SLOT_BTN_LABELS[idx]
 	btn.add_theme_font_size_override("font_size", 28)
 	btn.add_theme_color_override("font_color", Color8(0xc8, 0xd8, 0xff))
 

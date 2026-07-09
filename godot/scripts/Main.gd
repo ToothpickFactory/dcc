@@ -36,6 +36,7 @@ const WALL_MODEL_SCREEN_MARGIN := 180.0
 @export var cam_drag_sensitivity := 0.18
 @export var cam_stick_rot_speed := 90.0   # degrees/sec for right-stick yaw
 @export var cam_stick_zoom_speed := 0.5   # zoom units/sec for right-stick Y
+@export var cam_stick_pitch_speed := 90.0 # degrees/sec for right-stick Y (over-shoulder/first-person)
 
 # Third-person (over-the-shoulder) and first-person rig tuning. Both share cam_yaw_deg
 # (facing direction) with the top-down orbit camera; only the top-down orbit uses
@@ -45,6 +46,7 @@ const WALL_MODEL_SCREEN_MARGIN := 180.0
 @export var tps_shoulder_offset := 32.0   # sideways offset (over-shoulder, GTA-style)
 @export var fps_eye_height := 90.0        # camera height above ground (first-person)
 @export var cam_look_sensitivity := 0.12  # degrees per pixel of mouse motion (free-look)
+@export var cam_touch_look_sensitivity := 0.15  # degrees per pixel of touch-drag motion (Android free-look)
 @export var cam_pitch_min_deg := -85.0
 @export var cam_pitch_max_deg := 85.0
 
@@ -332,6 +334,7 @@ func _ready() -> void:
 	var mhud := preload("res://scripts/MobileHud.gd").new()
 	mhud.setup(_inp, _inv, _skills)
 	mhud.camera_toggle_requested.connect(_cycle_camera_mode)
+	mhud.camera_look_delta.connect(_on_mobile_look_delta)
 	add_child(mhud)
 	if OS.has_feature("mobile"):
 		_mhud = mhud
@@ -366,7 +369,9 @@ func _ready() -> void:
 	hb_btn.text = "HB"
 	hb_btn.custom_minimum_size = Vector2(64, 44)
 	hb_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	hb_btn.position = Vector2(8, 8)
+	# Shifted down from (8,8) so it clears the HP status line (Hud.gd's
+	# top-left status text, offset_top=12..offset_bottom=40).
+	hb_btn.position = Vector2(8, 56)
 	hb_btn.modulate = Color(1, 1, 1, 0.72)
 	hb_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	hb_btn.pressed.connect(func():
@@ -857,17 +862,27 @@ func _process(dt: float) -> void:
 	# Heightfield 2.5D: lift the camera + its look target by the focus point's ground height so the
 	# framing stays constant over hills/pits instead of the player rising out of / sinking below frame.
 	var fgz: float = Geo.ground_height(_world.grid, _cam_xy.x, _cam_xy.y) if _world != null and not _world.grid.is_empty() else 0.0
-	# Right stick: X rotates the camera yaw (all modes), Y zooms — top-down only,
-	# TPS/FPS have no zoom concept.
+	# Right stick: X rotates the camera yaw (all modes), Y zooms in top-down or
+	# pitches (looks up/down) in over-shoulder/first-person.
 	# Uses InputCtl's event-cached axis values — polling is unreliable on Android.
 	const _STICK_DEAD := 0.15
 	var _rs: Vector2 = _inp.right_stick()
 	var _rs_x: float = _rs.x
 	var _rs_y: float = _rs.y
 	if absf(_rs_x) > _STICK_DEAD:
-		cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
-	if absf(_rs_y) > _STICK_DEAD and effective_mode == CameraMode.TOP_DOWN:
-		_cam_zoom_target = clampf(_cam_zoom_target + _rs_y * cam_stick_zoom_speed * dt, cam_zoom_min, cam_zoom_max)
+		if effective_mode == CameraMode.TOP_DOWN:
+			cam_yaw_deg = wrapf(cam_yaw_deg + _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
+		else:
+			# Increasing cam_yaw_deg turns the camera left (see _look_dir_world), so
+			# stick-right must subtract to turn right — same fix as the mouse-look sign.
+			cam_yaw_deg = wrapf(cam_yaw_deg - _rs_x * cam_stick_rot_speed * dt, -180.0, 180.0)
+	if absf(_rs_y) > _STICK_DEAD:
+		if effective_mode == CameraMode.TOP_DOWN:
+			_cam_zoom_target = clampf(_cam_zoom_target + _rs_y * cam_stick_zoom_speed * dt, cam_zoom_min, cam_zoom_max)
+		else:
+			# Stick up is negative Y (same convention as zoom's "push up" above); stick
+			# up should look up, so pitch increases — matches the mouse-look formula.
+			_fps_pitch_deg = clampf(_fps_pitch_deg - _rs_y * cam_stick_pitch_speed * dt, cam_pitch_min_deg, cam_pitch_max_deg)
 
 	var yaw := deg_to_rad(cam_yaw_deg)
 	match effective_mode:
@@ -1240,6 +1255,15 @@ func _update_mouse_capture(menu_open: bool) -> void:
 		Input.mouse_mode = target_mode
 	if _crosshair != null:
 		_crosshair.visible = camera_mode != CameraMode.TOP_DOWN and not menu_open
+
+# Android touch-drag look (MobileHud's right-half-of-screen zone). No-op in
+# top-down — mirrors the PC free-look gating, just driven by touch instead of a
+# captured mouse cursor (there's no OS cursor to capture on a touchscreen).
+func _on_mobile_look_delta(delta: Vector2) -> void:
+	if camera_mode == CameraMode.TOP_DOWN:
+		return
+	cam_yaw_deg = wrapf(cam_yaw_deg - delta.x * cam_touch_look_sensitivity, -180.0, 180.0)
+	_fps_pitch_deg = clampf(_fps_pitch_deg - delta.y * cam_touch_look_sensitivity, cam_pitch_min_deg, cam_pitch_max_deg)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if camera_mode == CameraMode.TOP_DOWN:

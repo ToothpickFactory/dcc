@@ -136,6 +136,84 @@ export function randomWalkablePosition(
   throw new Error("Floor has no walkable position");
 }
 
+// Sin-hash noise, ported 1:1 from WorldDecor.gd's _hash01 (Godot client) so the server can
+// reproduce the exact same campfire spots the client will independently render — both sides
+// already have the same floor collision grid, so no extra sync is needed. GDScript's int()
+// truncates toward zero (same as Math.trunc) and its `%` keeps the dividend's sign (same as
+// JS `%`), so this is bit-for-bit the same computation.
+function hash01(x: number, y: number): number {
+  const v = (Math.trunc(Math.sin(x * 127.1 + y * 311.7) * 43758.5453) % 10000) / 10000;
+  return Math.abs(v);
+}
+
+const MAX_CAMPFIRES = 4;
+const CAMPFIRE_MIN_SPACING = 760;
+
+// Ported 1:1 from WorldDecor.gd's _campfire_spots(): scores open, wall-free cells by a bit of
+// hash noise plus how open their surroundings are, then greedily picks one well-spread candidate
+// per floor quadrant (up to MAX_CAMPFIRES), backfilling by score if a quadrant has none. Purely a
+// function of the grid (deterministic per floor, no RNG) — same inputs, same output as the client.
+export function campfireSpots(grid: CollisionGrid): { x: number; y: number }[] {
+  const { w, h, cell, solid } = grid;
+  const candidates: { pos: { x: number; y: number }; cell: { x: number; y: number }; score: number }[] = [];
+
+  for (let cy = 2; cy < h - 2; cy++) {
+    for (let cx = 2; cx < w - 2; cx++) {
+      const i = cy * w + cx;
+      if (solid[i] !== 0) continue;
+      if (solid[i - 1] !== 0 || solid[i + 1] !== 0 || solid[i - w] !== 0 || solid[i + w] !== 0) continue;
+
+      const noise = hash01(cx + 131, cy + 719) * 3.5;
+      let openBonus = 0;
+      for (let oy = -2; oy <= 2; oy++) {
+        for (let ox = -2; ox <= 2; ox++) {
+          if (ox === 0 && oy === 0) continue;
+          if (solid[(cy + oy) * w + (cx + ox)] === 0) openBonus += 0.08;
+        }
+      }
+      candidates.push({
+        pos: { x: (cx + 0.5) * cell, y: (cy + 0.5) * cell },
+        cell: { x: cx, y: cy },
+        score: noise + openBonus,
+      });
+    }
+  }
+
+  const chosen: { x: number; y: number }[] = [];
+  const minSpacingSq = CAMPFIRE_MIN_SPACING * CAMPFIRE_MIN_SPACING;
+  const tooClose = (pos: { x: number; y: number }) =>
+    chosen.some((existing) => (pos.x - existing.x) ** 2 + (pos.y - existing.y) ** 2 < minSpacingSq);
+
+  const anchors = [
+    { x: w * 0.22, y: h * 0.22 },
+    { x: w * 0.78, y: h * 0.22 },
+    { x: w * 0.22, y: h * 0.78 },
+    { x: w * 0.78, y: h * 0.78 },
+  ];
+  for (const anchor of anchors) {
+    let best: (typeof candidates)[number] | null = null;
+    let bestScore = -Infinity;
+    for (const c of candidates) {
+      if (tooClose(c.pos)) continue;
+      const spreadScore = -Math.hypot(c.cell.x - anchor.x, c.cell.y - anchor.y) + c.score * 5;
+      if (best === null || spreadScore > bestScore) {
+        best = c;
+        bestScore = spreadScore;
+      }
+    }
+    if (best !== null) chosen.push(best.pos);
+    if (chosen.length >= MAX_CAMPFIRES) return chosen;
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  for (const c of candidates) {
+    if (tooClose(c.pos)) continue;
+    chosen.push(c.pos);
+    if (chosen.length >= MAX_CAMPFIRES) break;
+  }
+  return chosen;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
