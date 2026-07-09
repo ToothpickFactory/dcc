@@ -1,4 +1,5 @@
 import { WALKABLE_DELTA } from "../shared/constants";
+import { canOccupy } from "./collision";
 import type { MonsterKind, Theme } from "../shared/types";
 import type { CollisionGrid, FloorDescriptor, HazardSpec, PortalSpec } from "./types";
 import { PREFABS, stampPrefab, type PrefabAnchor } from "./prefabs";
@@ -45,7 +46,8 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   const gh = size;
   const solid = new Uint8Array(gw * gh).fill(1);
   const theme = themeForFloor(seed, depth);
-  const terrain = theme === "pirate" && !opts.pvp ? new Uint8Array(gw * gh) : undefined;
+  const terrain = (theme === "pirate" || theme === "cyberpunk") && !opts.pvp ? new Uint8Array(gw * gh) : undefined;
+  let customPortals: PortalSpec[] = [];
 
   // Per-floor character: 0.2 = tight maze, 0.95 = wide open with big rooms.
   const openness = 0.2 + random() * 0.75;
@@ -61,6 +63,13 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     start = pirate.start;
     roomCenters = pirate.roomCenters;
     prefabAnchors = pirate.anchors;
+    isCave = false;
+  } else if (theme === "cyberpunk" && !opts.pvp) {
+    const cyberpunk = carveCyberpunkStage(solid, terrain!, gw, gh, random);
+    start = cyberpunk.start;
+    roomCenters = cyberpunk.roomCenters;
+    prefabAnchors = cyberpunk.anchors;
+    customPortals = cyberpunk.portals;
     isCave = false;
   } else if (isCave) {
     start = carveCave(solid, gw, gh, random);
@@ -80,10 +89,24 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   }
 
   carveRect(solid, gw, gh, start.x, start.y, 2, 2); // entrance room
-  reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
+  if (theme !== "cyberpunk" || opts.pvp) {
+    reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
+  }
   const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
   carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2); // stairs room
-  const opaque = theme === "pirate" && terrain && !opts.pvp ? buildPirateOpaque(solid, terrain, gw, gh) : undefined;
+  if (theme === "cyberpunk" && terrain && !opts.pvp) {
+    fillDisconnectedNonRooftop(solid, terrain, gw, gh, start);
+    for (const portal of customPortals) {
+      const px = Math.floor(portal.x / cell);
+      const py = Math.floor(portal.y / cell);
+      carveRectWithTerrain(solid, terrain, terrain[py * gw + px] ?? 0, gw, gh, px, py, 1, 1);
+    }
+  }
+  const opaque = theme === "pirate" && terrain && !opts.pvp
+    ? buildPirateOpaque(solid, terrain, gw, gh)
+    : theme === "cyberpunk" && terrain && !opts.pvp
+      ? buildCyberpunkOpaque(solid, terrain, gw, gh)
+      : undefined;
 
   // Render the maze at 2× cell resolution: every wall is preserved but corridors are
   // now 2 cells (≈160px) wide — wide CoN-style halls instead of 1-tile passages. The
@@ -134,10 +157,12 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     variant: 1 + Math.floor(random() * 15),
     scale: a.landmark ? 1.8 + random() * 0.6 : 0.8 + random() * 0.4,
   }));
-  const decorations = [...prefabDecor, ...scatterDecor];
+  const decorations = [...prefabDecor, ...scatterDecor].filter((d) => canOccupy(collision, d.x, d.y, 12));
 
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
-  const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
+  const portals = customPortals.length > 0
+    ? customPortals.map(scPortal)
+    : generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
   // Heightfield 2.5D: generate a deterministic per-cell ground height on the FINE grid. The seed is
   // drawn HERE, as the very last random() call, so every existing layout draw above stays byte-
@@ -153,6 +178,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     isCave,
     openness,
   );
+  if (theme === "pirate" && collision.terrain) applyPirateZoneHeights(collision);
 
   return {
     index: depth,
@@ -294,6 +320,34 @@ function buildPirateOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h:
   return opaque;
 }
 
+function applyPirateZoneHeights(grid: CollisionGrid): void {
+  const terrain = grid.terrain;
+  const opaque = grid.opaque ?? grid.solid;
+  if (!terrain) return;
+  for (let y = 0; y < grid.h; y++) {
+    for (let x = 0; x < grid.w; x++) {
+      const i = y * grid.w + x;
+      const zone = terrain[i] ?? 0;
+      if (grid.solid[i] === 1 && opaque[i] === 0) {
+        grid.ground[i] = zone === 3 ? -28 : -12;
+        continue;
+      }
+      if (zone === 0) {
+        grid.ground[i] = 24;
+      } else if (zone === 1) {
+        grid.ground[i] = 8;
+      } else if (zone === 2) {
+        grid.ground[i] = Math.round(fbm(0xbEAc_2026, x, y, 18, 3) * 10);
+      } else {
+        grid.ground[i] = -8 + Math.round(fbm(0xcAfe_2026, x, y, 14, 3) * 12);
+      }
+    }
+  }
+  const hf = Float64Array.from(grid.ground);
+  relaxSlopes(hf, grid.solid, new Uint8Array(grid.w * grid.h), grid.w, grid.h, WALKABLE_DELTA);
+  for (let i = 0; i < grid.ground.length; i++) grid.ground[i] = Math.round(hf[i]!);
+}
+
 function exteriorSolidMask(solid: Uint8Array, w: number, h: number): Uint8Array {
   const seen = new Uint8Array(w * h);
   const q: number[] = [];
@@ -321,6 +375,154 @@ function exteriorSolidMask(solid: Uint8Array, w: number, h: number): Uint8Array 
     if (y < h - 1) push(x, y + 1);
   }
   return seen;
+}
+
+function carveCyberpunkStage(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  gw: number,
+  gh: number,
+  random: () => number,
+): { start: { x: number; y: number }; roomCenters: { x: number; y: number }[]; anchors: PrefabAnchor[]; portals: PortalSpec[] } {
+  const streets = {
+    x: clampInt(Math.floor(gw * 0.22), 8, gw - 10),
+    y: clampInt(Math.floor(gh * (0.48 + (random() - 0.5) * 0.08)), 9, gh - 10),
+    rx: clampInt(Math.floor(gw * 0.16), 7, 14),
+    ry: clampInt(Math.floor(gh * 0.18), 7, 14),
+  };
+  const industrial = {
+    x: clampInt(Math.floor(gw * 0.52), 12, gw - 12),
+    y: clampInt(Math.floor(gh * 0.48), 11, gh - 11),
+    rx: clampInt(Math.floor(gw * 0.15), 7, 13),
+    ry: clampInt(Math.floor(gh * 0.15), 6, 12),
+  };
+  const market = {
+    x: clampInt(Math.floor(gw * 0.67), 14, gw - 10),
+    y: clampInt(Math.floor(gh * 0.68), 12, gh - 9),
+    rx: clampInt(Math.floor(gw * 0.16), 7, 14),
+    ry: clampInt(Math.floor(gh * 0.14), 6, 12),
+  };
+  const rooftop = {
+    x: clampInt(Math.floor(gw * 0.80), 18, gw - 9),
+    y: clampInt(Math.floor(gh * 0.12), 7, gh - 18),
+    rx: clampInt(Math.floor(gw * 0.12), 6, 11),
+    ry: clampInt(Math.floor(gh * 0.11), 5, 10),
+  };
+
+  carveRectWithTerrain(solid, terrain, 0, gw, gh, streets.x, streets.y, streets.rx, streets.ry);
+  carveRectWithTerrain(solid, terrain, 1, gw, gh, industrial.x, industrial.y, industrial.rx, industrial.ry);
+  carveRectWithTerrain(solid, terrain, 3, gw, gh, market.x, market.y, market.rx, market.ry);
+
+  carvePier(solid, terrain, 0, gw, gh, { x: streets.x + streets.rx - 1, y: streets.y }, { x: industrial.x - industrial.rx + 1, y: industrial.y }, 2);
+  carvePier(solid, terrain, 3, gw, gh, { x: industrial.x + Math.floor(industrial.rx * 0.35), y: industrial.y + industrial.ry - 1 }, { x: market.x - market.rx + 1, y: market.y }, 2);
+  if (random() < 0.75) {
+    carvePier(solid, terrain, 0, gw, gh, { x: streets.x + Math.floor(streets.rx * 0.2), y: streets.y + streets.ry - 1 }, { x: market.x - Math.floor(market.rx * 0.35), y: market.y - market.ry + 1 }, 1);
+  }
+  reconnect(solid, gw, gh, { x: streets.x, y: streets.y });
+  carveRectWithTerrain(solid, terrain, 2, gw, gh, rooftop.x, rooftop.y, rooftop.rx, rooftop.ry);
+
+  const anchors: PrefabAnchor[] = [
+    { x: streets.x - Math.floor(streets.rx * 0.35), y: streets.y, landmark: false },
+    { x: industrial.x, y: industrial.y - Math.floor(industrial.ry * 0.25), landmark: true },
+    { x: market.x + Math.floor(market.rx * 0.20), y: market.y, landmark: true },
+    { x: rooftop.x, y: rooftop.y, landmark: true },
+  ];
+  for (const a of anchors) carveRectWithTerrain(solid, terrain, terrain[a.y * gw + a.x] ?? 0, gw, gh, a.x, a.y, a.landmark ? 2 : 1, a.landmark ? 2 : 1);
+
+  const portals = cyberpunkRooftopPortals(
+    solid,
+    gw,
+    gh,
+    [
+      { x: streets.x, y: streets.y },
+      { x: industrial.x, y: industrial.y },
+      { x: market.x, y: market.y },
+    ],
+    [
+      { x: rooftop.x - Math.floor(rooftop.rx * 0.25), y: rooftop.y },
+      { x: rooftop.x, y: rooftop.y + Math.floor(rooftop.ry * 0.20) },
+      { x: rooftop.x + Math.floor(rooftop.rx * 0.25), y: rooftop.y },
+    ],
+    CELL,
+  );
+  fillDisconnectedNonRooftop(solid, terrain, gw, gh, { x: streets.x, y: streets.y });
+  const roomCenters = [
+    { x: streets.x, y: streets.y },
+    { x: industrial.x, y: industrial.y },
+    { x: market.x, y: market.y },
+    { x: rooftop.x, y: rooftop.y },
+  ];
+  return { start: { x: streets.x, y: streets.y }, roomCenters, anchors, portals };
+}
+
+function fillDisconnectedNonRooftop(solid: Uint8Array, terrain: Uint8Array, w: number, h: number, start: { x: number; y: number }): void {
+  const reached = floodOpen(solid, w, h, start);
+  for (let i = 0; i < solid.length; i++) {
+    if (solid[i] === 0 && reached[i] === 0 && terrain[i] !== 2) solid[i] = 1;
+  }
+  const roofSeed = findOpenTerrainCell(solid, terrain, w, 2);
+  if (!roofSeed) return;
+  const roofReached = floodOpen(solid, w, h, roofSeed);
+  for (let i = 0; i < solid.length; i++) {
+    if (solid[i] === 0 && terrain[i] === 2 && roofReached[i] === 0) solid[i] = 1;
+  }
+}
+
+function findOpenTerrainCell(solid: Uint8Array, terrain: Uint8Array, w: number, zone: number): { x: number; y: number } | null {
+  for (let i = 0; i < solid.length; i++) {
+    if (solid[i] === 0 && terrain[i] === zone) return { x: i % w, y: Math.floor(i / w) };
+  }
+  return null;
+}
+
+function cyberpunkRooftopPortals(solid: Uint8Array, w: number, h: number, ground: { x: number; y: number }[], roof: { x: number; y: number }[], cell: number): PortalSpec[] {
+  const portals: PortalSpec[] = [];
+  for (let i = 0; i < Math.min(ground.length, roof.length); i++) {
+    const g = nearestOpenCell(solid, w, h, ground[i]!);
+    const r = nearestOpenCell(solid, w, h, roof[i]!);
+    if (!g || !r) continue;
+    const aid = `cyber_roof_${i}_a`;
+    const bid = `cyber_roof_${i}_b`;
+    const hue = (0.58 + i * 0.11) % 1;
+    portals.push({ id: aid, pair: bid, ...cellCenter(g.x, g.y, cell), r: 34, hue });
+    portals.push({ id: bid, pair: aid, ...cellCenter(r.x, r.y, cell), r: 34, hue });
+  }
+  return portals;
+}
+
+function nearestOpenCell(solid: Uint8Array, w: number, h: number, center: { x: number; y: number }): { x: number; y: number } | null {
+  for (let r = 0; r <= 5; r++) {
+    for (let y = center.y - r; y <= center.y + r; y++) {
+      for (let x = center.x - r; x <= center.x + r; x++) {
+        if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+        if (Math.abs(x - center.x) !== r && Math.abs(y - center.y) !== r) continue;
+        if (discAllOpen(solid, w, h, x, y, 1)) return { x, y };
+      }
+    }
+  }
+  return null;
+}
+
+function buildCyberpunkOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h: number): Uint8Array {
+  const opaque = new Uint8Array(solid);
+  const exterior = exteriorSolidMask(solid, w, h);
+  for (let i = 0; i < opaque.length; i++) {
+    if (exterior[i] === 1) opaque[i] = 0;
+  }
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (solid[i] === 0 || exterior[i] === 0) continue;
+      const neighbours = [i - w, i + 1, i + w, i - 1];
+      for (const ni of neighbours) {
+        if (solid[ni] === 0) {
+          terrain[i] = terrain[ni] ?? 0;
+          break;
+        }
+      }
+    }
+  }
+  return opaque;
 }
 
 function carveShipDeck(solid: Uint8Array, terrain: Uint8Array, w: number, h: number, cx: number, cy: number, rx: number, ry: number): void {
@@ -697,7 +899,7 @@ function scHazard(h: HazardSpec): HazardSpec {
 
 function scPortal(p: PortalSpec): PortalSpec {
   const SCALE = 2;
-  return { ...p, x: p.x * SCALE, y: p.y * SCALE, r: p.r * SCALE };
+  return { ...p, x: p.x * SCALE + CELL * 0.5, y: p.y * SCALE + CELL * 0.5, r: p.r * SCALE };
 }
 
 // ---- geometry ----

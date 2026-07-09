@@ -3,7 +3,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE, ICE_PROJECTILE_SPRITE, POISON_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent, StatusEffect } from "../protocol";
-import { TERRAIN_ZONE_IDS, type CollisionGrid, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
+import { terrainZoneIdsForTheme, type CollisionGrid, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
 import { loadAtlasClip } from "./atlas";
 
 // Per-ability projectile colors (so a green heal bolt reads differently from a
@@ -54,18 +54,22 @@ const STATUS_EFFECT_PATHS: Record<StatusEffect, string> = {
 };
 const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
-  cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
+  cyberpunk: "/assets/Tiles/streets.png",
   forest: "/assets/Tiles/forest-tiles.png",
   pirate: "/assets/Tiles/ship.png",
   clockwork: "/assets/Tiles/clockwork-tiles.png",
   nightmare: "/assets/Tiles/nightmare-tiles.png",
   icedungeon: "/assets/Tiles/icedungeon-tiles.png",
 };
-const PIRATE_ZONE_SHEETS: Record<TerrainZoneKind, string> = {
+const TERRAIN_ZONE_SHEETS: Record<TerrainZoneKind, string> = {
   ship: "/assets/Tiles/ship.png",
   docks: "/assets/Tiles/dock.png",
   beach: "/assets/Tiles/beach.png",
   cave: "/assets/Tiles/cave.png",
+  streets: "/assets/Tiles/streets.png",
+  industrial: "/assets/Tiles/industrial.png",
+  rooftop: "/assets/Tiles/rooftop.png",
+  neonMarket: "/assets/Tiles/neon-market.png",
 };
 const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Props/fantasy-props.png",
@@ -325,8 +329,9 @@ export class Renderer {
 
     const sheet = await this.textureLoader.loadAsync(TILE_SHEETS[theme]);
     sheet.colorSpace = THREE.SRGBColorSpace;
-    const floor = theme === "pirate" ? this.tileFromSheet(sheet, 12, 5, 4) : this.tileFromSheet(sheet, 0);
-    const wall = theme === "pirate" ? this.tileFromSheet(sheet, 2, 5, 4) : this.tileFromSheet(sheet, 8);
+    const usesZoneSheet = theme === "pirate" || theme === "cyberpunk";
+    const floor = usesZoneSheet ? this.tileFromSheet(sheet, 12, 5, 4) : this.tileFromSheet(sheet, 0);
+    const wall = usesZoneSheet ? this.tileFromSheet(sheet, 2, 5, 4) : this.tileFromSheet(sheet, 8);
     floor.wrapS = floor.wrapT = THREE.RepeatWrapping;
     floor.repeat.set(30, 30);
     const materials = { floor, wall };
@@ -337,7 +342,7 @@ export class Renderer {
   private async loadTerrainTexture(zone: TerrainZoneKind): Promise<THREE.Texture> {
     const cached = this.terrainTextureCache.get(zone);
     if (cached) return cached;
-    const tex = await this.textureLoader.loadAsync(PIRATE_ZONE_SHEETS[zone]);
+    const tex = await this.textureLoader.loadAsync(TERRAIN_ZONE_SHEETS[zone]);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.magFilter = THREE.NearestFilter;
@@ -443,9 +448,10 @@ export class Renderer {
   private async setTerrainZones(floor: FloorDescriptor): Promise<void> {
     this.clearTerrainMeshes();
     const terrain = floor.collision.terrain;
-    if (floor.theme !== "pirate" || !terrain) return;
-    for (let id = 0; id < TERRAIN_ZONE_IDS.length; id++) {
-      const zone = TERRAIN_ZONE_IDS[id]!;
+    if ((floor.theme !== "pirate" && floor.theme !== "cyberpunk") || !terrain) return;
+    const zones = terrainZoneIdsForTheme(floor.theme);
+    for (let id = 0; id < zones.length; id++) {
+      const zone = zones[id]!;
       const geometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id);
       if (geometry) {
         const texture = await this.loadTerrainTexture(zone);
@@ -457,7 +463,7 @@ export class Renderer {
         this.terrainMeshes.push(mesh);
       }
       if (zone === "cave") {
-        const voidGeometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id, true);
+        const voidGeometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id, "void");
         if (voidGeometry) {
           const mat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
           this.patchFog(mat, false);
@@ -470,26 +476,31 @@ export class Renderer {
     }
   }
 
-  private buildTerrainZoneGeometry(grid: CollisionGrid, terrain: Uint8Array, zoneId: number, voidOnly = false): THREE.BufferGeometry | null {
+  private buildTerrainZoneGeometry(grid: CollisionGrid, terrain: Uint8Array, zoneId: number, mode: "normal" | "void" = "normal"): THREE.BufferGeometry | null {
     const positions: number[] = [];
     const uvs: number[] = [];
     const indices: number[] = [];
     const cell = grid.cell;
-    const y = 0.8;
     const opaque = grid.opaque ?? grid.solid;
     for (let cy = 0; cy < grid.h; cy++) {
       for (let cx = 0; cx < grid.w; cx++) {
         const i = cy * grid.w + cx;
         if (terrain[i] !== zoneId) continue;
-        const isVoid = zoneId === 3 && grid.solid[i] === 1 && opaque[i] === 0;
-        if (voidOnly !== isVoid) continue;
-        if (!isVoid && grid.solid[i] !== 0) continue;
+        const isFlatBlocked = grid.solid[i] === 1 && opaque[i] === 0;
+        const isChasmVoid = zoneId === 3 && isFlatBlocked && !this.hasOpenNeighbor(grid, cx, cy);
+        if (mode === "void" !== isChasmVoid) continue;
+        if (mode === "normal" && grid.solid[i] !== 0 && !isFlatBlocked) continue;
         const base = positions.length / 3;
         const x0 = cx * cell;
         const x1 = x0 + cell;
         const z0 = cy * cell;
         const z1 = z0 + cell;
-        positions.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
+        positions.push(
+          x0, this.groundAt(grid, x0, z0) + 0.8, z0,
+          x1, this.groundAt(grid, x1, z0) + 0.8, z0,
+          x1, this.groundAt(grid, x1, z1) + 0.8, z1,
+          x0, this.groundAt(grid, x0, z1) + 0.8, z1,
+        );
         const tile = this.pirateTileIndex(grid, terrain, zoneId, cx, cy);
         const col = tile % 5;
         const row = Math.floor(tile / 5);
@@ -513,15 +524,38 @@ export class Renderer {
   private pirateTileIndex(grid: CollisionGrid, terrain: Uint8Array, zoneId: number, cx: number, cy: number): number {
     const i = cy * grid.w + cx;
     const opaque = grid.opaque ?? grid.solid;
-    if (grid.solid[i] === 1 && opaque[i] === 0) return zoneId === 3 ? 12 : 2;
+    if (grid.solid[i] === 1 && opaque[i] === 0) {
+      const topOpen = this.isOpen(grid, cx, cy - 1);
+      const bottomOpen = this.isOpen(grid, cx, cy + 1);
+      const leftOpen = this.isOpen(grid, cx - 1, cy);
+      const rightOpen = this.isOpen(grid, cx + 1, cy);
+      const col = leftOpen ? 0 : rightOpen ? 4 : 1 + ((cx + cy) % 3);
+      if (topOpen) return 3 * 5 + col;
+      if (bottomOpen) return 1 * 5 + col;
+      return zoneId === 3 ? 12 : 2;
+    }
     const blocked = (x: number, y: number) => x < 0 || y < 0 || x >= grid.w || y >= grid.h || grid.solid[y * grid.w + x] === 1;
     const top = blocked(cx, cy - 1);
-    const bottom = blocked(cx, cy + 1);
     const left = blocked(cx - 1, cy);
     const right = blocked(cx + 1, cy);
     const col = left ? 0 : right ? 4 : 1 + ((cx + cy) % 3);
-    const row = top ? 1 : bottom ? 3 : 2;
+    const row = top ? 1 : 2;
     return row * 5 + col;
+  }
+
+  private isOpen(grid: CollisionGrid, cx: number, cy: number): boolean {
+    return cx >= 0 && cy >= 0 && cx < grid.w && cy < grid.h && grid.solid[cy * grid.w + cx] === 0;
+  }
+
+  private hasOpenNeighbor(grid: CollisionGrid, cx: number, cy: number): boolean {
+    return this.isOpen(grid, cx, cy - 1) || this.isOpen(grid, cx + 1, cy) || this.isOpen(grid, cx, cy + 1) || this.isOpen(grid, cx - 1, cy);
+  }
+
+  private groundAt(grid: CollisionGrid, x: number, z: number): number {
+    if (!grid.ground || grid.ground.length === 0) return 0;
+    const cx = Math.max(0, Math.min(grid.w - 1, Math.floor(x / grid.cell)));
+    const cy = Math.max(0, Math.min(grid.h - 1, Math.floor(z / grid.cell)));
+    return grid.ground[cy * grid.w + cx] ?? 0;
   }
 
   private setHazards(floor: FloorDescriptor): void {

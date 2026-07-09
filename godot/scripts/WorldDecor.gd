@@ -34,6 +34,13 @@ const PIRATE_ZONE_SHEETS := {
 	"beach": "beach.png",
 	"cave": "cave.png",
 }
+const CYBERPUNK_ZONE_NAMES := ["streets", "industrial", "rooftop", "neonMarket"]
+const CYBERPUNK_ZONE_SHEETS := {
+	"streets": "streets.png",
+	"industrial": "industrial.png",
+	"rooftop": "rooftop.png",
+	"neonMarket": "neon-market.png",
+}
 const PROP_COUNT := 16        # render.ts: loadPropTextures -> 16 sliced cells
 const DECO_SIZE := 58.0       # render.ts setDecorations: 58 * decoration.scale
 const DECO_Y := 32.0          # raised from 24 so sprite bottom (32-29=3) clears the floor plane at Y=0
@@ -1189,14 +1196,16 @@ func _place_terrain_zones(theme: String) -> void:
 		if is_instance_valid(t):
 			t.queue_free()
 	_terrain_nodes.clear()
-	if theme != "pirate" or world == null or world.grid.is_empty():
+	if (theme != "pirate" and theme != "cyberpunk") or world == null or world.grid.is_empty():
 		return
 	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
 	if terrain.is_empty():
 		return
-	for zone_id in PIRATE_ZONE_NAMES.size():
-		var zone_name := str(PIRATE_ZONE_NAMES[zone_id])
-		var sheet := _load_sheet("%s/%s" % [tiles_dir, str(PIRATE_ZONE_SHEETS[zone_name])])
+	var zone_names: Array = PIRATE_ZONE_NAMES if theme == "pirate" else CYBERPUNK_ZONE_NAMES
+	var zone_sheets: Dictionary = PIRATE_ZONE_SHEETS if theme == "pirate" else CYBERPUNK_ZONE_SHEETS
+	for zone_id in zone_names.size():
+		var zone_name := str(zone_names[zone_id])
+		var sheet := _load_sheet("%s/%s" % [tiles_dir, str(zone_sheets[zone_name])])
 		if sheet == null:
 			continue
 		var mesh := _terrain_zone_mesh(zone_id)
@@ -1246,10 +1255,11 @@ func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 			var i := cy * w + cx
 			if terrain[i] != zone_id:
 				continue
-			var is_void := zone_id == 3 and solid[i] == 1 and opaque[i] == 0
+			var is_flat_blocked := solid[i] == 1 and opaque[i] == 0
+			var is_void := zone_id == 3 and is_flat_blocked and not _has_open_neighbor(cx, cy)
 			if void_only != is_void:
 				continue
-			if not is_void and solid[i] != 0:
+			if not is_void and solid[i] != 0 and not is_flat_blocked:
 				continue
 			var base := verts.size()
 			var x0 := float(cx) * cell
@@ -1290,14 +1300,33 @@ func _pirate_tile_index(zone_id: int, cx: int, cy: int) -> int:
 	var h: int = world.grid["h"]
 	var i := cy * w + cx
 	if solid[i] == 1 and opaque[i] == 0:
+		var top_open := _pirate_open(cx, cy - 1)
+		var bottom_open := _pirate_open(cx, cy + 1)
+		var left_open := _pirate_open(cx - 1, cy)
+		var right_open := _pirate_open(cx + 1, cy)
+		var blocked_col := 0 if left_open else (4 if right_open else 1 + ((cx + cy) % 3))
+		if top_open:
+			return 3 * PIRATE_SHEET_COLS + blocked_col
+		if bottom_open:
+			return 1 * PIRATE_SHEET_COLS + blocked_col
 		return 12 if zone_id == 3 else 2
 	var top := _pirate_blocked(cx, cy - 1)
-	var bottom := _pirate_blocked(cx, cy + 1)
 	var left := _pirate_blocked(cx - 1, cy)
 	var right := _pirate_blocked(cx + 1, cy)
 	var col := 0 if left else (4 if right else 1 + ((cx + cy) % 3))
-	var row := 1 if top else (3 if bottom else 2)
+	var row := 1 if top else 2
 	return row * PIRATE_SHEET_COLS + col
+
+func _pirate_open(cx: int, cy: int) -> bool:
+	var w: int = world.grid["w"]
+	var h: int = world.grid["h"]
+	if cx < 0 or cy < 0 or cx >= w or cy >= h:
+		return false
+	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	return solid[cy * w + cx] == 0
+
+func _has_open_neighbor(cx: int, cy: int) -> bool:
+	return _pirate_open(cx, cy - 1) or _pirate_open(cx + 1, cy) or _pirate_open(cx, cy + 1) or _pirate_open(cx - 1, cy)
 
 func _pirate_blocked(cx: int, cy: int) -> bool:
 	var w: int = world.grid["w"]
@@ -1314,7 +1343,7 @@ func _load_tiles(theme: String) -> Dictionary:
 	var sheet := _load_sheet(_tile_sheet_path(theme))
 	var result := {"floor": null, "wall": null}
 	if sheet != null:
-		if theme == "pirate":
+		if theme == "pirate" or theme == "cyberpunk":
 			result["floor"] = _tile_texture_from_sheet(sheet, 12, PIRATE_SHEET_COLS, PIRATE_SHEET_ROWS)
 			result["wall"] = _tile_texture_from_sheet(sheet, 2, PIRATE_SHEET_COLS, PIRATE_SHEET_ROWS)
 		else:
@@ -1326,6 +1355,8 @@ func _load_tiles(theme: String) -> Dictionary:
 func _tile_sheet_path(theme: String) -> String:
 	if theme == "pirate":
 		return "%s/ship.png" % [tiles_dir]
+	if theme == "cyberpunk":
+		return "%s/streets.png" % [tiles_dir]
 	return "%s/%s-tiles.png" % [tiles_dir, theme]
 
 

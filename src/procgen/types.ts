@@ -1,9 +1,15 @@
 import type { Theme, MonsterKind } from "../shared/types";
 
 export type HazardKind = "floor_spikes" | "lava_pit" | "acid_pit" | "wall_spikes" | "flame_turret" | "wall_crusher";
-export type TerrainZoneKind = "ship" | "docks" | "beach" | "cave";
+export type TerrainZoneKind = "ship" | "docks" | "beach" | "cave" | "streets" | "industrial" | "rooftop" | "neonMarket";
 
-export const TERRAIN_ZONE_IDS = ["ship", "docks", "beach", "cave"] as const satisfies readonly TerrainZoneKind[];
+export const PIRATE_TERRAIN_ZONE_IDS = ["ship", "docks", "beach", "cave"] as const satisfies readonly TerrainZoneKind[];
+export const CYBERPUNK_TERRAIN_ZONE_IDS = ["streets", "industrial", "rooftop", "neonMarket"] as const satisfies readonly TerrainZoneKind[];
+export const TERRAIN_ZONE_IDS = PIRATE_TERRAIN_ZONE_IDS;
+
+export function terrainZoneIdsForTheme(theme: Theme): readonly TerrainZoneKind[] {
+  return theme === "cyberpunk" ? CYBERPUNK_TERRAIN_ZONE_IDS : PIRATE_TERRAIN_ZONE_IDS;
+}
 
 export interface HazardSpec {
   kind: HazardKind;

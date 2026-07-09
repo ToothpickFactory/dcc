@@ -71,7 +71,9 @@ for (let seed = 1; seed <= 100; seed++) {
   const startY = Math.floor(floor.entrance.y / grid.cell);
   const stairsX = Math.floor(floor.stairs.x / grid.cell);
   const stairsY = Math.floor(floor.stairs.y / grid.cell);
-  const reachable = flood(grid.solid, grid.w, grid.h, startX, startY);
+  const reachable = floor.theme === "cyberpunk"
+    ? portalFlood(grid.solid, grid.w, grid.h, startX, startY, floor.portals, grid.cell)
+    : flood(grid.solid, grid.w, grid.h, startX, startY);
 
   for (let i = 0; i < grid.solid.length; i++) {
     if (grid.solid[i] === 0) assert.equal(reachable.has(i), true, `seed ${seed} has a disconnected tile`);
@@ -82,7 +84,7 @@ for (let seed = 1; seed <= 100; seed++) {
   for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true, `seed ${seed} spawn is blocked at ${JSON.stringify(spawn)}`);
   for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true, `seed ${seed} decoration is blocked at ${JSON.stringify(decoration)}`);
   for (const hazard of floor.hazards) assert.equal(canOccupy(grid, hazard.x, hazard.y, 12), true, `seed ${seed} hazard is blocked at ${JSON.stringify(hazard)}`);
-  assert.ok(floor.portals.length <= 4, `seed ${seed} has too many portals`);
+  assert.ok(floor.portals.length <= (floor.theme === "cyberpunk" ? 6 : 4), `seed ${seed} has too many portals`);
   const portals = new Map(floor.portals.map((p) => [p.id, p]));
   for (const portal of floor.portals) {
     assert.equal(canOccupy(grid, portal.x, portal.y, 12), true, `seed ${seed} portal is blocked at ${JSON.stringify(portal)}`);
@@ -100,7 +102,9 @@ for (let seed = 1; seed <= 100; seed++) {
   //     slopes are crossable; plateau cliff faces are not, but their ramp keeps the top reachable —
   //     the procgen verify-and-rollback guarantees no plateau ever severs the floor. This is exactly
   //     the walkable graph the v2 step-up gate enforces, so if this holds the gate can never trap.
-  const hReach = heightFlood(grid.solid, g, grid.w, grid.h, startX, startY, WALKABLE_DELTA);
+  const hReach = floor.theme === "cyberpunk"
+    ? portalHeightFlood(grid.solid, g, grid.w, grid.h, startX, startY, WALKABLE_DELTA, floor.portals, grid.cell)
+    : heightFlood(grid.solid, g, grid.w, grid.h, startX, startY, WALKABLE_DELTA);
   for (let i = 0; i < grid.solid.length; i++) {
     if (grid.solid[i] === 0) assert.equal(hReach.has(i), true, `seed ${seed} tile unreachable across walkable slopes`);
   }
@@ -172,6 +176,92 @@ function flood(solid: Uint8Array, w: number, h: number, startX: number, startY: 
       if (solid[index] === 1 || seen.has(index)) continue;
       seen.add(index);
       queue.push({ x, y });
+    }
+  }
+  return seen;
+}
+
+function portalFlood(
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  startX: number,
+  startY: number,
+  portals: { id: string; pair: string; x: number; y: number }[],
+  cell: number,
+): Set<number> {
+  const seen = new Set<number>();
+  const byId = new Map(portals.map((p) => [p.id, p]));
+  const starts = [{ x: startX, y: startY }];
+  const queued = new Set([startY * w + startX]);
+  for (let head = 0; head < starts.length; head++) {
+    const start = starts[head]!;
+    const region = flood(solid, w, h, start.x, start.y);
+    let added = false;
+    for (const i of region) {
+      if (!seen.has(i)) {
+        seen.add(i);
+        added = true;
+      }
+    }
+    if (!added && head > 0) continue;
+    for (const portal of portals) {
+      const px = Math.floor(portal.x / cell);
+      const py = Math.floor(portal.y / cell);
+      if (!region.has(py * w + px)) continue;
+      const pair = byId.get(portal.pair);
+      if (!pair) continue;
+      const tx = Math.floor(pair.x / cell);
+      const ty = Math.floor(pair.y / cell);
+      const ti = ty * w + tx;
+      if (!queued.has(ti)) {
+        queued.add(ti);
+        starts.push({ x: tx, y: ty });
+      }
+    }
+  }
+  return seen;
+}
+
+function portalHeightFlood(
+  solid: Uint8Array,
+  ground: Int16Array,
+  w: number,
+  h: number,
+  startX: number,
+  startY: number,
+  cap: number,
+  portals: { id: string; pair: string; x: number; y: number }[],
+  cell: number,
+): Set<number> {
+  const seen = new Set<number>();
+  const byId = new Map(portals.map((p) => [p.id, p]));
+  const starts = [{ x: startX, y: startY }];
+  const queued = new Set([startY * w + startX]);
+  for (let head = 0; head < starts.length; head++) {
+    const start = starts[head]!;
+    const region = heightFlood(solid, ground, w, h, start.x, start.y, cap);
+    let added = false;
+    for (const i of region) {
+      if (!seen.has(i)) {
+        seen.add(i);
+        added = true;
+      }
+    }
+    if (!added && head > 0) continue;
+    for (const portal of portals) {
+      const px = Math.floor(portal.x / cell);
+      const py = Math.floor(portal.y / cell);
+      if (!region.has(py * w + px)) continue;
+      const pair = byId.get(portal.pair);
+      if (!pair) continue;
+      const tx = Math.floor(pair.x / cell);
+      const ty = Math.floor(pair.y / cell);
+      const ti = ty * w + tx;
+      if (!queued.has(ti)) {
+        queued.add(ti);
+        starts.push({ x: tx, y: ty });
+      }
     }
   }
   return seen;

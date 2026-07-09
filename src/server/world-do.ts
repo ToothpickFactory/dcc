@@ -65,7 +65,7 @@ import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, WeaponLoadoutDTO } from "../protocol";
 import { generateFloor, rng } from "../procgen";
 import { campfireSpots, canOccupy, randomWalkablePosition } from "../procgen/collision";
-import { TERRAIN_ZONE_IDS, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
+import { terrainZoneIdsForTheme, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
 import type { BossState, CompanionState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
@@ -239,7 +239,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private pickShopPosition(): void {
-    const pos = this.terrainZonePosition(["docks"], 60) ?? randomWalkablePosition(this.floor.collision, 60);
+    const preferredZones: TerrainZoneKind[] = this.floor.theme === "cyberpunk" ? ["neonMarket"] : ["docks"];
+    const pos = this.terrainZonePosition(preferredZones, 60) ?? randomWalkablePosition(this.floor.collision, 60);
     this.floorShopX = pos.x;
     this.floorShopY = pos.y;
   }
@@ -247,8 +248,9 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   private terrainZonePosition(zones: readonly TerrainZoneKind[], radius: number): { x: number; y: number } | undefined {
     const grid = this.floor.collision;
     const terrain = grid.terrain;
-    if (this.floor.theme !== "pirate" || !terrain) return undefined;
-    const ids = new Set(zones.map((zone) => TERRAIN_ZONE_IDS.indexOf(zone)).filter((id) => id >= 0));
+    if ((this.floor.theme !== "pirate" && this.floor.theme !== "cyberpunk") || !terrain) return undefined;
+    const zoneIds = terrainZoneIdsForTheme(this.floor.theme);
+    const ids = new Set(zones.map((zone) => zoneIds.indexOf(zone)).filter((id) => id >= 0));
     let best: { x: number; y: number } | undefined;
     let bestDist = Infinity;
     for (let cy = 0; cy < grid.h; cy++) {
@@ -2110,7 +2112,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         opaque: this.floor.collision.opaque ? encodeSolid(this.floor.collision.opaque) : undefined,
         ground: encodeGround(this.floor.collision.ground),
         terrain: this.floor.collision.terrain ? encodeSolid(this.floor.collision.terrain) : undefined,
-        terrainZones: this.floor.collision.terrain ? [...TERRAIN_ZONE_IDS] : undefined,
+        terrainZones: this.floor.collision.terrain ? [...terrainZoneIdsForTheme(this.floor.theme)] : undefined,
         entrance: this.floor.entrance,
         stairs: this.floor.stairs,
         shopPos: { x: this.floorShopX, y: this.floorShopY },
