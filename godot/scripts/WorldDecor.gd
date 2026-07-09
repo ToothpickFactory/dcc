@@ -24,6 +24,13 @@ const FLOOR_TILE_COUNT := 8
 const WALL_TILE_COUNT := 4
 const WALL_TOP_TILE_COUNT := 4
 const DUNGEON_TILE_SHEET := "dungeon-floor-wall-tiles.png"
+const PIRATE_ZONE_NAMES := ["ship", "docks", "beach", "cave"]
+const PIRATE_ZONE_SHEETS := {
+	"ship": "pirate-ship-seamless-tiles.png",
+	"docks": "pirate-docks-tiles.png",
+	"beach": "pirate-beach-tiles.png",
+	"cave": "pirate-cave-tiles.png",
+}
 const PROP_COUNT := 16        # render.ts: loadPropTextures -> 16 sliced cells
 const DECO_SIZE := 58.0       # render.ts setDecorations: 58 * decoration.scale
 const DECO_Y := 32.0          # raised from 24 so sprite bottom (32-29=3) clears the floor plane at Y=0
@@ -95,6 +102,7 @@ var _campfire_smoke: Array[Sprite3D] = []
 var _campfire_sparks: Array[Sprite3D] = []
 var _hazard_nodes: Array[Node3D] = []
 var _portal_nodes: Array[Node3D] = []
+var _terrain_nodes: Array[MeshInstance3D] = []
 var _flicker := 0.0
 static var _glow_tex: Texture2D
 static var _decal_tex: Texture2D
@@ -193,6 +201,7 @@ func apply(theme: String, decorations: Array, stairs: Dictionary, hazards: Array
 		world.set_wall_model_theme(theme)
 		var pal: Dictionary = THEME_PALETTE.get(theme, {"tint": Color.WHITE, "bg": Color(0.043, 0.055, 0.078)})
 		world.set_theme_palette(pal["tint"], pal["bg"])
+		_place_terrain_zones(theme)
 
 	# 2) Prop sheet (render.ts applyPropTheme / loadPropTextures).
 	var props := _load_props(theme)
@@ -286,6 +295,10 @@ func clear() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	_portal_nodes.clear()
+	for t in _terrain_nodes:
+		if is_instance_valid(t):
+			t.queue_free()
+	_terrain_nodes.clear()
 	if is_instance_valid(stairs_sprite):
 		stairs_sprite.queue_free()
 	stairs_sprite = null
@@ -1168,6 +1181,74 @@ func _hash01(x: int, y: int) -> float:
 	var v := float(int(sin(float(x) * 127.1 + float(y) * 311.7) * 43758.5453) % 10000) / 10000.0
 	return absf(v)
 
+func _place_terrain_zones(theme: String) -> void:
+	for t in _terrain_nodes:
+		if is_instance_valid(t):
+			t.queue_free()
+	_terrain_nodes.clear()
+	if theme != "pirate" or world == null or world.grid.is_empty():
+		return
+	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
+	if terrain.is_empty():
+		return
+	for zone_id in PIRATE_ZONE_NAMES.size():
+		var zone_name := str(PIRATE_ZONE_NAMES[zone_id])
+		var sheet := _load_sheet("%s/%s" % [tiles_dir, str(PIRATE_ZONE_SHEETS[zone_name])])
+		if sheet == null:
+			continue
+		var mesh := _terrain_zone_mesh(zone_id)
+		if mesh == null:
+			continue
+		var mat := StandardMaterial3D.new()
+		mat.albedo_texture = sheet
+		mat.albedo_color = Color.WHITE
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		var node := MeshInstance3D.new()
+		node.name = "PirateTerrain_%s" % zone_name
+		node.mesh = mesh
+		node.material_override = mat
+		add_child(node)
+		_terrain_nodes.append(node)
+
+func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
+	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
+	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	var w: int = world.grid["w"]
+	var h: int = world.grid["h"]
+	var cell: float = world.grid["cell"]
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for cy in h:
+		for cx in w:
+			var i := cy * w + cx
+			if solid[i] != 0 or terrain[i] != zone_id:
+				continue
+			var base := verts.size()
+			var x0 := float(cx) * cell
+			var x1 := x0 + cell
+			var z0 := float(cy) * cell
+			var z1 := z0 + cell
+			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z0) + 1.0, z0))
+			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z0) + 1.0, z0))
+			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z1) + 1.0, z1))
+			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z1) + 1.0, z1))
+			uvs.append(Vector2(float(cx) / 4.0, float(cy) / 4.0))
+			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy) / 4.0))
+			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy + 1) / 4.0))
+			uvs.append(Vector2(float(cx) / 4.0, float(cy + 1) / 4.0))
+			indices.append_array(PackedInt32Array([base, base + 2, base + 1, base, base + 3, base + 2]))
+	if indices.is_empty():
+		return null
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 ## Load (and cache) the floor + wall AtlasTextures for a theme.
 func _load_tiles(theme: String) -> Dictionary:

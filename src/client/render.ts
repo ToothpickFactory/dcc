@@ -3,7 +3,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { BOSS_BOLT_SPRITE, FIREBALL_PROJECTILE_SPRITE, ICE_PROJECTILE_SPRITE, POISON_PROJECTILE_SPRITE } from "../shared/constants";
 import { DEFAULT_ABILITIES } from "../shared/abilities";
 import type { EntityDTO, GameEvent, StatusEffect } from "../protocol";
-import type { CollisionGrid, FloorDescriptor } from "../procgen/types";
+import { TERRAIN_ZONE_IDS, type CollisionGrid, type FloorDescriptor, type TerrainZoneKind } from "../procgen/types";
 import { loadAtlasClip } from "./atlas";
 
 // Per-ability projectile colors (so a green heal bolt reads differently from a
@@ -47,6 +47,7 @@ const STATUS_EFFECT_PATHS: Record<StatusEffect, string> = {
   electric: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
   fire: "/assets/StatusEffects/Fire/Fire-spritesheet.png",
   frost: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
+  holy: "/assets/StatusEffects/Fire/Fire-spritesheet.png",
   poison: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
   shadow: "/assets/StatusEffects/Poison/Poison-spritesheet.png",
   stun: "/assets/StatusEffects/Frost/Frost-spritesheet.png",
@@ -55,10 +56,16 @@ const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
   cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
   forest: "/assets/Tiles/forest-tiles.png",
-  pirate: "/assets/Tiles/pirate-tiles.png",
+  pirate: "/assets/Tiles/pirate-ship-seamless-tiles.png",
   clockwork: "/assets/Tiles/clockwork-tiles.png",
   nightmare: "/assets/Tiles/nightmare-tiles.png",
   icedungeon: "/assets/Tiles/icedungeon-tiles.png",
+};
+const PIRATE_ZONE_SHEETS: Record<TerrainZoneKind, string> = {
+  ship: "/assets/Tiles/pirate-ship-seamless-tiles.png",
+  docks: "/assets/Tiles/pirate-docks-tiles.png",
+  beach: "/assets/Tiles/pirate-beach-tiles.png",
+  cave: "/assets/Tiles/pirate-cave-tiles.png",
 };
 const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Props/fantasy-props.png",
@@ -165,6 +172,7 @@ export class Renderer {
   private decorations: THREE.Sprite[] = [];
   private hazards: THREE.Object3D[] = [];
   private portals: THREE.Object3D[] = [];
+  private terrainMeshes: THREE.Mesh[] = [];
   private livePropIds = new Set<string>();
   private livePropKey = "";
   private propsSeen = false;
@@ -176,6 +184,7 @@ export class Renderer {
   private floorMaterial = new THREE.MeshBasicMaterial({ color: 0x161d2e });
   private wallMaterial = new THREE.MeshBasicMaterial({ color: 0x39445e });
   private tileMaterialCache = new Map<FloorDescriptor["theme"], { floor: THREE.Texture; wall: THREE.Texture }>();
+  private terrainTextureCache = new Map<TerrainZoneKind, THREE.Texture>();
   private tileThemeRequest = 0;
   private propSheetCache = new Map<FloorDescriptor["theme"], THREE.Texture[]>();
   private propThemeRequest = 0;
@@ -325,6 +334,19 @@ export class Renderer {
     return materials;
   }
 
+  private async loadTerrainTexture(zone: TerrainZoneKind): Promise<THREE.Texture> {
+    const cached = this.terrainTextureCache.get(zone);
+    if (cached) return cached;
+    const tex = await this.textureLoader.loadAsync(PIRATE_ZONE_SHEETS[zone]);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    this.terrainTextureCache.set(zone, tex);
+    return tex;
+  }
+
   private tileFromSheet(sheet: THREE.Texture, tileIndex: number): THREE.CanvasTexture {
     const image = sheet.image as CanvasImageSource & { width: number; height: number };
     const cols = 4;
@@ -409,6 +431,63 @@ export class Renderer {
     this.livePropKey = "";
     this.lastStaticVisCell = -1;
     this.lastStaticLivePropKey = "";
+  }
+
+  private clearTerrainMeshes(): void {
+    for (const mesh of this.terrainMeshes) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.terrainMeshes = [];
+  }
+
+  private async setTerrainZones(floor: FloorDescriptor): Promise<void> {
+    this.clearTerrainMeshes();
+    const terrain = floor.collision.terrain;
+    if (floor.theme !== "pirate" || !terrain) return;
+    for (let id = 0; id < TERRAIN_ZONE_IDS.length; id++) {
+      const zone = TERRAIN_ZONE_IDS[id]!;
+      const geometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id);
+      if (!geometry) continue;
+      const texture = await this.loadTerrainTexture(zone);
+      const mat = new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, depthWrite: true });
+      this.patchFog(mat, false);
+      const mesh = new THREE.Mesh(geometry, mat);
+      mesh.renderOrder = -1;
+      this.scene.add(mesh);
+      this.terrainMeshes.push(mesh);
+    }
+  }
+
+  private buildTerrainZoneGeometry(grid: CollisionGrid, terrain: Uint8Array, zoneId: number): THREE.BufferGeometry | null {
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+    const cell = grid.cell;
+    const y = 0.8;
+    for (let cy = 0; cy < grid.h; cy++) {
+      for (let cx = 0; cx < grid.w; cx++) {
+        const i = cy * grid.w + cx;
+        if (grid.solid[i] !== 0 || terrain[i] !== zoneId) continue;
+        const base = positions.length / 3;
+        const x0 = cx * cell;
+        const x1 = x0 + cell;
+        const z0 = cy * cell;
+        const z1 = z0 + cell;
+        positions.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
+        // Global atlas UVs: one atlas cell per world cell, wrapping every 4 cells.
+        uvs.push(cx / 4, cy / 4, (cx + 1) / 4, cy / 4, (cx + 1) / 4, (cy + 1) / 4, cx / 4, (cy + 1) / 4);
+        indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+      }
+    }
+    if (indices.length === 0) return null;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
   }
 
   private setHazards(floor: FloorDescriptor): void {
@@ -1315,6 +1394,7 @@ export class Renderer {
 
   setFloor(floor: FloorDescriptor, exitOpen = true): void {
     void this.applyTileTheme(floor.theme);
+    void this.setTerrainZones(floor);
     void this.applyPropTheme(floor, exitOpen);
     this.setHazards(floor);
     this.setPortals(floor);
@@ -1370,6 +1450,7 @@ export class Renderer {
     this.propThemeRequest++;
     this.removeStairs();
     this.clearDecorations();
+    this.clearTerrainMeshes();
     this.clearHazards();
     this.clearPortals();
   }

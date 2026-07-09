@@ -43,7 +43,7 @@ func _init() -> void:
 	add_child(_wall_models)
 
 func build(geometry: Dictionary) -> void:
-	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")))
+	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")), str(geometry.get("terrain", "")))
 	_build_ground()
 	_build_walls()
 

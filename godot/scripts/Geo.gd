@@ -7,17 +7,23 @@ class_name Geo
 ## Decode the base64 collision grid from `floor.geometry` (server world-do.ts encodeSolid).
 ## `ground_b64` (optional) is the heightfield 2.5D layer (encodeGround: Int16 LE, 2 bytes/cell);
 ## decoded into a PackedInt32Array of per-cell px heights (empty = flat, e.g. a v15 server).
-static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: String = "") -> Dictionary:
+static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: String = "", terrain_b64: String = "") -> Dictionary:
 	var grid := {"w": gw, "h": gh, "cell": cell, "solid": Marshalls.base64_to_raw(b64)}
 	var ground := PackedInt32Array()
+	var n := gw * gh
 	if ground_b64 != "":
 		var raw := Marshalls.base64_to_raw(ground_b64)
-		var n := gw * gh
 		if raw.size() >= n * 2:
 			ground.resize(n)
 			for i in n:
 				ground[i] = raw.decode_s16(i * 2) # little-endian signed 16-bit, mirrors encodeGround
+	var terrain := PackedByteArray()
+	if terrain_b64 != "":
+		var raw_terrain := Marshalls.base64_to_raw(terrain_b64)
+		if raw_terrain.size() >= n:
+			terrain = raw_terrain
 	grid["ground"] = ground
+	grid["terrain"] = terrain
 	return grid
 
 ## Nearest-cell ground height (px). INTEGER-indexed — bit-identical to TS heightAt() (collision.ts).

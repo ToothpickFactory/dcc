@@ -9,9 +9,9 @@
 // ===========================================================================
 import type { Ability, AbilityFlavor, CcKind, CompanionClass, DamageType, EnemyVisualKind, Klass, MonsterKind, PlayerClass, PlaystyleProfile, ProjectileRender, Theme } from "./shared/types";
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
-import type { HazardSpec, PortalSpec } from "./procgen/types";
+import type { HazardSpec, PortalSpec, TerrainZoneKind } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 26; // was 25 - FireElemental/IceGiant enemy visual kinds
+export const PROTOCOL_VERSION = 27; // was 26 - optional terrain zone mask for pirate sub-sheets
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -154,6 +154,8 @@ export interface FloorGeometry {
   cell: number; // cell size px
   solid: string; // base64 of the gw*gh Uint8Array, row-major y*gw+x (1 = wall)
   ground?: string; // base64 of the gw*gh Int16Array (2 bytes/cell, little-endian) — per-cell px height (heightfield 2.5D). Absent = flat.
+  terrain?: string; // base64 of gw*gh Uint8Array terrain ids; pirate: 0 ship, 1 docks, 2 beach, 3 cave
+  terrainZones?: TerrainZoneKind[]; // names for terrain ids in `terrain`
   entrance: { x: number; y: number };
   stairs: { x: number; y: number; r: number };
   shopPos: { x: number; y: number }; // world position of the floor shop prop

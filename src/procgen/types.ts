@@ -1,6 +1,9 @@
 import type { Theme, MonsterKind } from "../shared/types";
 
 export type HazardKind = "floor_spikes" | "lava_pit" | "acid_pit" | "wall_spikes" | "flame_turret" | "wall_crusher";
+export type TerrainZoneKind = "ship" | "docks" | "beach" | "cave";
+
+export const TERRAIN_ZONE_IDS = ["ship", "docks", "beach", "cave"] as const satisfies readonly TerrainZoneKind[];
 
 export interface HazardSpec {
   kind: HazardKind;
@@ -31,6 +34,7 @@ export interface CollisionGrid {
   cell: number; // cell size (px)
   solid: Uint8Array; // 1 = blocked
   ground: Int16Array; // per-cell ground HEIGHT in px (same fine-grid layout as solid; cy*w+cx). 0 = flat.
+  terrain?: Uint8Array; // optional per-cell terrain zone id; pirate uses 0=ship,1=docks,2=beach,3=cave
   // NOTE: `h` above is row-count, not elevation. Adjacent open cells differ by <= WALKABLE_DELTA
   // (guaranteed by procgen relaxation) so the v2 step-up gate can trust it. Heightfield 2.5D.
 }

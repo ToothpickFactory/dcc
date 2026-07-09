@@ -143,7 +143,7 @@ function coerceItem<T>(it: T): T {
     if (o.attrs && typeof o.attrs === "object") o.attrs = migrateAttrKeys(o.attrs as Record<string, unknown>);
   }
   if (it && typeof it === "object" && (it as { slot?: unknown }).slot === "weapon") {
-    const o = it as Item;
+    const o = it as unknown as Item;
     o.weaponType = normalizeWeaponType((o as { weaponType?: unknown }).weaponType) ?? inferWeaponType(o) ?? "sword";
     o.weaponRarity = normalizeWeaponVisualRarity((o as { weaponRarity?: unknown }).weaponRarity) ?? weaponVisualRarity(o.rarity);
   }

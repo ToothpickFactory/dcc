@@ -65,7 +65,7 @@ import { PROTOCOL_VERSION } from "../protocol";
 import type { ClientMsg, EntityDTO, GameEvent, RunPhase, SelfDTO, ServerMsg, WeaponLoadoutDTO } from "../protocol";
 import { generateFloor, rng } from "../procgen";
 import { campfireSpots, canOccupy, randomWalkablePosition } from "../procgen/collision";
-import type { FloorDescriptor } from "../procgen/types";
+import { TERRAIN_ZONE_IDS, type FloorDescriptor } from "../procgen/types";
 import type { BossState, CompanionState, LootBagState, MonsterState, PendingSwing, PlayerState, ProjectileState, PropState, WorldCtx } from "./state";
 import type { PlaystyleEvent } from "./events";
 import { stepPlayer } from "./sim/movement";
@@ -2080,6 +2080,8 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         cell: this.floor.collision.cell,
         solid: encodeSolid(this.floor.collision.solid),
         ground: encodeGround(this.floor.collision.ground),
+        terrain: this.floor.collision.terrain ? encodeSolid(this.floor.collision.terrain) : undefined,
+        terrainZones: this.floor.collision.terrain ? [...TERRAIN_ZONE_IDS] : undefined,
         entrance: this.floor.entrance,
         stairs: this.floor.stairs,
         shopPos: { x: this.floorShopX, y: this.floorShopY },

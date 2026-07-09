@@ -38,6 +38,32 @@ import { generateFloor } from "./index.ts";
   assert.ok(areaRatio > 0.22 && areaRatio < 0.28, `PvP area ratio ${areaRatio} should be about 25%`);
 }
 
+{
+  let pirate = null as ReturnType<typeof generateFloor> | null;
+  for (let seed = 1; seed <= 24 && pirate === null; seed++) {
+    for (let depth = 1; depth <= 7; depth++) {
+      const floor = generateFloor(seed, depth);
+      if (floor.theme === "pirate") {
+        pirate = floor;
+        break;
+      }
+    }
+  }
+  assert.ok(pirate, "expected to find a pirate floor in one theme cycle");
+  const thirds = [0, 0, 0];
+  for (let y = 0; y < pirate.collision.h; y++) {
+    for (let x = 0; x < pirate.collision.w; x++) {
+      if (pirate.collision.solid[y * pirate.collision.w + x] !== 0) continue;
+      thirds[Math.min(2, Math.floor((x / pirate.collision.w) * 3))]++;
+    }
+  }
+  assert.ok(thirds.every((n) => n > 80), `pirate floor should span ship/docks/cave thirds, got ${thirds.join(",")}`);
+  assert.ok(pirate.decorations.length >= 20, "pirate floor should have enough set dressing");
+  assert.ok(pirate.collision.terrain, "pirate floor should include terrain zone ids");
+  const zones = new Set(pirate.collision.terrain);
+  for (const id of [0, 1, 2, 3]) assert.ok(zones.has(id), `pirate terrain should include zone id ${id}`);
+}
+
 for (let seed = 1; seed <= 100; seed++) {
   const floor = generateFloor(seed, 1 + (seed % 20));
   const grid = floor.collision;
@@ -51,15 +77,15 @@ for (let seed = 1; seed <= 100; seed++) {
     if (grid.solid[i] === 0) assert.equal(reachable.has(i), true, `seed ${seed} has a disconnected tile`);
   }
   assert.equal(reachable.has(stairsY * grid.w + stairsX), true, `seed ${seed} stairs are unreachable`);
-  assert.equal(canOccupy(grid, floor.entrance.x, floor.entrance.y, PLAYER_RADIUS), true);
-  assert.equal(canOccupy(grid, floor.stairs.x, floor.stairs.y, PLAYER_RADIUS), true);
-  for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true);
-  for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true);
-  for (const hazard of floor.hazards) assert.equal(canOccupy(grid, hazard.x, hazard.y, 12), true);
+  assert.equal(canOccupy(grid, floor.entrance.x, floor.entrance.y, PLAYER_RADIUS), true, `seed ${seed} entrance is blocked`);
+  assert.equal(canOccupy(grid, floor.stairs.x, floor.stairs.y, PLAYER_RADIUS), true, `seed ${seed} stairs are blocked`);
+  for (const spawn of floor.spawns) assert.equal(canOccupy(grid, spawn.x, spawn.y, 28), true, `seed ${seed} spawn is blocked at ${JSON.stringify(spawn)}`);
+  for (const decoration of floor.decorations) assert.equal(canOccupy(grid, decoration.x, decoration.y, 12), true, `seed ${seed} decoration is blocked at ${JSON.stringify(decoration)}`);
+  for (const hazard of floor.hazards) assert.equal(canOccupy(grid, hazard.x, hazard.y, 12), true, `seed ${seed} hazard is blocked at ${JSON.stringify(hazard)}`);
   assert.ok(floor.portals.length <= 4, `seed ${seed} has too many portals`);
   const portals = new Map(floor.portals.map((p) => [p.id, p]));
   for (const portal of floor.portals) {
-    assert.equal(canOccupy(grid, portal.x, portal.y, 12), true);
+    assert.equal(canOccupy(grid, portal.x, portal.y, 12), true, `seed ${seed} portal is blocked at ${JSON.stringify(portal)}`);
     const pair = portals.get(portal.pair);
     assert.ok(pair, `seed ${seed} portal ${portal.id} has no pair`);
     assert.equal(pair?.pair, portal.id, `seed ${seed} portal ${portal.id} pair is not reciprocal`);

@@ -10,6 +10,16 @@ const BASE_GRID = 38; // floor-1 grid size (cells)
 const GROW_PER_DEPTH = 6; // levels grow with depth (huge later floors)
 const MAX_GRID = 96; // cap so generation/render stays cheap (~7700px across)
 
+function themeForFloor(seed: number, depth: number): Theme {
+  const themeRng = rng(seed * 0xdead);
+  const themeOrder = [...THEMES];
+  for (let i = themeOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(themeRng() * (i + 1));
+    [themeOrder[i], themeOrder[j]] = [themeOrder[j]!, themeOrder[i]!];
+  }
+  return themeOrder[(depth - 1) % themeOrder.length]!;
+}
+
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -34,16 +44,25 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   const gw = size;
   const gh = size;
   const solid = new Uint8Array(gw * gh).fill(1);
+  const theme = themeForFloor(seed, depth);
+  const terrain = theme === "pirate" && !opts.pvp ? new Uint8Array(gw * gh) : undefined;
 
   // Per-floor character: 0.2 = tight maze, 0.95 = wide open with big rooms.
   const openness = 0.2 + random() * 0.75;
 
   // ~40% of floors are organic CAVES (cellular-automata caverns) instead of a rectilinear maze —
   // curvy, natural rock so descending doesn't read as the same grid every time.
-  const isCave = random() < 0.4;
+  let isCave = random() < 0.4;
   let start: { x: number; y: number };
   let roomCenters: { x: number; y: number }[];
-  if (isCave) {
+  let prefabAnchors: PrefabAnchor[] = [];
+  if (theme === "pirate" && !opts.pvp) {
+    const pirate = carvePirateStage(solid, terrain!, gw, gh, random, depth);
+    start = pirate.start;
+    roomCenters = pirate.roomCenters;
+    prefabAnchors = pirate.anchors;
+    isCave = false;
+  } else if (isCave) {
     start = carveCave(solid, gw, gh, random);
     roomCenters = sampleOpenCenters(solid, gw, gh, random, depth, start);
   } else {
@@ -56,7 +75,9 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
 
   // Stamp hand-authored set-piece rooms (the "designed, not generated" feel) — they read as ruins
   // inside a cavern too — then repair connectivity so any sealed-off region gets a doorway.
-  const prefabAnchors = placePrefabs(solid, gw, gh, random, depth, start);
+  if (theme !== "pirate" || opts.pvp) {
+    prefabAnchors = placePrefabs(solid, gw, gh, random, depth, start);
+  }
 
   carveRect(solid, gw, gh, start.x, start.y, 2, 2); // entrance room
   reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
@@ -74,6 +95,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     cell,
     solid: scaleGrid(solid, gw, gh, SCALE),
     ground: new Int16Array(gw * SCALE * gh * SCALE), // 0 = flat; buildHeightField fills it below
+    terrain: terrain ? scaleGrid(terrain, gw, gh, SCALE) : undefined,
   };
   const sc = <T extends { x: number; y: number }>(p: T): T => ({ ...p, x: p.x * SCALE, y: p.y * SCALE });
 
@@ -112,15 +134,6 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   }));
   const decorations = [...prefabDecor, ...scatterDecor];
 
-  // Shuffle THEMES once per run (seed-stable), then index by depth so every
-  // theme appears exactly once per 7-floor cycle regardless of RNG variance.
-  const themeRng = rng(seed * 0xdead);
-  const themeOrder = [...THEMES];
-  for (let i = themeOrder.length - 1; i > 0; i--) {
-    const j = Math.floor(themeRng() * (i + 1));
-    [themeOrder[i], themeOrder[j]] = [themeOrder[j], themeOrder[i]];
-  }
-  const theme = themeOrder[(depth - 1) % themeOrder.length]!;
   const hazards = generateHazards(solid, gw, gh, cell, random, depth, openness, start, farthest, bossCell).map(scHazard);
   const portals = generatePortals(solid, gw, gh, cell, random, depth, start, farthest, bossCell).map(scPortal);
 
@@ -160,6 +173,259 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     hazards,
     portals,
   };
+}
+
+function carvePirateStage(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  gw: number,
+  gh: number,
+  random: () => number,
+  depth: number,
+): { start: { x: number; y: number }; roomCenters: { x: number; y: number }[]; anchors: PrefabAnchor[] } {
+  const ship = {
+    x: clampInt(7 + Math.floor(random() * 3), 4, gw - 12),
+    y: clampInt(Math.floor(gh * (0.35 + random() * 0.18)), 8, gh - 9),
+    rx: clampInt(Math.floor(gw * 0.16), 7, 15),
+    ry: clampInt(Math.floor(gh * 0.13), 5, 8),
+  };
+  const island = {
+    x: clampInt(Math.floor(gw * (0.48 + (random() - 0.5) * 0.12)), 14, gw - 15),
+    y: clampInt(Math.floor(gh * (0.48 + (random() - 0.5) * 0.16)), 12, gh - 13),
+    rx: clampInt(Math.floor(gw * 0.16), 7, 14),
+    ry: clampInt(Math.floor(gh * 0.16), 6, 13),
+  };
+  const cave = {
+    x: clampInt(Math.floor(gw * (0.76 + random() * 0.08)), 20, gw - 9),
+    y: clampInt(Math.floor(gh * (0.50 + (random() - 0.5) * 0.22)), 10, gh - 11),
+    rx: clampInt(Math.floor(gw * 0.13), 6, 12),
+    ry: clampInt(Math.floor(gh * 0.17), 7, 14),
+  };
+
+  const anchors: PrefabAnchor[] = [];
+  carveShipDeck(solid, terrain, gw, gh, ship.x, ship.y, ship.rx, ship.ry);
+  addShipObstacles(solid, gw, gh, ship.x, ship.y, ship.rx, ship.ry, random);
+  anchors.push(
+    { x: ship.x - Math.floor(ship.rx * 0.45), y: ship.y - Math.floor(ship.ry * 0.45), landmark: false },
+    { x: ship.x + Math.floor(ship.rx * 0.20), y: ship.y + Math.floor(ship.ry * 0.35), landmark: true },
+  );
+
+  carveIrregularBlob(solid, terrain, 2, gw, gh, island.x, island.y, island.rx, island.ry, random, 0.28);
+  addIslandInsets(solid, gw, gh, island.x, island.y, island.rx, island.ry, random);
+  anchors.push(
+    { x: island.x - Math.floor(island.rx * 0.35), y: island.y, landmark: false },
+    { x: island.x + Math.floor(island.rx * 0.25), y: island.y - Math.floor(island.ry * 0.35), landmark: false },
+    { x: island.x, y: island.y + Math.floor(island.ry * 0.35), landmark: true },
+  );
+
+  carvePirateCave(solid, terrain, gw, gh, cave.x, cave.y, cave.rx, cave.ry, random, depth);
+  anchors.push(
+    { x: cave.x - Math.floor(cave.rx * 0.35), y: cave.y - Math.floor(cave.ry * 0.15), landmark: false },
+    { x: cave.x + Math.floor(cave.rx * 0.35), y: cave.y + Math.floor(cave.ry * 0.15), landmark: true },
+  );
+
+  const shipExit = { x: ship.x + ship.rx - 1, y: ship.y };
+  const dockJoin = { x: island.x - island.rx - 1, y: island.y };
+  carvePier(solid, terrain, 1, gw, gh, shipExit, { x: dockJoin.x, y: ship.y }, 1);
+  carvePier(solid, terrain, 1, gw, gh, { x: dockJoin.x, y: ship.y }, dockJoin, 1);
+  carvePier(solid, terrain, 1, gw, gh, { x: island.x + island.rx - 1, y: island.y }, { x: cave.x - cave.rx, y: cave.y }, 2);
+
+  // Side piers read as docks instead of one simple corridor, and also create alternate loops.
+  const upperPierY = clampInt(ship.y - ship.ry - 4, 3, gh - 4);
+  const lowerPierY = clampInt(ship.y + ship.ry + 4, 3, gh - 4);
+  carvePier(solid, terrain, 1, gw, gh, { x: ship.x + Math.floor(ship.rx * 0.25), y: ship.y - ship.ry + 1 }, { x: island.x - 2, y: upperPierY }, 1);
+  carvePier(solid, terrain, 1, gw, gh, { x: island.x - 2, y: upperPierY }, { x: island.x + Math.floor(island.rx * 0.25), y: island.y - island.ry + 1 }, 1);
+  if (random() < 0.75) {
+    carvePier(solid, terrain, 1, gw, gh, { x: ship.x + Math.floor(ship.rx * 0.35), y: ship.y + ship.ry - 1 }, { x: island.x + 2, y: lowerPierY }, 1);
+    carvePier(solid, terrain, 1, gw, gh, { x: island.x + 2, y: lowerPierY }, { x: island.x - Math.floor(island.rx * 0.20), y: island.y + island.ry - 1 }, 1);
+  }
+
+  const start = { x: ship.x - Math.floor(ship.rx * 0.45), y: ship.y };
+  const roomCenters = [
+    { x: ship.x, y: ship.y },
+    { x: island.x, y: island.y },
+    { x: island.x + Math.floor(island.rx * 0.45), y: island.y - Math.floor(island.ry * 0.2) },
+    { x: cave.x, y: cave.y },
+    { x: cave.x + Math.floor(cave.rx * 0.55), y: cave.y + Math.floor(cave.ry * 0.25) },
+  ];
+  for (const a of anchors) carveRectWithTerrain(solid, terrain, terrain[a.y * gw + a.x] ?? 0, gw, gh, a.x, a.y, a.landmark ? 2 : 1, a.landmark ? 2 : 1);
+  return { start, roomCenters, anchors };
+}
+
+function carveShipDeck(solid: Uint8Array, terrain: Uint8Array, w: number, h: number, cx: number, cy: number, rx: number, ry: number): void {
+  for (let y = cy - ry; y <= cy + ry; y++) {
+    for (let x = cx - rx; x <= cx + rx; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      const dy = Math.abs(y - cy);
+      const taper = Math.max(0, dy - Math.floor(ry * 0.45));
+      const localRx = rx - taper * 2;
+      if (Math.abs(x - cx) <= localRx) openTerrain(solid, terrain, w, x, y, 0);
+    }
+  }
+}
+
+function addShipObstacles(
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  random: () => number,
+): void {
+  // Masts, cargo stacks, and rail breaks give the deck recognizable ship clutter
+  // without sealing it into tiny one-tile paths.
+  for (const mastX of [cx - Math.floor(rx * 0.35), cx + Math.floor(rx * 0.25)]) {
+    carveSolidRect(solid, w, h, mastX, cy, 1, 1);
+  }
+  const cargo = 3 + Math.floor(random() * 3);
+  for (let i = 0; i < cargo; i++) {
+    const x = clampInt(cx - rx + 3 + Math.floor(random() * Math.max(1, rx * 2 - 6)), 2, w - 3);
+    const y = clampInt(cy - ry + 2 + Math.floor(random() * Math.max(1, ry * 2 - 4)), 2, h - 3);
+    if (Math.abs(x - cx) < 3 && Math.abs(y - cy) < 3) continue;
+    carveSolidRect(solid, w, h, x, y, random() < 0.5 ? 1 : 0, 0);
+  }
+}
+
+function carveIrregularBlob(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  zone: number,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  random: () => number,
+  roughness: number,
+): void {
+  const wobble = Math.floor(random() * 0x100000000) >>> 0;
+  for (let y = cy - ry - 2; y <= cy + ry + 2; y++) {
+    for (let x = cx - rx - 2; x <= cx + rx + 2; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      const nx = (x - cx) / Math.max(1, rx);
+      const ny = (y - cy) / Math.max(1, ry);
+      const n = valueNoise(wobble, x, y, 7);
+      if (nx * nx + ny * ny <= 1 + (n - 0.5) * roughness) openTerrain(solid, terrain, w, x, y, zone);
+    }
+  }
+}
+
+function addIslandInsets(
+  solid: Uint8Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  random: () => number,
+): void {
+  const cuts = 2 + Math.floor(random() * 3);
+  for (let i = 0; i < cuts; i++) {
+    const side = Math.floor(random() * 4);
+    const x = side === 0 ? cx - rx : side === 2 ? cx + rx : cx + Math.floor((random() * 2 - 1) * rx);
+    const y = side === 1 ? cy - ry : side === 3 ? cy + ry : cy + Math.floor((random() * 2 - 1) * ry);
+    carveSolidEllipse(solid, w, h, x, y, 2 + Math.floor(random() * 3), 2 + Math.floor(random() * 3));
+  }
+}
+
+function carvePirateCave(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  random: () => number,
+  depth: number,
+): void {
+  carveIrregularBlob(solid, terrain, 3, w, h, cx, cy, rx, ry, random, 0.45);
+  const pockets = 3 + Math.min(5, Math.floor(depth / 2));
+  let px = cx;
+  let py = cy;
+  for (let i = 0; i < pockets; i++) {
+    px = clampInt(px + Math.floor((random() * 2 - 1) * rx), 4, w - 5);
+    py = clampInt(py + Math.floor((random() * 2 - 1) * ry), 4, h - 5);
+    const prx = 3 + Math.floor(random() * Math.max(3, rx * 0.55));
+    const pry = 3 + Math.floor(random() * Math.max(3, ry * 0.55));
+    carveIrregularBlob(solid, terrain, 3, w, h, px, py, prx, pry, random, 0.5);
+    carvePier(solid, terrain, 3, w, h, { x: cx, y: cy }, { x: px, y: py }, 1);
+  }
+}
+
+function carvePier(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  zone: number,
+  w: number,
+  h: number,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  halfWidth: number,
+): void {
+  const bend = { x: to.x, y: from.y };
+  carveSegment(solid, terrain, zone, w, h, from, bend, halfWidth);
+  carveSegment(solid, terrain, zone, w, h, bend, to, halfWidth);
+}
+
+function carveSegment(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  zone: number,
+  w: number,
+  h: number,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  halfWidth: number,
+): void {
+  const dx = Math.sign(to.x - from.x);
+  const dy = Math.sign(to.y - from.y);
+  let x = from.x;
+  let y = from.y;
+  for (let guard = 0; guard < w + h; guard++) {
+    carveRectWithTerrain(solid, terrain, zone, w, h, x, y, halfWidth, halfWidth);
+    if (x === to.x && y === to.y) break;
+    if (x !== to.x) x += dx;
+    else if (y !== to.y) y += dy;
+  }
+}
+
+function openTerrain(solid: Uint8Array, terrain: Uint8Array, w: number, x: number, y: number, zone: number): void {
+  const i = y * w + x;
+  solid[i] = 0;
+  terrain[i] = zone;
+}
+
+function carveRectWithTerrain(solid: Uint8Array, terrain: Uint8Array, zone: number, w: number, h: number, cx: number, cy: number, rw: number, rh: number): void {
+  for (let y = Math.max(1, cy - rh); y <= Math.min(h - 2, cy + rh); y++) {
+    for (let x = Math.max(1, cx - rw); x <= Math.min(w - 2, cx + rw); x++) {
+      openTerrain(solid, terrain, w, x, y, zone);
+    }
+  }
+}
+
+function carveSolidRect(solid: Uint8Array, w: number, h: number, cx: number, cy: number, rw: number, rh: number): void {
+  for (let y = Math.max(1, cy - rh); y <= Math.min(h - 2, cy + rh); y++) {
+    for (let x = Math.max(1, cx - rw); x <= Math.min(w - 2, cx + rw); x++) {
+      solid[y * w + x] = 1;
+    }
+  }
+}
+
+function carveSolidEllipse(solid: Uint8Array, w: number, h: number, cx: number, cy: number, rx: number, ry: number): void {
+  for (let y = cy - ry; y <= cy + ry; y++) {
+    for (let x = cx - rx; x <= cx + rx; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      const nx = (x - cx) / Math.max(1, rx);
+      const ny = (y - cy) / Math.max(1, ry);
+      if (nx * nx + ny * ny <= 1) solid[y * w + x] = 1;
+    }
+  }
 }
 
 function generatePortals(
@@ -1141,6 +1407,10 @@ function openCells(solid: Uint8Array, w: number, h: number): { x: number; y: num
 function nearestOdd(value: number, limit: number): number {
   const odd = value % 2 === 1 ? value : value - 1;
   return Math.max(1, Math.min(limit - 2, odd));
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value | 0));
 }
 
 function cellCenter(x: number, y: number, cell: number): { x: number; y: number } {
