@@ -1205,7 +1205,7 @@ func _place_terrain_zones(theme: String) -> void:
 		mat.albedo_color = Color.WHITE
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		mat.texture_repeat = BaseMaterial3D.TEXTURE_REPEAT_ENABLED
+		mat.texture_repeat = true
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		var node := MeshInstance3D.new()
 		node.name = "PirateTerrain_%s" % zone_name
