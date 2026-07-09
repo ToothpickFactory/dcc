@@ -23,6 +23,7 @@ const WALL_TOP_TILE_INDEX := 12   # row 3: wall top tiles
 const FLOOR_TILE_COUNT := 8
 const WALL_TILE_COUNT := 4
 const WALL_TOP_TILE_COUNT := 4
+const TERRAIN_OVERLAY_Y := 4.0
 const DUNGEON_TILE_SHEET := "dungeon-floor-wall-tiles.png"
 const PIRATE_ZONE_NAMES := ["ship", "docks", "beach", "cave"]
 const PIRATE_ZONE_SHEETS := {
@@ -1204,10 +1205,13 @@ func _place_terrain_zones(theme: String) -> void:
 		mat.albedo_color = Color.WHITE
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		mat.texture_repeat = BaseMaterial3D.TEXTURE_REPEAT_ENABLED
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		var node := MeshInstance3D.new()
 		node.name = "PirateTerrain_%s" % zone_name
 		node.mesh = mesh
 		node.material_override = mat
+		node.render_priority = 1
 		add_child(node)
 		_terrain_nodes.append(node)
 
@@ -1230,10 +1234,10 @@ func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
 			var x1 := x0 + cell
 			var z0 := float(cy) * cell
 			var z1 := z0 + cell
-			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z0) + 1.0, z0))
-			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z0) + 1.0, z0))
-			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z1) + 1.0, z1))
-			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z1) + 1.0, z1))
+			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z0) + TERRAIN_OVERLAY_Y, z0))
+			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z0) + TERRAIN_OVERLAY_Y, z0))
+			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z1) + TERRAIN_OVERLAY_Y, z1))
+			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z1) + TERRAIN_OVERLAY_Y, z1))
 			uvs.append(Vector2(float(cx) / 4.0, float(cy) / 4.0))
 			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy) / 4.0))
 			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy + 1) / 4.0))
