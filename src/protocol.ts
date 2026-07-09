@@ -11,7 +11,7 @@ import type { Ability, AbilityFlavor, CcKind, CompanionClass, DamageType, EnemyV
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec, TerrainZoneKind } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 27; // was 26 - optional terrain zone mask for pirate sub-sheets
+export const PROTOCOL_VERSION = 28; // was 27 - optional opaque mask for see-through blocked cells
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -152,7 +152,8 @@ export interface FloorGeometry {
   gw: number; // grid width in cells
   gh: number; // grid height in cells
   cell: number; // cell size px
-  solid: string; // base64 of the gw*gh Uint8Array, row-major y*gw+x (1 = wall)
+  solid: string; // base64 of the gw*gh Uint8Array, row-major y*gw+x (1 = blocked)
+  opaque?: string; // base64 of gw*gh Uint8Array, 1 = blocks line-of-sight / draws a wall; absent = solid
   ground?: string; // base64 of the gw*gh Int16Array (2 bytes/cell, little-endian) — per-cell px height (heightfield 2.5D). Absent = flat.
   terrain?: string; // base64 of gw*gh Uint8Array terrain ids; pirate: 0 ship, 1 docks, 2 beach, 3 cave
   terrainZones?: TerrainZoneKind[]; // names for terrain ids in `terrain`

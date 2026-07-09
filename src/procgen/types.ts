@@ -33,6 +33,7 @@ export interface CollisionGrid {
   h: number; // grid height (cells)
   cell: number; // cell size (px)
   solid: Uint8Array; // 1 = blocked
+  opaque?: Uint8Array; // optional LoS / rendered-wall mask; absent means `solid`
   ground: Int16Array; // per-cell ground HEIGHT in px (same fine-grid layout as solid; cy*w+cx). 0 = flat.
   terrain?: Uint8Array; // optional per-cell terrain zone id; pirate uses 0=ship,1=docks,2=beach,3=cave
   // NOTE: `h` above is row-count, not elevation. Adjacent open cells differ by <= WALKABLE_DELTA

@@ -128,6 +128,7 @@ function dot(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): vo
 // local so the minimap stands alone. True if no solid cell lies between the two
 // points (the target's own cell never self-blocks).
 function lineOfSight(grid: CollisionGrid, ax: number, ay: number, bx: number, by: number): boolean {
+  const opaque = grid.opaque ?? grid.solid;
   const cell = grid.cell;
   let cx = Math.floor(ax / cell);
   let cy = Math.floor(ay / cell);
@@ -154,7 +155,7 @@ function lineOfSight(grid: CollisionGrid, ax: number, ay: number, bx: number, by
     }
     if (cx < 0 || cy < 0 || cx >= grid.w || cy >= grid.h) return true;
     if (cx === ecx && cy === ecy) return true;
-    if (grid.solid[cy * grid.w + cx] === 1) return false;
+    if (opaque[cy * grid.w + cx] === 1) return false;
   }
   return true;
 }

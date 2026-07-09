@@ -24,13 +24,15 @@ const FLOOR_TILE_COUNT := 8
 const WALL_TILE_COUNT := 4
 const WALL_TOP_TILE_COUNT := 4
 const TERRAIN_OVERLAY_Y := 4.0
+const PIRATE_SHEET_COLS := 5
+const PIRATE_SHEET_ROWS := 4
 const DUNGEON_TILE_SHEET := "dungeon-floor-wall-tiles.png"
 const PIRATE_ZONE_NAMES := ["ship", "docks", "beach", "cave"]
 const PIRATE_ZONE_SHEETS := {
-	"ship": "pirate-ship-seamless-tiles.png",
-	"docks": "pirate-docks-tiles.png",
-	"beach": "pirate-beach-tiles.png",
-	"cave": "pirate-cave-tiles.png",
+	"ship": "ship.png",
+	"docks": "dock.png",
+	"beach": "beach.png",
+	"cave": "cave.png",
 }
 const PROP_COUNT := 16        # render.ts: loadPropTextures -> 16 sliced cells
 const DECO_SIZE := 58.0       # render.ts setDecorations: 58 * decoration.scale
@@ -1214,10 +1216,25 @@ func _place_terrain_zones(theme: String) -> void:
 		node.render_priority = 1
 		add_child(node)
 		_terrain_nodes.append(node)
+		if zone_name == "cave":
+			var void_mesh := _terrain_zone_mesh(zone_id, true)
+			if void_mesh != null:
+				var void_mat := StandardMaterial3D.new()
+				void_mat.albedo_color = Color.BLACK
+				void_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				void_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				var void_node := MeshInstance3D.new()
+				void_node.name = "PirateTerrain_cave_void"
+				void_node.mesh = void_mesh
+				void_node.material_override = void_mat
+				void_node.render_priority = 1
+				add_child(void_node)
+				_terrain_nodes.append(void_node)
 
-func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
+func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
 	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	var opaque: PackedByteArray = world.grid.get("opaque", solid)
 	var w: int = world.grid["w"]
 	var h: int = world.grid["h"]
 	var cell: float = world.grid["cell"]
@@ -1227,7 +1244,12 @@ func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
 	for cy in h:
 		for cx in w:
 			var i := cy * w + cx
-			if solid[i] != 0 or terrain[i] != zone_id:
+			if terrain[i] != zone_id:
+				continue
+			var is_void := zone_id == 3 and solid[i] == 1 and opaque[i] == 0
+			if void_only != is_void:
+				continue
+			if not is_void and solid[i] != 0:
 				continue
 			var base := verts.size()
 			var x0 := float(cx) * cell
@@ -1238,10 +1260,17 @@ func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
 			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z0) + TERRAIN_OVERLAY_Y, z0))
 			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z1) + TERRAIN_OVERLAY_Y, z1))
 			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z1) + TERRAIN_OVERLAY_Y, z1))
-			uvs.append(Vector2(float(cx) / 4.0, float(cy) / 4.0))
-			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy) / 4.0))
-			uvs.append(Vector2(float(cx + 1) / 4.0, float(cy + 1) / 4.0))
-			uvs.append(Vector2(float(cx) / 4.0, float(cy + 1) / 4.0))
+			var tile := _pirate_tile_index(zone_id, cx, cy)
+			var col := tile % PIRATE_SHEET_COLS
+			var row := tile / PIRATE_SHEET_COLS
+			var u0 := float(col) / float(PIRATE_SHEET_COLS)
+			var v0 := float(row) / float(PIRATE_SHEET_ROWS)
+			var u1 := float(col + 1) / float(PIRATE_SHEET_COLS)
+			var v1 := float(row + 1) / float(PIRATE_SHEET_ROWS)
+			uvs.append(Vector2(u0, v0))
+			uvs.append(Vector2(u1, v0))
+			uvs.append(Vector2(u1, v1))
+			uvs.append(Vector2(u0, v1))
 			indices.append_array(PackedInt32Array([base, base + 2, base + 1, base, base + 3, base + 2]))
 	if indices.is_empty():
 		return null
@@ -1254,6 +1283,30 @@ func _terrain_zone_mesh(zone_id: int) -> ArrayMesh:
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
+func _pirate_tile_index(zone_id: int, cx: int, cy: int) -> int:
+	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	var opaque: PackedByteArray = world.grid.get("opaque", solid)
+	var w: int = world.grid["w"]
+	var h: int = world.grid["h"]
+	var i := cy * w + cx
+	if solid[i] == 1 and opaque[i] == 0:
+		return 12 if zone_id == 3 else 2
+	var top := _pirate_blocked(cx, cy - 1)
+	var bottom := _pirate_blocked(cx, cy + 1)
+	var left := _pirate_blocked(cx - 1, cy)
+	var right := _pirate_blocked(cx + 1, cy)
+	var col := 0 if left else (4 if right else 1 + ((cx + cy) % 3))
+	var row := 1 if top else (3 if bottom else 2)
+	return row * PIRATE_SHEET_COLS + col
+
+func _pirate_blocked(cx: int, cy: int) -> bool:
+	var w: int = world.grid["w"]
+	var h: int = world.grid["h"]
+	if cx < 0 or cy < 0 or cx >= w or cy >= h:
+		return true
+	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	return solid[cy * w + cx] == 1
+
 ## Load (and cache) the floor + wall AtlasTextures for a theme.
 func _load_tiles(theme: String) -> Dictionary:
 	if _tile_cache.has(theme):
@@ -1261,14 +1314,18 @@ func _load_tiles(theme: String) -> Dictionary:
 	var sheet := _load_sheet(_tile_sheet_path(theme))
 	var result := {"floor": null, "wall": null}
 	if sheet != null:
-		result["floor"] = _tile_sheet_texture(sheet, 0, FLOOR_TILE_COUNT)
-		result["wall"] = _tile_sheet_texture(sheet, WALL_TILE_INDEX, WALL_TILE_COUNT, WALL_TOP_TILE_INDEX, WALL_TOP_TILE_COUNT)
+		if theme == "pirate":
+			result["floor"] = _tile_texture_from_sheet(sheet, 12, PIRATE_SHEET_COLS, PIRATE_SHEET_ROWS)
+			result["wall"] = _tile_texture_from_sheet(sheet, 2, PIRATE_SHEET_COLS, PIRATE_SHEET_ROWS)
+		else:
+			result["floor"] = _tile_sheet_texture(sheet, 0, FLOOR_TILE_COUNT)
+			result["wall"] = _tile_sheet_texture(sheet, WALL_TILE_INDEX, WALL_TILE_COUNT, WALL_TOP_TILE_INDEX, WALL_TOP_TILE_COUNT)
 	_tile_cache[theme] = result
 	return result
 
 func _tile_sheet_path(theme: String) -> String:
 	if theme == "pirate":
-		return "%s/pirate-ship-seamless-tiles.png" % [tiles_dir]
+		return "%s/ship.png" % [tiles_dir]
 	return "%s/%s-tiles.png" % [tiles_dir, theme]
 
 
@@ -1319,14 +1376,14 @@ func _tile_sheet_texture(sheet: Texture2D, tile_start: int, tile_count: int, top
 
 ## One 4x4 sheet cell baked into its own texture. ShaderMaterial sampling does not honour
 ## AtlasTexture regions reliably, so floor/wall materials receive cropped textures.
-func _tile_texture_from_sheet(sheet: Texture2D, tile_index: int) -> Texture2D:
+func _tile_texture_from_sheet(sheet: Texture2D, tile_index: int, cols: int = SHEET_COLS, rows: int = SHEET_ROWS) -> Texture2D:
 	var img := sheet.get_image()
 	if img == null or img.is_empty():
 		return _tile_from_sheet(sheet, tile_index)
-	var tile_w := int(img.get_width() / SHEET_COLS)
-	var tile_h := int(img.get_height() / SHEET_ROWS)
-	var col := tile_index % SHEET_COLS
-	var row := tile_index / SHEET_COLS
+	var tile_w := int(img.get_width() / cols)
+	var tile_h := int(img.get_height() / rows)
+	var col := tile_index % cols
+	var row := tile_index / cols
 	var region := img.get_region(Rect2i(col * tile_w, row * tile_h, tile_w, tile_h))
 	return ImageTexture.create_from_image(region)
 

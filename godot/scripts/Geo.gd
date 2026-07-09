@@ -7,7 +7,7 @@ class_name Geo
 ## Decode the base64 collision grid from `floor.geometry` (server world-do.ts encodeSolid).
 ## `ground_b64` (optional) is the heightfield 2.5D layer (encodeGround: Int16 LE, 2 bytes/cell);
 ## decoded into a PackedInt32Array of per-cell px heights (empty = flat, e.g. a v15 server).
-static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: String = "", terrain_b64: String = "") -> Dictionary:
+static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: String = "", terrain_b64: String = "", opaque_b64: String = "") -> Dictionary:
 	var grid := {"w": gw, "h": gh, "cell": cell, "solid": Marshalls.base64_to_raw(b64)}
 	var ground := PackedInt32Array()
 	var n := gw * gh
@@ -22,8 +22,16 @@ static func decode(b64: String, gw: int, gh: int, cell: float, ground_b64: Strin
 		var raw_terrain := Marshalls.base64_to_raw(terrain_b64)
 		if raw_terrain.size() >= n:
 			terrain = raw_terrain
+	var opaque := PackedByteArray()
+	if opaque_b64 != "":
+		var raw_opaque := Marshalls.base64_to_raw(opaque_b64)
+		if raw_opaque.size() >= n:
+			opaque = raw_opaque
+	if opaque.is_empty():
+		opaque = grid["solid"]
 	grid["ground"] = ground
 	grid["terrain"] = terrain
+	grid["opaque"] = opaque
 	return grid
 
 ## Nearest-cell ground height (px). INTEGER-indexed — bit-identical to TS heightAt() (collision.ts).
@@ -142,7 +150,7 @@ static func line_of_sight(grid: Dictionary, ax: float, ay: float, bx: float, by:
 	var cell: float = grid["cell"]
 	var w: int = grid["w"]
 	var h: int = grid["h"]
-	var solid: PackedByteArray = grid["solid"]
+	var opaque: PackedByteArray = grid.get("opaque", grid["solid"])
 	var cx := int(floor(ax / cell))
 	var cy := int(floor(ay / cell))
 	var ecx := int(floor(bx / cell))
@@ -180,6 +188,6 @@ static func line_of_sight(grid: Dictionary, ax: float, ay: float, bx: float, by:
 			return true
 		if cx == ecx and cy == ecy:
 			return true
-		if solid[cy * w + cx] == 1:
+		if opaque[cy * w + cx] == 1:
 			return false
 	return true

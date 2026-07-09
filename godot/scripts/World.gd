@@ -43,7 +43,7 @@ func _init() -> void:
 	add_child(_wall_models)
 
 func build(geometry: Dictionary) -> void:
-	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")), str(geometry.get("terrain", "")))
+	grid = Geo.decode(str(geometry["solid"]), int(geometry["gw"]), int(geometry["gh"]), float(geometry["cell"]), str(geometry.get("ground", "")), str(geometry.get("terrain", "")), str(geometry.get("opaque", "")))
 	_build_ground()
 	_build_walls()
 
@@ -191,7 +191,7 @@ func _build_walls() -> void:
 	var cell: float = grid["cell"]
 	var w: int = grid["w"]
 	var h: int = grid["h"]
-	var solid: PackedByteArray = grid["solid"]
+	var solid: PackedByteArray = grid.get("opaque", grid["solid"])
 	var count := 0
 	for v in solid:
 		count += v

@@ -83,6 +83,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
   const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
   carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2); // stairs room
+  const opaque = theme === "pirate" && terrain && !opts.pvp ? buildPirateOpaque(solid, terrain, gw, gh) : undefined;
 
   // Render the maze at 2× cell resolution: every wall is preserved but corridors are
   // now 2 cells (≈160px) wide — wide CoN-style halls instead of 1-tile passages. The
@@ -94,6 +95,7 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     h: gh * SCALE,
     cell,
     solid: scaleGrid(solid, gw, gh, SCALE),
+    opaque: opaque ? scaleGrid(opaque, gw, gh, SCALE) : undefined,
     ground: new Int16Array(gw * SCALE * gh * SCALE), // 0 = flat; buildHeightField fills it below
     terrain: terrain ? scaleGrid(terrain, gw, gh, SCALE) : undefined,
   };
@@ -250,6 +252,75 @@ function carvePirateStage(
   ];
   for (const a of anchors) carveRectWithTerrain(solid, terrain, terrain[a.y * gw + a.x] ?? 0, gw, gh, a.x, a.y, a.landmark ? 2 : 1, a.landmark ? 2 : 1);
   return { start, roomCenters, anchors };
+}
+
+function buildPirateOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h: number): Uint8Array {
+  const opaque = new Uint8Array(solid);
+  const exterior = exteriorSolidMask(solid, w, h);
+  for (let i = 0; i < opaque.length; i++) {
+    if (exterior[i] === 1) opaque[i] = 0;
+  }
+  const dirs = [
+    { x: 0, y: -1 },
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 },
+  ];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (solid[i] === 0 || exterior[i] === 0) continue;
+      let adjacent: { zone: number; dy: number } | undefined;
+      for (const d of dirs) {
+        const nx = x + d.x;
+        const ny = y + d.y;
+        const ni = ny * w + nx;
+        if (solid[ni] === 0) {
+          adjacent = { zone: terrain[ni] ?? 0, dy: d.y };
+          break;
+        }
+      }
+      if (!adjacent) continue;
+      terrain[i] = adjacent.zone;
+      const isBelowFloor = adjacent.dy < 0;
+      opaque[i] =
+        adjacent.zone === 0 || adjacent.zone === 1
+          ? 0
+          : isBelowFloor
+            ? 0
+            : 1;
+    }
+  }
+  return opaque;
+}
+
+function exteriorSolidMask(solid: Uint8Array, w: number, h: number): Uint8Array {
+  const seen = new Uint8Array(w * h);
+  const q: number[] = [];
+  const push = (x: number, y: number) => {
+    const i = y * w + x;
+    if (solid[i] !== 1 || seen[i] !== 0) return;
+    seen[i] = 1;
+    q.push(i);
+  };
+  for (let x = 0; x < w; x++) {
+    push(x, 0);
+    push(x, h - 1);
+  }
+  for (let y = 1; y < h - 1; y++) {
+    push(0, y);
+    push(w - 1, y);
+  }
+  for (let head = 0; head < q.length; head++) {
+    const i = q[head]!;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    if (x > 0) push(x - 1, y);
+    if (x < w - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < h - 1) push(x, y + 1);
+  }
+  return seen;
 }
 
 function carveShipDeck(solid: Uint8Array, terrain: Uint8Array, w: number, h: number, cx: number, cy: number, rx: number, ry: number): void {

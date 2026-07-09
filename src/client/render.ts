@@ -56,16 +56,16 @@ const TILE_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Tiles/fantasy-tiles.png",
   cyberpunk: "/assets/Tiles/cyberpunk-tiles.png",
   forest: "/assets/Tiles/forest-tiles.png",
-  pirate: "/assets/Tiles/pirate-ship-seamless-tiles.png",
+  pirate: "/assets/Tiles/ship.png",
   clockwork: "/assets/Tiles/clockwork-tiles.png",
   nightmare: "/assets/Tiles/nightmare-tiles.png",
   icedungeon: "/assets/Tiles/icedungeon-tiles.png",
 };
 const PIRATE_ZONE_SHEETS: Record<TerrainZoneKind, string> = {
-  ship: "/assets/Tiles/pirate-ship-seamless-tiles.png",
-  docks: "/assets/Tiles/pirate-docks-tiles.png",
-  beach: "/assets/Tiles/pirate-beach-tiles.png",
-  cave: "/assets/Tiles/pirate-cave-tiles.png",
+  ship: "/assets/Tiles/ship.png",
+  docks: "/assets/Tiles/dock.png",
+  beach: "/assets/Tiles/beach.png",
+  cave: "/assets/Tiles/cave.png",
 };
 const PROP_SHEETS: Record<FloorDescriptor["theme"], string> = {
   fantasy: "/assets/Props/fantasy-props.png",
@@ -325,8 +325,8 @@ export class Renderer {
 
     const sheet = await this.textureLoader.loadAsync(TILE_SHEETS[theme]);
     sheet.colorSpace = THREE.SRGBColorSpace;
-    const floor = this.tileFromSheet(sheet, 0);
-    const wall = this.tileFromSheet(sheet, 8);
+    const floor = theme === "pirate" ? this.tileFromSheet(sheet, 12, 5, 4) : this.tileFromSheet(sheet, 0);
+    const wall = theme === "pirate" ? this.tileFromSheet(sheet, 2, 5, 4) : this.tileFromSheet(sheet, 8);
     floor.wrapS = floor.wrapT = THREE.RepeatWrapping;
     floor.repeat.set(30, 30);
     const materials = { floor, wall };
@@ -347,10 +347,8 @@ export class Renderer {
     return tex;
   }
 
-  private tileFromSheet(sheet: THREE.Texture, tileIndex: number): THREE.CanvasTexture {
+  private tileFromSheet(sheet: THREE.Texture, tileIndex: number, cols = 4, rows = 4): THREE.CanvasTexture {
     const image = sheet.image as CanvasImageSource & { width: number; height: number };
-    const cols = 4;
-    const rows = 4;
     const tileW = image.width / cols;
     const tileH = image.height / rows;
     const col = tileIndex % cols;
@@ -449,35 +447,57 @@ export class Renderer {
     for (let id = 0; id < TERRAIN_ZONE_IDS.length; id++) {
       const zone = TERRAIN_ZONE_IDS[id]!;
       const geometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id);
-      if (!geometry) continue;
-      const texture = await this.loadTerrainTexture(zone);
-      const mat = new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, depthWrite: true });
-      this.patchFog(mat, false);
-      const mesh = new THREE.Mesh(geometry, mat);
-      mesh.renderOrder = -1;
-      this.scene.add(mesh);
-      this.terrainMeshes.push(mesh);
+      if (geometry) {
+        const texture = await this.loadTerrainTexture(zone);
+        const mat = new THREE.MeshBasicMaterial({ map: texture, color: 0xffffff, depthWrite: true });
+        this.patchFog(mat, false);
+        const mesh = new THREE.Mesh(geometry, mat);
+        mesh.renderOrder = -1;
+        this.scene.add(mesh);
+        this.terrainMeshes.push(mesh);
+      }
+      if (zone === "cave") {
+        const voidGeometry = this.buildTerrainZoneGeometry(floor.collision, terrain, id, true);
+        if (voidGeometry) {
+          const mat = new THREE.MeshBasicMaterial({ color: 0x000000, depthWrite: true });
+          this.patchFog(mat, false);
+          const mesh = new THREE.Mesh(voidGeometry, mat);
+          mesh.renderOrder = -1;
+          this.scene.add(mesh);
+          this.terrainMeshes.push(mesh);
+        }
+      }
     }
   }
 
-  private buildTerrainZoneGeometry(grid: CollisionGrid, terrain: Uint8Array, zoneId: number): THREE.BufferGeometry | null {
+  private buildTerrainZoneGeometry(grid: CollisionGrid, terrain: Uint8Array, zoneId: number, voidOnly = false): THREE.BufferGeometry | null {
     const positions: number[] = [];
     const uvs: number[] = [];
     const indices: number[] = [];
     const cell = grid.cell;
     const y = 0.8;
+    const opaque = grid.opaque ?? grid.solid;
     for (let cy = 0; cy < grid.h; cy++) {
       for (let cx = 0; cx < grid.w; cx++) {
         const i = cy * grid.w + cx;
-        if (grid.solid[i] !== 0 || terrain[i] !== zoneId) continue;
+        if (terrain[i] !== zoneId) continue;
+        const isVoid = zoneId === 3 && grid.solid[i] === 1 && opaque[i] === 0;
+        if (voidOnly !== isVoid) continue;
+        if (!isVoid && grid.solid[i] !== 0) continue;
         const base = positions.length / 3;
         const x0 = cx * cell;
         const x1 = x0 + cell;
         const z0 = cy * cell;
         const z1 = z0 + cell;
         positions.push(x0, y, z0, x1, y, z0, x1, y, z1, x0, y, z1);
-        // Global atlas UVs: one atlas cell per world cell, wrapping every 4 cells.
-        uvs.push(cx / 4, cy / 4, (cx + 1) / 4, cy / 4, (cx + 1) / 4, (cy + 1) / 4, cx / 4, (cy + 1) / 4);
+        const tile = this.pirateTileIndex(grid, terrain, zoneId, cx, cy);
+        const col = tile % 5;
+        const row = Math.floor(tile / 5);
+        const u0 = col / 5;
+        const v0 = row / 4;
+        const u1 = (col + 1) / 5;
+        const v1 = (row + 1) / 4;
+        uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
         indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
       }
     }
@@ -488,6 +508,20 @@ export class Renderer {
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
+  }
+
+  private pirateTileIndex(grid: CollisionGrid, terrain: Uint8Array, zoneId: number, cx: number, cy: number): number {
+    const i = cy * grid.w + cx;
+    const opaque = grid.opaque ?? grid.solid;
+    if (grid.solid[i] === 1 && opaque[i] === 0) return zoneId === 3 ? 12 : 2;
+    const blocked = (x: number, y: number) => x < 0 || y < 0 || x >= grid.w || y >= grid.h || grid.solid[y * grid.w + x] === 1;
+    const top = blocked(cx, cy - 1);
+    const bottom = blocked(cx, cy + 1);
+    const left = blocked(cx - 1, cy);
+    const right = blocked(cx + 1, cy);
+    const col = left ? 0 : right ? 4 : 1 + ((cx + cy) % 3);
+    const row = top ? 1 : bottom ? 3 : 2;
+    return row * 5 + col;
   }
 
   private setHazards(floor: FloorDescriptor): void {
@@ -1424,8 +1458,9 @@ export class Renderer {
     this.lastVisCell = -1;
     this.lastStaticVisCell = -1;
     this.lastStaticLivePropKey = "";
+    const opaque = grid.opaque ?? grid.solid;
     let wallCount = 0;
-    for (const value of grid.solid) wallCount += value;
+    for (const value of opaque) wallCount += value;
     const wallH = 220; // tall, cliff-like walls (matches the Godot client's World.WALL_H)
     const walls = new THREE.InstancedMesh(
       new THREE.BoxGeometry(grid.cell, wallH, grid.cell),
@@ -1436,7 +1471,7 @@ export class Renderer {
     let instance = 0;
     for (let y = 0; y < grid.h; y++) {
       for (let x = 0; x < grid.w; x++) {
-        if (grid.solid[y * grid.w + x] !== 1) continue;
+        if (opaque[y * grid.w + x] !== 1) continue;
         matrix.makeTranslation((x + 0.5) * grid.cell, wallH / 2, (y + 0.5) * grid.cell);
         walls.setMatrixAt(instance++, matrix);
       }
@@ -1518,6 +1553,7 @@ export class Renderer {
   // the area you can see; computed per cell-move, not per frame.
   private computeWallVis(px: number, py: number): void {
     const grid = this.collision!;
+    const opaque = grid.opaque ?? grid.solid;
     const cell = grid.cell;
     const r = Math.ceil(VISION_RADIUS / cell) + 1;
     const cx = Math.floor(px / cell);
@@ -1528,7 +1564,7 @@ export class Renderer {
     for (let y = Math.max(0, cy - r); y <= Math.min(grid.h - 1, cy + r); y++) {
       for (let x = Math.max(0, cx - r); x <= Math.min(grid.w - 1, cx + r); x++) {
         const idx = y * grid.w + x;
-        if (grid.solid[idx] === 1) continue;
+        if (opaque[idx] === 1) continue;
         const wx = (x + 0.5) * cell;
         const wy = (y + 0.5) * cell;
         const dx = wx - px;
@@ -1541,7 +1577,7 @@ export class Renderer {
     for (let y = Math.max(0, cy - r); y <= Math.min(grid.h - 1, cy + r); y++) {
       for (let x = Math.max(0, cx - r); x <= Math.min(grid.w - 1, cx + r); x++) {
         const idx = y * grid.w + x;
-        if (grid.solid[idx] !== 1) continue;
+        if (opaque[idx] !== 1) continue;
         let lit = false;
         for (let ny = Math.max(0, y - 1); ny <= Math.min(grid.h - 1, y + 1) && !lit; ny++) {
           for (let nx = Math.max(0, x - 1); nx <= Math.min(grid.w - 1, x + 1); nx++) {
@@ -1557,7 +1593,8 @@ export class Renderer {
   // The collision grid as an R8 texture (255 = wall) for the fog shader to march.
   private buildGridTexture(grid: CollisionGrid): THREE.DataTexture {
     const data = new Uint8Array(grid.w * grid.h);
-    for (let i = 0; i < data.length; i++) data[i] = grid.solid[i] ? 255 : 0;
+    const opaque = grid.opaque ?? grid.solid;
+    for (let i = 0; i < data.length; i++) data[i] = opaque[i] ? 255 : 0;
     const tex = new THREE.DataTexture(data, grid.w, grid.h, THREE.RedFormat);
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.NearestFilter;
@@ -1661,7 +1698,7 @@ export class Renderer {
       }
       if (cx < 0 || cy < 0 || cx >= grid.w || cy >= grid.h) return true; // off-grid: don't over-hide
       if (cx === ecx && cy === ecy) return true; // entity's own cell is open; stop before testing it
-      if (grid.solid[cy * grid.w + cx] === 1) return false; // a wall sits between
+      if ((grid.opaque ?? grid.solid)[cy * grid.w + cx] === 1) return false; // a wall sits between
     }
     return true;
   }

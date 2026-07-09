@@ -115,7 +115,7 @@ func set_wall_texture(tex: Texture2D) -> void:
 func _build_grid_texture() -> void:
 	var w: int = _grid["w"]
 	var h: int = _grid["h"]
-	var solid: PackedByteArray = _grid["solid"]
+	var solid: PackedByteArray = _grid.get("opaque", _grid["solid"])
 	var data := PackedByteArray()
 	data.resize(w * h)
 	for i in range(w * h):
@@ -206,7 +206,7 @@ func _compute_wall_vis(px: float, py: float) -> void:
 	var w: int = _grid["w"]
 	var h: int = _grid["h"]
 	var cell: float = _grid["cell"]
-	var solid: PackedByteArray = _grid["solid"]
+	var solid: PackedByteArray = _grid.get("opaque", _grid["solid"])
 	var vision: float = DccConst.VISION_RADIUS
 	var r := int(ceil(vision / cell)) + 1
 	var cx := int(floor(px / cell))

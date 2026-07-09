@@ -2107,6 +2107,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         gh: this.floor.collision.h,
         cell: this.floor.collision.cell,
         solid: encodeSolid(this.floor.collision.solid),
+        opaque: this.floor.collision.opaque ? encodeSolid(this.floor.collision.opaque) : undefined,
         ground: encodeGround(this.floor.collision.ground),
         terrain: this.floor.collision.terrain ? encodeSolid(this.floor.collision.terrain) : undefined,
         terrainZones: this.floor.collision.terrain ? [...TERRAIN_ZONE_IDS] : undefined,
