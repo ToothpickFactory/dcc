@@ -31,6 +31,8 @@ const PIRATE_WALL_SIDE_ROWS := {0: 1, 2: 1, 3: 1}
 const PIRATE_WALL_BOTTOM_SIDE_ROWS := {0: 3, 2: 1, 3: 1}
 const PIRATE_WALL_TOP_ROWS := {0: 2, 2: 0, 3: 0}
 const WALL_SKIN_OUTSET := 2.0
+const WALL_SKIN_SIDE_DROP := 10.0
+const WALL_SKIN_CHUNK_CELLS := 16
 const DUNGEON_TILE_SHEET := "dungeon-floor-wall-tiles.png"
 const PIRATE_ZONE_NAMES := ["ship", "docks", "beach", "cave"]
 const PIRATE_ZONE_SHEETS := {
@@ -1264,18 +1266,21 @@ func _place_zone_wall_skins(theme: String) -> void:
 		var sheet := _load_sheet("%s/%s" % [tiles_dir, str(zone_sheets[zone_name])])
 		if sheet == null:
 			continue
-		var mesh := _zone_wall_skin_mesh(theme, zid)
-		if mesh == null:
-			continue
-		var node := MeshInstance3D.new()
-		node.name = "%sWallSkin_%s" % [theme.capitalize(), zone_name]
-		node.mesh = mesh
-		node.material_override = world.make_fog_wall_material(sheet)
-		node.render_priority = 2
-		add_child(node)
-		_terrain_nodes.append(node)
+		var mat := world.make_fog_wall_material(sheet)
+		for cy0 in range(0, int(world.grid["h"]), WALL_SKIN_CHUNK_CELLS):
+			for cx0 in range(0, int(world.grid["w"]), WALL_SKIN_CHUNK_CELLS):
+				var mesh := _zone_wall_skin_mesh(theme, zid, cx0, min(cx0 + WALL_SKIN_CHUNK_CELLS, int(world.grid["w"])), cy0, min(cy0 + WALL_SKIN_CHUNK_CELLS, int(world.grid["h"])))
+				if mesh == null:
+					continue
+				var node := MeshInstance3D.new()
+				node.name = "%sWallSkin_%s_%d_%d" % [theme.capitalize(), zone_name, cx0, cy0]
+				node.mesh = mesh
+				node.material_override = mat
+				node.render_priority = 2
+				add_child(node)
+				_terrain_nodes.append(node)
 
-func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
+func _zone_wall_skin_mesh(theme: String, zone_id: int, x_from: int, x_to: int, y_from: int, y_to: int) -> ArrayMesh:
 	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
 	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
 	var opaque: PackedByteArray = world.grid.get("opaque", solid)
@@ -1288,8 +1293,8 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	var indices := PackedInt32Array()
-	for cy in h:
-		for cx in w:
+	for cy in range(y_from, y_to):
+		for cx in range(x_from, x_to):
 			var i := cy * w + cx
 			if terrain[i] != zone_id or opaque[i] != 1:
 				continue
@@ -1304,7 +1309,7 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 			var z0 := float(cy) * cell
 			var z1 := z0 + cell
 			var gz := Geo.ground_height(world.grid, (float(cx) + 0.5) * cell, (float(cy) + 0.5) * cell)
-			var y0 := gz - World.WALL_SKIRT
+			var y0 := gz - WALL_SKIN_SIDE_DROP
 			var y1 := gz + World.WALL_H
 			_add_wall_quad(verts, normals, uvs, indices,
 				Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1),

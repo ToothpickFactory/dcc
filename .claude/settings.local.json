@@ -231,7 +231,11 @@
       "Bash(tasklist //FI \"IMAGENAME eq Godot*\")",
       "Bash(tasklist)",
       "Bash(wmic process *)",
-      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=11116' | Select-Object ProcessId,CommandLine,CreationDate | Format-List\")"
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=11116' | Select-Object ProcessId,CommandLine,CreationDate | Format-List\")",
+      "Bash(unzip -l DCC.apk)",
+      "Bash(xxd DCC.pck)",
+      "Bash(xxd -l 512 DCC.pck)",
+      "Bash(/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe --headless --script 'C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Projects-dcc\\\\c023b8bb-bf72-46d7-8a7a-e555cac2c03b\\\\scratchpad\\\\check_pck.gd')"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"
