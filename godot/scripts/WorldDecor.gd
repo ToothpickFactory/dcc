@@ -1293,6 +1293,12 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 			var i := cy * w + cx
 			if terrain[i] != zone_id or opaque[i] != 1:
 				continue
+			var north_visible := _wall_skin_face_visible(cx, cy, 0, -1, solid, opaque, w, h)
+			var south_visible := _wall_skin_face_visible(cx, cy, 0, 1, solid, opaque, w, h)
+			var west_visible := _wall_skin_face_visible(cx, cy, -1, 0, solid, opaque, w, h)
+			var east_visible := _wall_skin_face_visible(cx, cy, 1, 0, solid, opaque, w, h)
+			if not north_visible and not south_visible and not west_visible and not east_visible:
+				continue
 			var x0 := float(cx) * cell
 			var x1 := x0 + cell
 			var z0 := float(cy) * cell
@@ -1303,18 +1309,22 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 			_add_wall_quad(verts, normals, uvs, indices,
 				Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1),
 				Vector3.UP, _zone_wall_tile(theme, zone_id, 0, cx, cy))
-			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x1, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y1, z0 + WALL_SKIN_OUTSET), Vector3(x1, y1, z0 + WALL_SKIN_OUTSET),
-				Vector3(0, 0, -1), _zone_wall_tile(theme, zone_id, 1, cx, cy))
-			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x0, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y1, z1 - WALL_SKIN_OUTSET), Vector3(x0, y1, z1 - WALL_SKIN_OUTSET),
-				Vector3(0, 0, 1), _zone_wall_tile(theme, zone_id, 2, cx, cy))
-			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x0 + WALL_SKIN_OUTSET, y0, z0), Vector3(x0 + WALL_SKIN_OUTSET, y0, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z0),
-				Vector3(-1, 0, 0), _zone_wall_tile(theme, zone_id, 3, cx, cy))
-			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x1 - WALL_SKIN_OUTSET, y0, z1), Vector3(x1 - WALL_SKIN_OUTSET, y0, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z1),
-				Vector3(1, 0, 0), _zone_wall_tile(theme, zone_id, 4, cx, cy))
+			if north_visible:
+				_add_wall_quad(verts, normals, uvs, indices,
+					Vector3(x1, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y1, z0 + WALL_SKIN_OUTSET), Vector3(x1, y1, z0 + WALL_SKIN_OUTSET),
+					Vector3(0, 0, -1), _zone_wall_tile(theme, zone_id, 1, cx, cy))
+			if south_visible:
+				_add_wall_quad(verts, normals, uvs, indices,
+					Vector3(x0, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y1, z1 - WALL_SKIN_OUTSET), Vector3(x0, y1, z1 - WALL_SKIN_OUTSET),
+					Vector3(0, 0, 1), _zone_wall_tile(theme, zone_id, 2, cx, cy))
+			if west_visible:
+				_add_wall_quad(verts, normals, uvs, indices,
+					Vector3(x0 + WALL_SKIN_OUTSET, y0, z0), Vector3(x0 + WALL_SKIN_OUTSET, y0, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z0),
+					Vector3(-1, 0, 0), _zone_wall_tile(theme, zone_id, 3, cx, cy))
+			if east_visible:
+				_add_wall_quad(verts, normals, uvs, indices,
+					Vector3(x1 - WALL_SKIN_OUTSET, y0, z1), Vector3(x1 - WALL_SKIN_OUTSET, y0, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z1),
+					Vector3(1, 0, 0), _zone_wall_tile(theme, zone_id, 4, cx, cy))
 	if indices.is_empty():
 		return null
 	var arrays := []
@@ -1326,6 +1336,14 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+func _wall_skin_face_visible(cx: int, cy: int, dx: int, dy: int, solid: PackedByteArray, opaque: PackedByteArray, w: int, h: int) -> bool:
+	var nx := cx + dx
+	var ny := cy + dy
+	if nx < 0 or ny < 0 or nx >= w or ny >= h:
+		return false
+	var ni := ny * w + nx
+	return solid[ni] == 0 or opaque[ni] == 0
 
 func _add_wall_quad(
 	verts: PackedVector3Array,
