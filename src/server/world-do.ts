@@ -239,7 +239,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
   }
 
   private pickShopPosition(): void {
-    const preferredZones: TerrainZoneKind[] = this.floor.theme === "cyberpunk" ? ["neonMarket"] : ["docks"];
+    const preferredZones: TerrainZoneKind[] = this.floor.theme === "cyberpunk" ? ["neonMarket"] : this.floor.theme === "pirate" ? ["ship"] : ["docks"];
     const pos = this.terrainZonePosition(preferredZones, 60) ?? randomWalkablePosition(this.floor.collision, 60);
     this.floorShopX = pos.x;
     this.floorShopY = pos.y;

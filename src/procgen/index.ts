@@ -92,7 +92,10 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
   if (theme !== "cyberpunk" || opts.pvp) {
     reconnect(solid, gw, gh, start); // guarantee every open cell (incl. prefabs) reaches the entrance
   }
-  const farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
+  let farthest = farthestOpenCell(solid, gw, gh, start.x, start.y);
+  if (theme === "pirate" && terrain && !opts.pvp) {
+    farthest = farthestOpenInZone(solid, terrain, gw, gh, start.x, start.y, 3) ?? farthest;
+  }
   carveRect(solid, gw, gh, farthest.x, farthest.y, 2, 2); // stairs room
   if (theme === "cyberpunk" && terrain && !opts.pvp) {
     fillDisconnectedNonRooftop(solid, terrain, gw, gh, start);
@@ -254,19 +257,9 @@ function carvePirateStage(
 
   const shipExit = { x: ship.x + ship.rx - 1, y: ship.y };
   const dockJoin = { x: island.x - island.rx - 1, y: island.y };
-  carvePier(solid, terrain, 1, gw, gh, shipExit, { x: dockJoin.x, y: ship.y }, 1);
-  carvePier(solid, terrain, 1, gw, gh, { x: dockJoin.x, y: ship.y }, dockJoin, 1);
-  carvePier(solid, terrain, 1, gw, gh, { x: island.x + island.rx - 1, y: island.y }, { x: cave.x - cave.rx, y: cave.y }, 2);
-
-  // Side piers read as docks instead of one simple corridor, and also create alternate loops.
-  const upperPierY = clampInt(ship.y - ship.ry - 4, 3, gh - 4);
-  const lowerPierY = clampInt(ship.y + ship.ry + 4, 3, gh - 4);
-  carvePier(solid, terrain, 1, gw, gh, { x: ship.x + Math.floor(ship.rx * 0.25), y: ship.y - ship.ry + 1 }, { x: island.x - 2, y: upperPierY }, 1);
-  carvePier(solid, terrain, 1, gw, gh, { x: island.x - 2, y: upperPierY }, { x: island.x + Math.floor(island.rx * 0.25), y: island.y - island.ry + 1 }, 1);
-  if (random() < 0.75) {
-    carvePier(solid, terrain, 1, gw, gh, { x: ship.x + Math.floor(ship.rx * 0.35), y: ship.y + ship.ry - 1 }, { x: island.x + 2, y: lowerPierY }, 1);
-    carvePier(solid, terrain, 1, gw, gh, { x: island.x + 2, y: lowerPierY }, { x: island.x - Math.floor(island.rx * 0.20), y: island.y + island.ry - 1 }, 1);
-  }
+  carvePier(solid, terrain, 1, gw, gh, shipExit, { x: dockJoin.x, y: ship.y }, 0);
+  carvePier(solid, terrain, 1, gw, gh, { x: dockJoin.x, y: ship.y }, dockJoin, 0);
+  carvePier(solid, terrain, 2, gw, gh, { x: island.x + island.rx - 1, y: island.y }, { x: cave.x - cave.rx, y: cave.y }, 0);
 
   const start = { x: ship.x - Math.floor(ship.rx * 0.45), y: ship.y };
   const roomCenters = [
@@ -308,13 +301,7 @@ function buildPirateOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h:
       }
       if (!adjacent) continue;
       terrain[i] = adjacent.zone;
-      const isBelowFloor = adjacent.dy < 0;
-      opaque[i] =
-        adjacent.zone === 0 || adjacent.zone === 1
-          ? 0
-          : isBelowFloor
-            ? 0
-            : 1;
+      opaque[i] = adjacent.zone === 2 || adjacent.zone === 3 ? 1 : 0;
     }
   }
   return opaque;
@@ -1661,6 +1648,35 @@ function farthestOpenCell(solid: Uint8Array, w: number, h: number, startX: numbe
       const index = y * w + x;
       if (solid[index] === 1 || distances[index] !== -1) continue;
       distances[index] = distance + 1;
+      queue.push({ x, y });
+    }
+  }
+  return farthest;
+}
+
+function farthestOpenInZone(solid: Uint8Array, terrain: Uint8Array, w: number, h: number, startX: number, startY: number, zone: number): { x: number; y: number; distance: number } | null {
+  const distances = new Int32Array(w * h).fill(-1);
+  const queue = [{ x: startX, y: startY }];
+  distances[startY * w + startX] = 0;
+  let head = 0;
+  let farthest: { x: number; y: number; distance: number } | null = null;
+  while (head < queue.length) {
+    const current = queue[head++]!;
+    const i = current.y * w + current.x;
+    const distance = distances[i]!;
+    if (terrain[i] === zone && (!farthest || distance > farthest.distance)) farthest = { ...current, distance };
+    for (const direction of [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+    ]) {
+      const x = current.x + direction.x;
+      const y = current.y + direction.y;
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const ni = y * w + x;
+      if (solid[ni] === 1 || distances[ni] !== -1) continue;
+      distances[ni] = distance + 1;
       queue.push({ x, y });
     }
   }
