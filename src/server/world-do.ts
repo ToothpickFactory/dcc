@@ -1,7 +1,13 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   ATTR_POINTS_PER_LEVEL,
+  BOSS_CAST_CD,
+  BOSS_CAST_WINDUP_MS,
   BOSS_MAX_HP,
+  BOSS_MELEE_CD,
+  BOSS_MELEE_DMG,
+  BOSS_MELEE_RANGE,
+  BOSS_MELEE_WINDUP_MS,
   BOSS_RADIUS,
   BUY_MARKUP,
   DASH_CD,
@@ -11,6 +17,17 @@ import {
   FLOOR_HP_SCALE,
   HOLY_HOT_PER_SEC,
   HOTBAR_SIZE,
+  KRAKEN_BOSS_HP_MULT,
+  KRAKEN_BOSS_NAME,
+  KRAKEN_BOSS_RADIUS,
+  KRAKEN_SLAM_CD,
+  KRAKEN_SLAM_DMG,
+  KRAKEN_SLAM_RANGE,
+  KRAKEN_SLAM_WINDUP_MS,
+  KRAKEN_SWEEP_CD,
+  KRAKEN_SWEEP_DMG,
+  KRAKEN_SWEEP_RANGE,
+  KRAKEN_SWEEP_WINDUP_MS,
   LOOT_BAG_TTL,
   LOOT_OWNER_MS,
   LOOT_REACH,
@@ -102,6 +119,49 @@ const KLASSES_SET = new Set<string>(KLASSES); // valid chosen-class ids (server-
 const POTION_CD = 6000; // ms between drinks — heals are strong but not spammable
 const LOOT_KILL_CHANCE = 0.06; // a normal kill drops loot only sometimes (select kills, decision #10)
 const PVP_FLOOR_CHANCE = 0.25;
+
+interface BossTuning {
+  hpMult: number;
+  radius: number;
+  meleeRange: number;
+  meleeCd: number;
+  meleeDamage: number;
+  meleeWindupMs: number;
+  castKind: "boltFan" | "sweep";
+  castCd: number;
+  castWindupMs: number;
+  sweepRange?: number;
+  sweepDamage?: number;
+}
+
+function bossTuning(name: string): BossTuning {
+  if (name === KRAKEN_BOSS_NAME) {
+    return {
+      hpMult: KRAKEN_BOSS_HP_MULT,
+      radius: KRAKEN_BOSS_RADIUS,
+      meleeRange: KRAKEN_SLAM_RANGE,
+      meleeCd: KRAKEN_SLAM_CD,
+      meleeDamage: KRAKEN_SLAM_DMG,
+      meleeWindupMs: KRAKEN_SLAM_WINDUP_MS,
+      castKind: "sweep",
+      castCd: KRAKEN_SWEEP_CD,
+      castWindupMs: KRAKEN_SWEEP_WINDUP_MS,
+      sweepRange: KRAKEN_SWEEP_RANGE,
+      sweepDamage: KRAKEN_SWEEP_DMG,
+    };
+  }
+  return {
+    hpMult: 1,
+    radius: BOSS_RADIUS,
+    meleeRange: BOSS_MELEE_RANGE,
+    meleeCd: BOSS_MELEE_CD,
+    meleeDamage: BOSS_MELEE_DMG,
+    meleeWindupMs: BOSS_MELEE_WINDUP_MS,
+    castKind: "boltFan",
+    castCd: BOSS_CAST_CD,
+    castWindupMs: BOSS_CAST_WINDUP_MS,
+  };
+}
 
 // The single global world. It IS the authoritative server: a fixed-rate tick over
 // in-memory state, persisted to the DO's SQLite so the run AND identities survive
@@ -633,11 +693,12 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       this.boss = null;
       return;
     }
-    // The exit guardian starts near the stairs on every floor.
-    const { x, y } = this.bossSpawnNearStairs();
     const depthSteps = Math.max(0, this.floor.depth - 1);
-    const maxHp = Math.round(BOSS_MAX_HP * (1 + depthSteps * FLOOR_HP_SCALE));
     const profile = bossProfileForTheme(this.floor.theme, this.gearRng);
+    const tuning = bossTuning(profile.name);
+    // The exit guardian starts near the stairs on every floor.
+    const { x, y } = this.bossSpawnNearStairs(tuning.radius);
+    const maxHp = Math.round(BOSS_MAX_HP * tuning.hpMult * (1 + depthSteps * FLOOR_HP_SCALE));
     this.boss = {
       tag: "boss",
       id: `boss_${(++this.bossSeq).toString(36)}`,
@@ -648,6 +709,16 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
       hp: maxHp,
       maxHp,
       dead: false,
+      radius: tuning.radius,
+      meleeRange: tuning.meleeRange,
+      meleeCd: tuning.meleeCd,
+      meleeDamage: tuning.meleeDamage,
+      meleeWindupMs: tuning.meleeWindupMs,
+      castKind: tuning.castKind,
+      castCd: tuning.castCd,
+      castWindupMs: tuning.castWindupMs,
+      sweepRange: tuning.sweepRange,
+      sweepDamage: tuning.sweepDamage,
       castReadyAt: this.now + 1500,
       meleeReadyAt: 0,
       threat: new Map(),
@@ -672,19 +743,19 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     this.events.push({ e: "boss", x, y, state: "spawn" });
   }
 
-  private bossSpawnNearStairs(): { x: number; y: number } {
+  private bossSpawnNearStairs(bossRadius = BOSS_RADIUS): { x: number; y: number } {
     const grid = this.floor.collision;
     const stairs = this.floor.stairs;
-    const preferred = stairs.r + BOSS_RADIUS + 36;
+    const preferred = stairs.r + bossRadius + 36;
     for (const radius of [preferred, preferred + 40, preferred + 80, preferred + 120]) {
       for (let i = 0; i < 16; i++) {
         const angle = (i / 16) * Math.PI * 2;
         const x = stairs.x + Math.cos(angle) * radius;
         const y = stairs.y + Math.sin(angle) * radius;
-        if (canOccupy(grid, x, y, BOSS_RADIUS)) return { x, y };
+        if (canOccupy(grid, x, y, bossRadius)) return { x, y };
       }
     }
-    return randomWalkablePosition(grid, BOSS_RADIUS, this.gearRng);
+    return randomWalkablePosition(grid, bossRadius, this.gearRng);
   }
 
   private spawnCompanion(): void {
@@ -2011,6 +2082,7 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
         maxHp: this.boss.maxHp,
         dead: this.boss.dead,
         name: this.boss.name,
+        r: r(this.boss.radius),
         cc: bcc,
       });
     }

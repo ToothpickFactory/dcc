@@ -28,7 +28,7 @@ export class Predictor {
       if (e.id === selfId || e.dead) continue;
       if (e.kind === "prop") this.blockers.push({ id: e.id, x: e.x, y: e.y, r: Math.max(12, 24 * (e.scale ?? 1)) });
       else if (e.kind === "player") this.blockers.push({ id: e.id, x: e.x, y: e.y, r: PLAYER_RADIUS });
-      else if (e.kind === "boss") this.blockers.push({ id: e.id, x: e.x, y: e.y, r: BOSS_RADIUS });
+      else if (e.kind === "boss") this.blockers.push({ id: e.id, x: e.x, y: e.y, r: e.r ?? BOSS_RADIUS });
       else if (e.kind === "monster") this.blockers.push({ id: e.id, x: e.x, y: e.y, r: MONSTER_KINDS[e.monKind ?? "grunt"].radius });
     }
   }

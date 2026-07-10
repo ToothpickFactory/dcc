@@ -303,7 +303,7 @@ function resolveArea(ctx: WorldCtx, caster: PlayerState, idx: number, ab: Abilit
       applyCc(ctx, m, ab);
     }
   }
-  if (ctx.boss && !ctx.boss.dead && hit(x, y, ctx.boss.x, ctx.boss.y, radius + BOSS_RADIUS)) {
+  if (ctx.boss && !ctx.boss.dead && hit(x, y, ctx.boss.x, ctx.boss.y, radius + (ctx.boss.radius ?? BOSS_RADIUS))) {
     applyDamage(ctx, ctx.boss, dmg, caster.id, true, ab.slowMs, idx, dist(caster, ctx.boss));
     applyCc(ctx, ctx.boss, ab);
   }
@@ -386,11 +386,22 @@ function inCone(
 ): boolean {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  if (Math.hypot(dx, dy) > range) return false;
+  if (Math.hypot(dx, dy) > range + targetRadius(to)) return false;
   let d = Math.atan2(dy, dx) - aim;
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   return Math.abs(d) <= cone / 2;
+}
+
+function targetRadius(to: { x: number; y: number }): number {
+  if ("tag" in to && to.tag === "boss") return (to as BossState).radius ?? BOSS_RADIUS;
+  if ("kind" in to) {
+    const kind = (to as { kind?: unknown }).kind;
+    if (typeof kind === "string" && kind in MONSTER_KINDS) return MONSTER_KINDS[kind as keyof typeof MONSTER_KINDS].radius;
+  }
+  if ("status" in to) return PLAYER_RADIUS;
+  if ("radius" in to && typeof to.radius === "number") return to.radius;
+  return 0;
 }
 
 // Advance projectiles. Boss bolts hit players only. A player's projectile hits
@@ -435,7 +446,7 @@ export function stepProjectiles(ctx: WorldCtx, dt: number): void {
           return false;
         }
       }
-      if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, pr.hitR + BOSS_RADIUS)) {
+      if (ctx.boss && !ctx.boss.dead && hit(pr.x, pr.y, ctx.boss.x, ctx.boss.y, pr.hitR + (ctx.boss.radius ?? BOSS_RADIUS))) {
         resolve(ctx, ctx.boss, pr, isHeal);
         return false;
       }

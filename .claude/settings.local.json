@@ -235,7 +235,11 @@
       "Bash(unzip -l DCC.apk)",
       "Bash(xxd DCC.pck)",
       "Bash(xxd -l 512 DCC.pck)",
-      "Bash(/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe --headless --script 'C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Projects-dcc\\\\c023b8bb-bf72-46d7-8a7a-e555cac2c03b\\\\scratchpad\\\\check_pck.gd')"
+      "Bash(/c/Users/dalla/Downloads/Godot_v4.6.1-stable_win64.exe/Godot_v4.6.1-stable_win64_console.exe --headless --script 'C:\\\\Users\\\\dalla\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--Projects-dcc\\\\c023b8bb-bf72-46d7-8a7a-e555cac2c03b\\\\scratchpad\\\\check_pck.gd')",
+      "Bash(powershell -Command ' *)",
+      "Read(//c/Users/dalla/AppData/Roaming/Microsoft/Internet Explorer/Quick Launch/User Pinned/TaskBar/**)",
+      "Read(//c/Users/dalla/OneDrive/**)",
+      "Bash(/c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe shell *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"

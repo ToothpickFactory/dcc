@@ -74,10 +74,12 @@ func _draw() -> void:
 					_draw_cone_w(ex, ey, melee_r, aim, 0.75, COLOR_WINDUP)
 
 			"boss":
-				_draw_circle_w(ex, ey, DccConst.BOSS_RADIUS, COLOR_BOSS,  3.0)
-				_draw_circle_w(ex, ey, 70.0,                 COLOR_REACH, 1.5)  # BOSS_MELEE_RANGE
+				var boss_r := float(e.get("r", DccConst.BOSS_RADIUS))
+				var reach_r := 118.0 if boss_r >= DccConst.KRAKEN_BOSS_RADIUS else 70.0
+				_draw_circle_w(ex, ey, boss_r, COLOR_BOSS,  3.0)
+				_draw_circle_w(ex, ey, reach_r, COLOR_REACH, 1.5)
 				if _windups.get(eid, 0) > now:
-					_draw_cone_w(ex, ey, 70.0, aim, 0.75, COLOR_WINDUP)
+					_draw_cone_w(ex, ey, reach_r, aim, 0.75, COLOR_WINDUP)
 
 # ---- projection helpers -----------------------------------------------
 

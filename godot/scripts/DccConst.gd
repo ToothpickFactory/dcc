@@ -6,6 +6,7 @@ const TICK_MS := 50            # server simulation step (20 Hz)
 const PLAYER_SPEED := 230.0    # px/s (fallback; prefer SelfDTO.derived.moveSpeed)
 const PLAYER_RADIUS := 17.0
 const BOSS_RADIUS := 30.0
+const KRAKEN_BOSS_RADIUS := 64.0
 const MONSTER_RADIUS_GRUNT := 22.0
 const MONSTER_RADIUS_BRUTE := 40.0
 const MONSTER_RADIUS_SWARM := 13.0

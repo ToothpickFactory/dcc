@@ -1,9 +1,9 @@
 import {
-  BOSS_NAME,
   BRIAR_REVENANT_BOSS_NAME,
   ICE_GOLEM_BOSS_NAME,
   JAILOR_BOSS_NAME,
   JUGGERNAUT_BOSS_NAME,
+  KRAKEN_BOSS_NAME,
   PRIMAL_CONFLUX_BOSS_NAME,
   TERRORBOT_BOSS_NAME,
 } from "./constants";
@@ -25,7 +25,7 @@ export const BOSS_BY_THEME: Record<Theme, BossProfile> = {
   nightmare: { name: JUGGERNAUT_BOSS_NAME, bolt: "fire", melee: "stun" },
   clockwork: { name: PRIMAL_CONFLUX_BOSS_NAME, bolt: "fire", melee: "bleed" },
   cyberpunk: { name: TERRORBOT_BOSS_NAME, bolt: "electric", melee: "bleed" },
-  pirate: { name: BOSS_NAME, bolt: "poison", melee: "poison" },
+  pirate: { name: KRAKEN_BOSS_NAME, bolt: "bleed", melee: "bleed" },
 };
 
 export const ENEMIES_BY_THEME: Record<Theme, EnemyVisualKind[]> = {

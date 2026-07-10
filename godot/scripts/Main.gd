@@ -1489,7 +1489,7 @@ func _entity_collision_radius(e: Dictionary) -> float:
 		"player":
 			return DccConst.PLAYER_RADIUS
 		"boss":
-			return DccConst.BOSS_RADIUS
+			return float(e.get("r", DccConst.BOSS_RADIUS))
 		"monster":
 			match str(e.get("monKind", "grunt")):
 				"brute":

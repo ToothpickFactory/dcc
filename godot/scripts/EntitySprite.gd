@@ -69,6 +69,24 @@ const TERRORBOT_MODEL_SCALE := 297.0
 const ICE_GOLEM_NAME := "Ice Golem"
 const ICE_GOLEM_MODEL_PATH := "res://assets/Bosses/IceGolem/IceGolem.glb"
 const ICE_GOLEM_MODEL_SCALE := 180.0
+const KRAKEN_NAME := "Kraken"
+const KRAKEN_MODEL_PATH := "res://assets/Bosses/Kraken/Kraken.glb"
+const KRAKEN_MODEL_SCALE := 520.0
+const KRAKEN_ANIM_ALIASES := {
+	"idle": ["Idle"],
+	"run": ["Walk"],
+	"slash_a": ["Attack_Slam"],
+	"slash_b": ["Attack_Slam"],
+	"slash_c": ["Attack_Slam"],
+	"strike": ["Attack_Slam"],
+	"punch": ["Attack_Slam"],
+	"kick": ["Attack_Slam"],
+	"cast": ["Attack_Sweep"],
+	"bolt": ["Attack_Sweep"],
+	"hit": ["Idle"],
+	"hurt": ["Idle"],
+	"death": ["Death"],
+}
 const TERRORBOT_ANIM_ALIASES := {
 	"idle": ["Walking"],
 	"run": ["Running", "Run_and_Shoot", "Walking"],
@@ -1127,6 +1145,10 @@ func _model_profile_for_entity() -> Dictionary:
 		elif _entity_name == ICE_GOLEM_NAME:
 			boss_model_path = ICE_GOLEM_MODEL_PATH
 			boss_model_scale = ICE_GOLEM_MODEL_SCALE
+		elif _entity_name == KRAKEN_NAME:
+			boss_model_path = KRAKEN_MODEL_PATH
+			boss_model_scale = KRAKEN_MODEL_SCALE
+			boss_anim_aliases = KRAKEN_ANIM_ALIASES
 		if boss_model_path != "":
 			return {
 				"label": _entity_name,

@@ -89,6 +89,7 @@ export interface EntityDTO {
   ownerUntil?: number; // loot bags: wall-clock ms the owner-priority window closes
   variant?: number; // props: themed decoration sheet index
   scale?: number; // props: decoration scale
+  r?: number; // collision/render radius override for oversized entities
   cc?: CcKind; // monster/boss: active hard CC (stun/root/freeze) — drives the status tint
   compKlass?: CompanionClass; // companion only: class that determines the GLB model
   recruited?: boolean; // companion only: true once a player has recruited this companion

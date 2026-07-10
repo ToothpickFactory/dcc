@@ -115,6 +115,16 @@ export interface BossState {
   hp: number;
   maxHp: number;
   dead: boolean;
+  radius: number;
+  meleeRange: number;
+  meleeCd: number;
+  meleeDamage: number;
+  meleeWindupMs: number;
+  castKind: "boltFan" | "sweep";
+  castCd: number;
+  castWindupMs: number;
+  sweepRange?: number;
+  sweepDamage?: number;
   castReadyAt: number;
   meleeReadyAt: number;
   threat: Map<string, number>;

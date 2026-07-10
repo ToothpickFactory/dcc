@@ -13,6 +13,7 @@ import {
   BOSS_PROJ_SPREAD,
   BOSS_RADIUS,
   BOSS_SPEED,
+  PLAYER_RADIUS,
 } from "../../shared/constants";
 import { projectileRenderForDamage } from "../../shared/dungeon-rules";
 import type { BossState, PlayerState, WorldCtx } from "../state";
@@ -38,16 +39,17 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   if (boss.meleeWindupUntil > 0 && ctx.now >= boss.meleeWindupUntil) {
     boss.meleeWindupUntil = 0;
     const t = pickTarget(ctx, boss);
-    if (t && Math.hypot(t.x - boss.x, t.y - boss.y) <= BOSS_MELEE_RANGE + 14) {
+    if (t && Math.hypot(t.x - boss.x, t.y - boss.y) <= (boss.meleeRange ?? BOSS_MELEE_RANGE) + PLAYER_RADIUS) {
       ctx.pushFx({ e: "melee", by: boss.id });
-      applyDamage(ctx, t, BOSS_MELEE_DMG * boss.dmgMult, boss.id, false, 0, 0, 0, 1, boss.meleeDamageType);
+      applyDamage(ctx, t, (boss.meleeDamage ?? BOSS_MELEE_DMG) * boss.dmgMult, boss.id, false, 0, 0, 0, 1, boss.meleeDamageType);
     }
   }
   // Resolve a pending bolt-fan wind-up: fire at the locked target's CURRENT position.
   if (boss.castWindupUntil > 0 && ctx.now >= boss.castWindupUntil) {
     boss.castWindupUntil = 0;
     const t = ctx.players.get(boss.castTarget) ?? pickTarget(ctx, boss);
-    if (t) bossCast(ctx, boss, t);
+    if (boss.castKind === "sweep") bossSweep(ctx, boss);
+    else if (t) bossCast(ctx, boss, t);
   }
 
   const prey = pickTarget(ctx, boss);
@@ -62,22 +64,36 @@ export function updateBoss(ctx: WorldCtx, dt: number): void {
   if (boss.meleeWindupUntil > ctx.now) return;
 
   const rooted = boss.ccUntil > ctx.now; // ccKind === "root" here — pin movement, keep melee/cast
-  if (d > BOSS_MELEE_RANGE) {
-    if (!rooted) moveWithWorldCollisions(ctx, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, BOSS_RADIUS);
+  const meleeRange = boss.meleeRange ?? BOSS_MELEE_RANGE;
+  const meleeWindupMs = boss.meleeWindupMs ?? BOSS_MELEE_WINDUP_MS;
+  if (d > meleeRange) {
+    if (!rooted) moveWithWorldCollisions(ctx, boss, (dx / d) * BOSS_SPEED * dt, (dy / d) * BOSS_SPEED * dt, boss.radius ?? BOSS_RADIUS);
   } else if (ctx.now >= boss.meleeReadyAt) {
     // Telegraph the heavy swing — resolved above after the wind-up.
-    boss.meleeReadyAt = ctx.now + BOSS_MELEE_CD + BOSS_MELEE_WINDUP_MS;
-    boss.meleeWindupUntil = ctx.now + BOSS_MELEE_WINDUP_MS;
-    ctx.pushFx({ e: "windup", by: boss.id, x: boss.x, y: boss.y, ms: BOSS_MELEE_WINDUP_MS });
+    boss.meleeReadyAt = ctx.now + (boss.meleeCd ?? BOSS_MELEE_CD) + meleeWindupMs;
+    boss.meleeWindupUntil = ctx.now + meleeWindupMs;
+    ctx.pushFx({ e: "windup", by: boss.id, x: boss.x, y: boss.y, ms: meleeWindupMs });
   }
 
   if (ctx.now >= boss.castReadyAt && boss.castWindupUntil === 0) {
     // Telegraph the bolt fan — gives you a beat to pre-dodge the line.
-    boss.castReadyAt = ctx.now + BOSS_CAST_CD + BOSS_CAST_WINDUP_MS;
-    boss.castWindupUntil = ctx.now + BOSS_CAST_WINDUP_MS;
+    const castWindupMs = boss.castWindupMs ?? BOSS_CAST_WINDUP_MS;
+    boss.castReadyAt = ctx.now + (boss.castCd ?? BOSS_CAST_CD) + castWindupMs;
+    boss.castWindupUntil = ctx.now + castWindupMs;
     boss.castTarget = prey.id;
-    ctx.pushFx({ e: "windup", by: boss.id, x: boss.x, y: boss.y, ms: BOSS_CAST_WINDUP_MS });
+    ctx.pushFx({ e: "windup", by: boss.id, x: boss.x, y: boss.y, ms: castWindupMs });
   }
+}
+
+function bossSweep(ctx: WorldCtx, boss: BossState): void {
+  const range = boss.sweepRange ?? 180;
+  const damage = (boss.sweepDamage ?? BOSS_MELEE_DMG) * boss.dmgMult;
+  for (const p of ctx.players.values()) {
+    if (p.status !== "alive" || p.reached) continue;
+    if (Math.hypot(p.x - boss.x, p.y - boss.y) > range + PLAYER_RADIUS) continue;
+    applyDamage(ctx, p, damage, boss.id, false, 0, 0, 0, 1, boss.boltDamageType);
+  }
+  ctx.pushFx({ e: "cast", x: boss.x, y: boss.y, ability: BOSS_BOLT_SPRITE });
 }
 
 // A spread of straight-line bolts aimed where the player is NOW — dodge by

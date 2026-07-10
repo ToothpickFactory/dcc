@@ -27,6 +27,10 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   Juggernaut: "/assets/Bosses/Juggernaut/Juggernaut-3d-animated.glb",
   TerrorBot: "/assets/Bosses/TerrorBot/TerrorBot.glb",
   "Ice Golem": "/assets/Bosses/IceGolem/IceGolem.glb",
+  Kraken: "/assets/Bosses/Kraken/Kraken.glb",
+};
+const BOSS_MODEL_TARGET_SIZE: Record<string, number> = {
+  Kraken: 260,
 };
 const BOLT_MODEL_PATHS: Record<string, string> = {
   fire: "/assets/Bolt/Fire.glb",
@@ -858,7 +862,7 @@ export class Renderer {
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z, 1);
-    root.scale.setScalar(118 / maxDim);
+    root.scale.setScalar((BOSS_MODEL_TARGET_SIZE[name] ?? 118) / maxDim);
     this.scene.add(root);
     this.bossModels.set(id, root);
     return root;

@@ -16,7 +16,7 @@ export function propBlocking(ctx: WorldCtx, x: number, y: number, radius: number
 }
 
 export function characterRadius(entity: CharacterState): number {
-  if ("tag" in entity && entity.tag === "boss") return BOSS_RADIUS;
+  if ("tag" in entity && entity.tag === "boss") return entity.radius ?? BOSS_RADIUS;
   if ("kind" in entity) return MONSTER_KINDS[entity.kind].radius;
   return PLAYER_RADIUS;
 }
@@ -55,7 +55,7 @@ export function characterBlocking(
     if (m.dead) continue;
     if (blocks(m, MONSTER_KINDS[m.kind].radius)) return m;
   }
-  if (ctx.boss && !ctx.boss.dead && blocks(ctx.boss, BOSS_RADIUS)) return ctx.boss;
+  if (ctx.boss && !ctx.boss.dead && blocks(ctx.boss, ctx.boss.radius ?? BOSS_RADIUS)) return ctx.boss;
   return null;
 }
 
