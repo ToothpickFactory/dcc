@@ -1304,16 +1304,16 @@ func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
 				Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1),
 				Vector3.UP, _zone_wall_tile(theme, zone_id, 0, cx, cy))
 			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x1, y0, z0 - WALL_SKIN_OUTSET), Vector3(x0, y0, z0 - WALL_SKIN_OUTSET), Vector3(x0, y1, z0 - WALL_SKIN_OUTSET), Vector3(x1, y1, z0 - WALL_SKIN_OUTSET),
+				Vector3(x1, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y0, z0 + WALL_SKIN_OUTSET), Vector3(x0, y1, z0 + WALL_SKIN_OUTSET), Vector3(x1, y1, z0 + WALL_SKIN_OUTSET),
 				Vector3(0, 0, -1), _zone_wall_tile(theme, zone_id, 1, cx, cy))
 			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x0, y0, z1 + WALL_SKIN_OUTSET), Vector3(x1, y0, z1 + WALL_SKIN_OUTSET), Vector3(x1, y1, z1 + WALL_SKIN_OUTSET), Vector3(x0, y1, z1 + WALL_SKIN_OUTSET),
+				Vector3(x0, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y0, z1 - WALL_SKIN_OUTSET), Vector3(x1, y1, z1 - WALL_SKIN_OUTSET), Vector3(x0, y1, z1 - WALL_SKIN_OUTSET),
 				Vector3(0, 0, 1), _zone_wall_tile(theme, zone_id, 2, cx, cy))
 			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x0 - WALL_SKIN_OUTSET, y0, z0), Vector3(x0 - WALL_SKIN_OUTSET, y0, z1), Vector3(x0 - WALL_SKIN_OUTSET, y1, z1), Vector3(x0 - WALL_SKIN_OUTSET, y1, z0),
+				Vector3(x0 + WALL_SKIN_OUTSET, y0, z0), Vector3(x0 + WALL_SKIN_OUTSET, y0, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z1), Vector3(x0 + WALL_SKIN_OUTSET, y1, z0),
 				Vector3(-1, 0, 0), _zone_wall_tile(theme, zone_id, 3, cx, cy))
 			_add_wall_quad(verts, normals, uvs, indices,
-				Vector3(x1 + WALL_SKIN_OUTSET, y0, z1), Vector3(x1 + WALL_SKIN_OUTSET, y0, z0), Vector3(x1 + WALL_SKIN_OUTSET, y1, z0), Vector3(x1 + WALL_SKIN_OUTSET, y1, z1),
+				Vector3(x1 - WALL_SKIN_OUTSET, y0, z1), Vector3(x1 - WALL_SKIN_OUTSET, y0, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z0), Vector3(x1 - WALL_SKIN_OUTSET, y1, z1),
 				Vector3(1, 0, 0), _zone_wall_tile(theme, zone_id, 4, cx, cy))
 	if indices.is_empty():
 		return null
