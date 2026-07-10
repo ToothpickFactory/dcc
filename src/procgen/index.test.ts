@@ -62,6 +62,36 @@ import { generateFloor } from "./index.ts";
   assert.ok(pirate.collision.terrain, "pirate floor should include terrain zone ids");
   const zones = new Set(pirate.collision.terrain);
   for (const id of [0, 1, 2, 3]) assert.ok(zones.has(id), `pirate terrain should include zone id ${id}`);
+  const terrain = pirate.collision.terrain;
+  const opaque = pirate.collision.opaque ?? pirate.collision.solid;
+  let dockWaterEdges = 0;
+  let dockWaterCells = 0;
+  let beachOceanEdges = 0;
+  let shipWalls = 0;
+  const w = pirate.collision.w;
+  const h = pirate.collision.h;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (terrain[i] === 1 && pirate.collision.solid[i] === 1 && opaque[i] === 0) dockWaterCells++;
+      if (pirate.collision.solid[i] !== 0) continue;
+      if (terrain[i] === 1) {
+        for (const ni of [i - w, i + 1, i + w, i - 1]) {
+          if (terrain[ni] === 1 && pirate.collision.solid[ni] === 1 && opaque[ni] === 0) dockWaterEdges++;
+        }
+      }
+      if (terrain[i] === 2 && terrain[i + w] === 2 && pirate.collision.solid[i + w] === 1 && opaque[i + w] === 0) beachOceanEdges++;
+      if (terrain[i] === 0) {
+        for (const ni of [i - w, i + 1, i + w, i - 1]) {
+          if (terrain[ni] === 0 && pirate.collision.solid[ni] === 1 && opaque[ni] === 1) shipWalls++;
+        }
+      }
+    }
+  }
+  assert.ok(dockWaterCells >= 30, `pirate docks should include flat water around walkways, got ${dockWaterCells}`);
+  assert.ok(dockWaterEdges >= 18, `pirate dock walkways should border flat water, got ${dockWaterEdges}`);
+  assert.ok(beachOceanEdges > 8, `pirate beach should expose a shoreline to flat ocean, got ${beachOceanEdges}`);
+  assert.ok(shipWalls > 30, `pirate ship should have opaque wooden wall boundaries, got ${shipWalls}`);
 }
 
 for (let seed = 1; seed <= 100; seed++) {

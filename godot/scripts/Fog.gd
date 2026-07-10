@@ -98,6 +98,16 @@ func set_palette(tint: Color, bg: Color) -> void:
 		_wall_mat.set_shader_parameter("u_tint", t)
 		_wall_mat.set_shader_parameter("u_bg", b)
 
+func set_atmosphere(color: Color, strength: float) -> void:
+	var c := Vector3(color.r, color.g, color.b)
+	var s := clampf(strength, 0.0, 1.0)
+	if _ground_mat:
+		_ground_mat.set_shader_parameter("u_atmo_color", c)
+		_ground_mat.set_shader_parameter("u_atmo_strength", s)
+	if _wall_mat:
+		_wall_mat.set_shader_parameter("u_atmo_color", c)
+		_wall_mat.set_shader_parameter("u_atmo_strength", s)
+
 ## Themed wall tile -> fog shader. null = flat. Called by World.set_wall_texture.
 func set_wall_texture(tex: Texture2D) -> void:
 	if _wall_mat == null:
@@ -158,6 +168,8 @@ func _ensure_materials() -> void:
 	_ground_mat.set_shader_parameter("u_top_tile_start", 0.0)
 	_ground_mat.set_shader_parameter("u_top_tile_count", 1.0)
 	_ground_mat.set_shader_parameter("u_player", Vector2.ZERO)
+	_ground_mat.set_shader_parameter("u_atmo_color", Vector3(0.70, 0.82, 0.90))
+	_ground_mat.set_shader_parameter("u_atmo_strength", 0.0)
 
 	_wall_mat = ShaderMaterial.new()
 	_wall_mat.shader = shader
@@ -176,6 +188,8 @@ func _ensure_materials() -> void:
 	_wall_mat.set_shader_parameter("u_top_tile_start", 0.0)
 	_wall_mat.set_shader_parameter("u_top_tile_count", 1.0)
 	_wall_mat.set_shader_parameter("u_player", Vector2.ZERO)
+	_wall_mat.set_shader_parameter("u_atmo_color", Vector3(0.70, 0.82, 0.90))
+	_wall_mat.set_shader_parameter("u_atmo_strength", 0.0)
 
 func _set_tile_sheet_params(mat: ShaderMaterial, tex: Texture2D) -> void:
 	var use_sheet := bool(tex.get_meta("dcc_tile_sheet", false))

@@ -182,6 +182,10 @@ export function generateFloor(seed: number, depth: number, opts: { pvp?: boolean
     openness,
   );
   if (theme === "pirate" && collision.terrain) applyPirateZoneHeights(collision);
+  if (theme === "pirate") {
+    flattenGroundLanding3x3(collision, { x: start.x * SCALE + 1, y: start.y * SCALE + 1 });
+    flattenGroundLanding3x3(collision, { x: farthest.x * SCALE + 1, y: farthest.y * SCALE + 1 });
+  }
 
   return {
     index: depth,
@@ -234,7 +238,9 @@ function carvePirateStage(
   };
 
   const anchors: PrefabAnchor[] = [];
+  const shipExit = { x: ship.x + ship.rx - 1, y: ship.y };
   carveShipDeck(solid, terrain, gw, gh, ship.x, ship.y, ship.rx, ship.ry);
+  addShipRails(solid, terrain, gw, gh, ship.x, ship.y, ship.rx, ship.ry, shipExit);
   addShipObstacles(solid, gw, gh, ship.x, ship.y, ship.rx, ship.ry, random);
   anchors.push(
     { x: ship.x - Math.floor(ship.rx * 0.45), y: ship.y - Math.floor(ship.ry * 0.45), landmark: false },
@@ -255,10 +261,11 @@ function carvePirateStage(
     { x: cave.x + Math.floor(cave.rx * 0.35), y: cave.y + Math.floor(cave.ry * 0.15), landmark: true },
   );
 
-  const shipExit = { x: ship.x + ship.rx - 1, y: ship.y };
   const dockJoin = { x: island.x - island.rx - 1, y: island.y };
   carvePier(solid, terrain, 1, gw, gh, shipExit, { x: dockJoin.x, y: ship.y }, 0);
   carvePier(solid, terrain, 1, gw, gh, { x: dockJoin.x, y: ship.y }, dockJoin, 0);
+  addDockFingerPiers(solid, terrain, gw, gh, dockJoin, shipExit, island, random);
+  markDockWater(solid, terrain, gw, gh);
   carvePier(solid, terrain, 2, gw, gh, { x: island.x + island.rx - 1, y: island.y }, { x: cave.x - cave.rx, y: cave.y }, 0);
 
   const start = { x: ship.x - Math.floor(ship.rx * 0.45), y: ship.y };
@@ -301,7 +308,13 @@ function buildPirateOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h:
       }
       if (!adjacent) continue;
       terrain[i] = adjacent.zone;
-      opaque[i] = adjacent.zone === 2 || adjacent.zone === 3 ? 1 : 0;
+      if (adjacent.zone === 0 || adjacent.zone === 3) {
+        opaque[i] = 1;
+      } else if (adjacent.zone === 2) {
+        opaque[i] = adjacent.dy === -1 ? 0 : 1;
+      } else {
+        opaque[i] = 0;
+      }
     }
   }
   return opaque;
@@ -333,6 +346,19 @@ function applyPirateZoneHeights(grid: CollisionGrid): void {
   const hf = Float64Array.from(grid.ground);
   relaxSlopes(hf, grid.solid, new Uint8Array(grid.w * grid.h), grid.w, grid.h, WALKABLE_DELTA);
   for (let i = 0; i < grid.ground.length; i++) grid.ground[i] = Math.round(hf[i]!);
+}
+
+function flattenGroundLanding3x3(grid: CollisionGrid, center: { x: number; y: number }): void {
+  const cx = clampInt(center.x, 0, grid.w - 1);
+  const cy = clampInt(center.y, 0, grid.h - 1);
+  const centerHeight = grid.ground[cy * grid.w + cx] ?? 0;
+  for (let y = Math.max(0, cy - 1); y <= Math.min(grid.h - 1, cy + 1); y++) {
+    for (let x = Math.max(0, cx - 1); x <= Math.min(grid.w - 1, cx + 1); x++) {
+      const i = y * grid.w + x;
+      if (grid.solid[i] !== 0) continue;
+      grid.ground[i] = centerHeight;
+    }
+  }
 }
 
 function exteriorSolidMask(solid: Uint8Array, w: number, h: number): Uint8Array {
@@ -524,6 +550,39 @@ function carveShipDeck(solid: Uint8Array, terrain: Uint8Array, w: number, h: num
   }
 }
 
+function addShipRails(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  exit: { x: number; y: number },
+): void {
+  const wasDeck = new Uint8Array(w * h);
+  for (let y = cy - ry; y <= cy + ry; y++) {
+    for (let x = cx - rx; x <= cx + rx; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      if (solid[y * w + x] === 0 && terrain[y * w + x] === 0) wasDeck[y * w + x] = 1;
+    }
+  }
+  for (let y = cy - ry; y <= cy + ry; y++) {
+    for (let x = cx - rx; x <= cx + rx; x++) {
+      if (x < 1 || y < 1 || x >= w - 1 || y >= h - 1) continue;
+      const i = y * w + x;
+      if (wasDeck[i] !== 1) continue;
+      if (Math.abs(x - exit.x) <= 0 && Math.abs(y - exit.y) <= 0) continue;
+      const edge = wasDeck[(y - 1) * w + x] !== 1 || wasDeck[y * w + x + 1] !== 1 || wasDeck[(y + 1) * w + x] !== 1 || wasDeck[y * w + x - 1] !== 1;
+      if (!edge) continue;
+      solid[i] = 1;
+      terrain[i] = 0;
+    }
+  }
+  openTerrain(solid, terrain, w, exit.x, exit.y, 0);
+}
+
 function addShipObstacles(
   solid: Uint8Array,
   w: number,
@@ -546,6 +605,64 @@ function addShipObstacles(
     if (Math.abs(x - cx) < 3 && Math.abs(y - cy) < 3) continue;
     carveSolidRect(solid, w, h, x, y, random() < 0.5 ? 1 : 0, 0);
   }
+}
+
+function addDockFingerPiers(
+  solid: Uint8Array,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  dockJoin: { x: number; y: number },
+  shipExit: { x: number; y: number },
+  island: { x: number; y: number; rx: number; ry: number },
+  random: () => number,
+): void {
+  const minX = Math.min(shipExit.x, dockJoin.x);
+  const maxX = Math.max(shipExit.x, dockJoin.x);
+  const span = Math.max(1, maxX - minX);
+  for (let i = 0; i < 4; i++) {
+    const x = clampInt(minX + Math.floor(span * ((i + 1) / 5)), 2, w - 3);
+    const baseY = i % 2 === 0 ? shipExit.y : dockJoin.y;
+    const dir = i % 2 === 0 ? -1 : 1;
+    const len = 3 + Math.floor(random() * 4);
+    carvePier(solid, terrain, 1, w, h, { x, y: baseY }, { x, y: clampInt(baseY + dir * len, 2, h - 3) }, 0);
+  }
+  const minY = Math.min(shipExit.y, dockJoin.y);
+  const maxY = Math.max(shipExit.y, dockJoin.y);
+  const ySpan = Math.max(1, maxY - minY);
+  for (let i = 0; i < 4; i++) {
+    const y = clampInt(minY + Math.floor(ySpan * ((i + 1) / 5)), 2, h - 3);
+    const dir = i % 2 === 0 ? -1 : 1;
+    const len = 3 + Math.floor(random() * 4);
+    carvePier(solid, terrain, 1, w, h, { x: dockJoin.x, y }, { x: clampInt(dockJoin.x + dir * len, 2, w - 3), y }, 0);
+  }
+  const beachLanding = { x: island.x - island.rx + 1, y: island.y };
+  carvePier(solid, terrain, 1, w, h, dockJoin, beachLanding, 0);
+}
+
+function markDockWater(solid: Uint8Array, terrain: Uint8Array, w: number, h: number): void {
+  const toMark: number[] = [];
+  const dirs = [-w, 1, w, -1];
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (solid[i] !== 0 || terrain[i] !== 1) continue;
+      for (const d of dirs) {
+        const ni = i + d;
+        if (solid[ni] !== 1) continue;
+        let bordersShipDeck = false;
+        for (const sd of dirs) {
+          const ai = ni + sd;
+          if (solid[ai] === 0 && terrain[ai] === 0) {
+            bordersShipDeck = true;
+            break;
+          }
+        }
+        if (!bordersShipDeck) toMark.push(ni);
+      }
+    }
+  }
+  for (const i of toMark) terrain[i] = 1;
 }
 
 function carveIrregularBlob(

@@ -30,6 +30,8 @@ uniform float u_top_tile_count = 1.0;
 uniform float u_fog_soft = 0.7;                                  // shadow-edge penumbra width, in cells (0 = hard edge)
 uniform vec3 u_tint = vec3(1.0, 1.0, 1.0);                       // per-theme albedo multiply (mood)
 uniform vec3 u_bg = vec3(0.043, 0.055, 0.078);                   // per-theme fog/background color
+uniform vec3 u_atmo_color = vec3(0.70, 0.82, 0.90);              // optional camera/theme atmosphere color
+uniform float u_atmo_strength = 0.0;                             // 0 = tactical dark fog, 1 = full atmospheric fog
 
 varying vec3 v_world;
 varying vec3 v_world_normal;
@@ -157,5 +159,6 @@ void fragment() {
 	float fall = 1.0 - smoothstep(u_vision * 0.6, u_vision, dist);
 	float lit = vis_flag * fall;
 	// Blend unseen pixels to the (themed) background; seen pixels keep full albedo.
-	ALBEDO = mix(u_bg, base, lit);
+	vec3 fog_color = mix(u_bg, u_atmo_color, u_atmo_strength);
+	ALBEDO = mix(fog_color, base, lit);
 }

@@ -18,6 +18,11 @@ const KEY_LIGHT_BACK_OFFSET := 620.0
 const KEY_LIGHT_ENERGY := 1.45
 const AMBIENT_LIGHT_ENERGY := 0.72
 const WALL_MODEL_SCREEN_MARGIN := 180.0
+const ENV_BACKGROUND_DEFAULT := Color(0.043, 0.055, 0.078)
+const PIRATE_OPEN_SKY_COLOR := Color(0.34, 0.64, 0.90)
+const PIRATE_ATMOSPHERE_FOG_COLOR := Color(0.68, 0.82, 0.90)
+const PIRATE_ATMOSPHERE_FOG_STRENGTH := 0.82
+const PIRATE_TERRAIN_CAVE := 3
 
 # Camera framing (Champions-of-Norrath-style: closer + lower over the player). Tunable
 # live in the editor. height = how far above; back = how far behind (lower back = more
@@ -61,6 +66,7 @@ var _decor: WorldDecor
 var _sprites: SpriteLayer
 var _fx: FxLayer
 var _cam: Camera3D
+var _environment: Environment
 var _inp                       # InputCtl (Node)
 var _hud: Hud
 var _inv: InventoryUI
@@ -84,6 +90,8 @@ var _gate_hint: Label
 var _stairs := Vector2.ZERO   # stairs world pos (for the boss-gate hint)
 var _floor_stairs: Dictionary = {}  # raw stairs dict from geometry (saved even when hidden)
 var _floor_key := ""               # "seed_depth" — unique per floor even if same depth across runs
+var _floor_theme := ""
+var _environment_key := ""
 var _runover_panel: PanelContainer
 var _runover_stats: Label
 var _skill_hint: Label
@@ -170,10 +178,11 @@ func _ready() -> void:
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color8(0x0b, 0x0e, 0x14)
+	e.background_color = ENV_BACKGROUND_DEFAULT
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color.WHITE
 	e.ambient_light_energy = AMBIENT_LIGHT_ENERGY
+	_environment = e
 	env.environment = e
 	add_child(env)
 
@@ -722,9 +731,12 @@ func _on_floor(geometry: Dictionary, info: Dictionary) -> void:
 	var forced_theme := OS.get_environment("DCC_FORCE_THEME")
 	if forced_theme != "":
 		theme = forced_theme
+	_floor_theme = theme
+	_environment_key = ""
 	var stairs: Dictionary = _floor_stairs if bool(_net.floor_state.get("exitOpen", true)) else {}
 	_decor.world = _world
 	_decor.apply(theme, geometry.get("decorations", []), stairs, geometry.get("hazards", []), geometry.get("portals", []))
+	_update_environment_background(camera_mode)
 	var shop_pos_d: Dictionary = geometry.get("shopPos", {})
 	if not shop_pos_d.is_empty():
 		_floor_shop_pos = Vector2(float(shop_pos_d.get("x", 0.0)), float(shop_pos_d.get("y", 0.0)))
@@ -764,6 +776,48 @@ func _mark_exit_on_minimap() -> void:
 	_minimap.highlight_stairs()
 	_minimap.reveal_shop()
 
+func _terrain_at_world_pos(world_x: float, world_y: float) -> int:
+	if _world == null or _world.grid.is_empty():
+		return -1
+	var terrain = _world.grid.get("terrain", PackedByteArray())
+	if not (terrain is PackedByteArray):
+		return -1
+	if terrain.is_empty():
+		return -1
+	var cell := float(_world.grid.get("cell", 0.0))
+	var w := int(_world.grid.get("w", 0))
+	var h := int(_world.grid.get("h", 0))
+	if cell <= 0.0 or w <= 0 or h <= 0:
+		return -1
+	var cx := int(floor(world_x / cell))
+	var cy := int(floor(world_y / cell))
+	if cx < 0 or cy < 0 or cx >= w or cy >= h:
+		return -1
+	var idx := cy * w + cx
+	if idx < 0 or idx >= terrain.size():
+		return -1
+	return int(terrain[idx])
+
+func _update_environment_background(effective_mode: int) -> void:
+	if _environment == null:
+		return
+	var terrain_zone := _terrain_at_world_pos(_pred.x, _pred.y)
+	var wants_open_sky := (
+		_floor_theme == "pirate"
+		and effective_mode != CameraMode.TOP_DOWN
+		and terrain_zone >= 0
+		and terrain_zone != PIRATE_TERRAIN_CAVE
+	)
+	var wants_atmosphere_fog := _floor_theme == "pirate" and effective_mode != CameraMode.TOP_DOWN
+	var key := "%s:%d:%d:%s:%s" % [_floor_theme, effective_mode, terrain_zone, str(wants_open_sky), str(wants_atmosphere_fog)]
+	if key == _environment_key:
+		return
+	_environment_key = key
+	_environment.background_color = PIRATE_OPEN_SKY_COLOR if wants_open_sky else ENV_BACKGROUND_DEFAULT
+	if _fog != null:
+		var fog_strength := PIRATE_ATMOSPHERE_FOG_STRENGTH if wants_atmosphere_fog else 0.0
+		_fog.set_atmosphere(PIRATE_ATMOSPHERE_FOG_COLOR, fog_strength)
+
 func _process(dt: float) -> void:
 	# Hit-stop: a brief global slow-mo on a nearby kill makes blows land (see _on_events).
 	# Keyed off wall-clock (unaffected by time_scale) so it always restores.
@@ -800,6 +854,7 @@ func _process(dt: float) -> void:
 	# TPS/FPS have no live local body to anchor to while spectating (waiting room / dead)
 	# — fall back to the top-down orbit and restore the chosen mode once back in play.
 	var effective_mode: int = CameraMode.TOP_DOWN if spectating else camera_mode
+	_update_environment_background(effective_mode)
 
 	# While a menu is open, freeze aim so left-stick cursor movement doesn't spin
 	# the character. aim_from() is skipped entirely to avoid updating _last_aim.
