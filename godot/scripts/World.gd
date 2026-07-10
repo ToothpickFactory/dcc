@@ -126,6 +126,16 @@ func set_wall_texture(tex: Texture2D) -> void:
 	_wall_mat.albedo_texture = tex
 	_wall_mat.albedo_color = Color.WHITE
 
+func make_fog_wall_material(tex: Texture2D) -> Material:
+	if _fog != null and _fog.has_method("make_wall_material"):
+		return _fog.make_wall_material(tex)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.albedo_color = Color.WHITE
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	return mat
+
 func set_wall_model_theme(theme: String) -> void:
 	_clear_wall_models()
 	if _walls:

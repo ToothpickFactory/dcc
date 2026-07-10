@@ -519,9 +519,6 @@ function nearestOpenCell(solid: Uint8Array, w: number, h: number, center: { x: n
 function buildCyberpunkOpaque(solid: Uint8Array, terrain: Uint8Array, w: number, h: number): Uint8Array {
   const opaque = new Uint8Array(solid);
   const exterior = exteriorSolidMask(solid, w, h);
-  for (let i = 0; i < opaque.length; i++) {
-    if (exterior[i] === 1) opaque[i] = 0;
-  }
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       const i = y * w + x;

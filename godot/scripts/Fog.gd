@@ -29,6 +29,11 @@ var _world: World
 var _grid: Dictionary = {}
 var _ground_mat: ShaderMaterial
 var _wall_mat: ShaderMaterial
+var _extra_wall_mats: Array[ShaderMaterial] = []
+var _palette_tint := Color.WHITE
+var _palette_bg := Color(0.043, 0.055, 0.078)
+var _atmo_color := Color(0.70, 0.82, 0.90)
+var _atmo_strength := 0.0
 
 # R8 grid (255 = wall) marched by the ground shader.
 var _grid_img: Image
@@ -48,6 +53,7 @@ func attach(world: World) -> void:
 	if _grid.is_empty():
 		return
 	_last_vis_cell = -1
+	_extra_wall_mats.clear()
 	_build_grid_texture()
 	_build_wall_vis_texture()
 	_ensure_materials()
@@ -64,6 +70,9 @@ func set_vision(x: float, y: float) -> void:
 		_ground_mat.set_shader_parameter("u_player", p)
 	if _wall_mat:
 		_wall_mat.set_shader_parameter("u_player", p)
+	for mat in _extra_wall_mats:
+		if mat:
+			mat.set_shader_parameter("u_player", p)
 	# Recompute the wall mask only on cell change — stable (no flicker) within a tile.
 	var cell: float = _grid["cell"]
 	var w: int = _grid["w"]
@@ -89,6 +98,8 @@ func set_ground_texture(tex: Texture2D) -> void:
 ## Per-theme palette: an albedo tint (color cast) + the fog/background color. Gives each
 ## theme a distinct mood. Called by World.set_theme_palette when fog is attached.
 func set_palette(tint: Color, bg: Color) -> void:
+	_palette_tint = tint
+	_palette_bg = bg
 	var t := Vector3(tint.r, tint.g, tint.b)
 	var b := Vector3(bg.r, bg.g, bg.b)
 	if _ground_mat:
@@ -97,16 +108,26 @@ func set_palette(tint: Color, bg: Color) -> void:
 	if _wall_mat:
 		_wall_mat.set_shader_parameter("u_tint", t)
 		_wall_mat.set_shader_parameter("u_bg", b)
+	for mat in _extra_wall_mats:
+		if mat:
+			mat.set_shader_parameter("u_tint", t)
+			mat.set_shader_parameter("u_bg", b)
 
 func set_atmosphere(color: Color, strength: float) -> void:
+	_atmo_color = color
+	_atmo_strength = clampf(strength, 0.0, 1.0)
 	var c := Vector3(color.r, color.g, color.b)
-	var s := clampf(strength, 0.0, 1.0)
+	var s := _atmo_strength
 	if _ground_mat:
 		_ground_mat.set_shader_parameter("u_atmo_color", c)
 		_ground_mat.set_shader_parameter("u_atmo_strength", s)
 	if _wall_mat:
 		_wall_mat.set_shader_parameter("u_atmo_color", c)
 		_wall_mat.set_shader_parameter("u_atmo_strength", s)
+	for mat in _extra_wall_mats:
+		if mat:
+			mat.set_shader_parameter("u_atmo_color", c)
+			mat.set_shader_parameter("u_atmo_strength", s)
 
 ## Themed wall tile -> fog shader. null = flat. Called by World.set_wall_texture.
 func set_wall_texture(tex: Texture2D) -> void:
@@ -119,6 +140,33 @@ func set_wall_texture(tex: Texture2D) -> void:
 	_wall_mat.set_shader_parameter("u_tex", tex)
 	_wall_mat.set_shader_parameter("u_has_tex", true)
 	_set_tile_sheet_params(_wall_mat, tex)
+
+func make_wall_material(tex: Texture2D) -> ShaderMaterial:
+	var shader: Shader = load(SHADER_PATH)
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("u_grid", _grid_tex)
+	mat.set_shader_parameter("u_wall_vis", _wall_vis_tex)
+	mat.set_shader_parameter("u_grid_size", Vector2(int(_grid.get("w", 1)), int(_grid.get("h", 1))))
+	mat.set_shader_parameter("u_cell", float(_grid.get("cell", 80.0)))
+	mat.set_shader_parameter("u_vision", DccConst.VISION_RADIUS)
+	mat.set_shader_parameter("u_is_wall", true)
+	mat.set_shader_parameter("u_albedo", _world.wall_color() if _world != null else Color8(0x39, 0x44, 0x5e))
+	mat.set_shader_parameter("u_has_tex", tex != null)
+	mat.set_shader_parameter("u_tex", tex)
+	mat.set_shader_parameter("u_uv_scale", Vector2.ONE)
+	mat.set_shader_parameter("u_use_tile_sheet", false)
+	mat.set_shader_parameter("u_tile_start", 0.0)
+	mat.set_shader_parameter("u_tile_count", 1.0)
+	mat.set_shader_parameter("u_top_tile_start", 0.0)
+	mat.set_shader_parameter("u_top_tile_count", 1.0)
+	mat.set_shader_parameter("u_player", Vector2.ZERO)
+	mat.set_shader_parameter("u_tint", Vector3(_palette_tint.r, _palette_tint.g, _palette_tint.b))
+	mat.set_shader_parameter("u_bg", Vector3(_palette_bg.r, _palette_bg.g, _palette_bg.b))
+	mat.set_shader_parameter("u_atmo_color", Vector3(_atmo_color.r, _atmo_color.g, _atmo_color.b))
+	mat.set_shader_parameter("u_atmo_strength", _atmo_strength)
+	_extra_wall_mats.append(mat)
+	return mat
 
 # --- internals ---------------------------------------------------------------
 

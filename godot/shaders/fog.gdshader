@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode unshaded;
+render_mode unshaded, cull_disabled;
 
 // Wall-based fog of war, ported 1:1 from src/client/render.ts (patchFog GLSL).
 // Each fragment is blended toward the scene background unless it has line-of-sight

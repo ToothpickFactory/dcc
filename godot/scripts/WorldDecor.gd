@@ -26,6 +26,11 @@ const WALL_TOP_TILE_COUNT := 4
 const TERRAIN_OVERLAY_Y := 4.0
 const PIRATE_SHEET_COLS := 5
 const PIRATE_SHEET_ROWS := 4
+const PIRATE_WALL_ZONE_IDS := [0, 2, 3] # ship, beach, cave; docks use flat water instead of raised walls
+const PIRATE_WALL_SIDE_ROWS := {0: 1, 2: 1, 3: 1}
+const PIRATE_WALL_BOTTOM_SIDE_ROWS := {0: 3, 2: 1, 3: 1}
+const PIRATE_WALL_TOP_ROWS := {0: 2, 2: 0, 3: 0}
+const WALL_SKIN_OUTSET := 2.0
 const DUNGEON_TILE_SHEET := "dungeon-floor-wall-tiles.png"
 const PIRATE_ZONE_NAMES := ["ship", "docks", "beach", "cave"]
 const PIRATE_ZONE_SHEETS := {
@@ -282,6 +287,8 @@ func set_live_props(ents: Array) -> void:
 ## textures are left as-is (a fresh apply() overwrites them; clear-on-floor-exit is
 ## driven by the next apply or by Main reverting World if needed).
 func clear() -> void:
+	if world != null and world.wall_instance() != null:
+		world.wall_instance().visible = true
 	for sprite in decoration_sprites:
 		if is_instance_valid(sprite):
 			sprite.queue_free()
@@ -1239,6 +1246,129 @@ func _place_terrain_zones(theme: String) -> void:
 				void_node.render_priority = 1
 				add_child(void_node)
 				_terrain_nodes.append(void_node)
+	if theme == "pirate" or theme == "cyberpunk":
+		_place_zone_wall_skins(theme)
+
+func _place_zone_wall_skins(theme: String) -> void:
+	if world == null or world.grid.is_empty():
+		return
+	var wall_instance := world.wall_instance()
+	if wall_instance != null:
+		wall_instance.visible = false
+	var zone_ids: Array = PIRATE_WALL_ZONE_IDS if theme == "pirate" else range(CYBERPUNK_ZONE_NAMES.size())
+	var zone_names: Array = PIRATE_ZONE_NAMES if theme == "pirate" else CYBERPUNK_ZONE_NAMES
+	var zone_sheets: Dictionary = PIRATE_ZONE_SHEETS if theme == "pirate" else CYBERPUNK_ZONE_SHEETS
+	for zone_id in zone_ids:
+		var zid := int(zone_id)
+		var zone_name := str(zone_names[zid])
+		var sheet := _load_sheet("%s/%s" % [tiles_dir, str(zone_sheets[zone_name])])
+		if sheet == null:
+			continue
+		var mesh := _zone_wall_skin_mesh(theme, zid)
+		if mesh == null:
+			continue
+		var node := MeshInstance3D.new()
+		node.name = "%sWallSkin_%s" % [theme.capitalize(), zone_name]
+		node.mesh = mesh
+		node.material_override = world.make_fog_wall_material(sheet)
+		node.render_priority = 2
+		add_child(node)
+		_terrain_nodes.append(node)
+
+func _zone_wall_skin_mesh(theme: String, zone_id: int) -> ArrayMesh:
+	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())
+	var solid: PackedByteArray = world.grid.get("solid", PackedByteArray())
+	var opaque: PackedByteArray = world.grid.get("opaque", solid)
+	if terrain.is_empty() or solid.is_empty() or opaque.is_empty():
+		return null
+	var w: int = world.grid["w"]
+	var h: int = world.grid["h"]
+	var cell: float = world.grid["cell"]
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var indices := PackedInt32Array()
+	for cy in h:
+		for cx in w:
+			var i := cy * w + cx
+			if terrain[i] != zone_id or opaque[i] != 1:
+				continue
+			var x0 := float(cx) * cell
+			var x1 := x0 + cell
+			var z0 := float(cy) * cell
+			var z1 := z0 + cell
+			var gz := Geo.ground_height(world.grid, (float(cx) + 0.5) * cell, (float(cy) + 0.5) * cell)
+			var y0 := gz - World.WALL_SKIRT
+			var y1 := gz + World.WALL_H
+			_add_wall_quad(verts, normals, uvs, indices,
+				Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(x0, y1, z1),
+				Vector3.UP, _zone_wall_tile(theme, zone_id, 0, cx, cy))
+			_add_wall_quad(verts, normals, uvs, indices,
+				Vector3(x1, y0, z0 - WALL_SKIN_OUTSET), Vector3(x0, y0, z0 - WALL_SKIN_OUTSET), Vector3(x0, y1, z0 - WALL_SKIN_OUTSET), Vector3(x1, y1, z0 - WALL_SKIN_OUTSET),
+				Vector3(0, 0, -1), _zone_wall_tile(theme, zone_id, 1, cx, cy))
+			_add_wall_quad(verts, normals, uvs, indices,
+				Vector3(x0, y0, z1 + WALL_SKIN_OUTSET), Vector3(x1, y0, z1 + WALL_SKIN_OUTSET), Vector3(x1, y1, z1 + WALL_SKIN_OUTSET), Vector3(x0, y1, z1 + WALL_SKIN_OUTSET),
+				Vector3(0, 0, 1), _zone_wall_tile(theme, zone_id, 2, cx, cy))
+			_add_wall_quad(verts, normals, uvs, indices,
+				Vector3(x0 - WALL_SKIN_OUTSET, y0, z0), Vector3(x0 - WALL_SKIN_OUTSET, y0, z1), Vector3(x0 - WALL_SKIN_OUTSET, y1, z1), Vector3(x0 - WALL_SKIN_OUTSET, y1, z0),
+				Vector3(-1, 0, 0), _zone_wall_tile(theme, zone_id, 3, cx, cy))
+			_add_wall_quad(verts, normals, uvs, indices,
+				Vector3(x1 + WALL_SKIN_OUTSET, y0, z1), Vector3(x1 + WALL_SKIN_OUTSET, y0, z0), Vector3(x1 + WALL_SKIN_OUTSET, y1, z0), Vector3(x1 + WALL_SKIN_OUTSET, y1, z1),
+				Vector3(1, 0, 0), _zone_wall_tile(theme, zone_id, 4, cx, cy))
+	if indices.is_empty():
+		return null
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+func _add_wall_quad(
+	verts: PackedVector3Array,
+	normals: PackedVector3Array,
+	uvs: PackedVector2Array,
+	indices: PackedInt32Array,
+	a: Vector3,
+	b: Vector3,
+	c: Vector3,
+	d: Vector3,
+	normal: Vector3,
+	tile: int,
+) -> void:
+	var base := verts.size()
+	verts.append_array(PackedVector3Array([a, b, c, d]))
+	normals.append_array(PackedVector3Array([normal, normal, normal, normal]))
+	var col := tile % PIRATE_SHEET_COLS
+	var row := tile / PIRATE_SHEET_COLS
+	var u0 := float(col) / float(PIRATE_SHEET_COLS)
+	var v0 := float(row) / float(PIRATE_SHEET_ROWS)
+	var u1 := float(col + 1) / float(PIRATE_SHEET_COLS)
+	var v1 := float(row + 1) / float(PIRATE_SHEET_ROWS)
+	uvs.append_array(PackedVector2Array([Vector2(u0, v0), Vector2(u1, v0), Vector2(u1, v1), Vector2(u0, v1)]))
+	indices.append_array(PackedInt32Array([base, base + 1, base + 2, base, base + 2, base + 3]))
+
+func _zone_wall_tile(theme: String, zone_id: int, face: int, cx: int, cy: int) -> int:
+	if theme == "cyberpunk":
+		var cyber_row := 1 if face == 0 else 2
+		var cyber_col := 1 + int(_hash01(cx + face * 17, cy + zone_id * 31) * 3.0) % 3
+		if face == 3:
+			cyber_col = 0
+		elif face == 4:
+			cyber_col = 4
+		return cyber_row * PIRATE_SHEET_COLS + cyber_col
+	var row := int(PIRATE_WALL_TOP_ROWS.get(zone_id, 0)) if face == 0 else int(PIRATE_WALL_SIDE_ROWS.get(zone_id, 1))
+	if zone_id == 0 and face == 2:
+		row = int(PIRATE_WALL_BOTTOM_SIDE_ROWS.get(zone_id, row))
+	var col := 1 + int(_hash01(cx + face * 17, cy + zone_id * 31) * 3.0) % 3
+	if face == 3:
+		col = 0
+	elif face == 4:
+		col = 4
+	return row * PIRATE_SHEET_COLS + col
 
 func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 	var terrain: PackedByteArray = world.grid.get("terrain", PackedByteArray())

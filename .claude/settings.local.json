@@ -227,7 +227,11 @@
       "Read(//c/Users/dalla/**)",
       "Bash(/c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe install *)",
       "Bash(cmd //c start \"\" \"DCC.exe\")",
-      "Bash(tasklist //FI \"IMAGENAME eq DCC.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq DCC.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq Godot*\")",
+      "Bash(tasklist)",
+      "Bash(wmic process *)",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter 'ProcessId=11116' | Select-Object ProcessId,CommandLine,CreationDate | Format-List\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"
