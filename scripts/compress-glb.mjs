@@ -1,57 +1,73 @@
-// One-shot GLB compressor: weld → simplify → dequantize → texture resize.
-// Produces standard glTF 2.0 with no proprietary extensions, compatible with
-// both Three.js (web client) and Godot 4's built-in GLTF importer.
-//
-// Usage: node scripts/compress-glb.mjs <input.glb> <output.glb>
+// GLB optimizer: welds/deduplicates meshes and simplifies geometry.
+// Usage:
+//   node scripts/compress-glb.mjs <input.glb> <output.glb> [--ratio 0.35]
 
-import { NodeIO } from "file:///C:/Users/Dallas/AppData/Local/npm-cache/_npx/a6797f7ff67bb1f2/node_modules/@gltf-transform/core/dist/index.js";
-import { ALL_EXTENSIONS } from "file:///C:/Users/Dallas/AppData/Local/npm-cache/_npx/a6797f7ff67bb1f2/node_modules/@gltf-transform/extensions/dist/index.js";
-import { weld, simplify, dequantize, prune, dedup, resample } from "file:///C:/Users/Dallas/AppData/Local/npm-cache/_npx/a6797f7ff67bb1f2/node_modules/@gltf-transform/functions/dist/index.js";
-import { MeshoptSimplifier } from "file:///C:/Users/Dallas/AppData/Local/npm-cache/_npx/a6797f7ff67bb1f2/node_modules/meshoptimizer/meshopt_simplifier.js";
-import sharp from "file:///C:/Users/Dallas/AppData/Local/npm-cache/_npx/a6797f7ff67bb1f2/node_modules/sharp/lib/index.js";
-import { readFileSync, writeFileSync } from "fs";
-import path from "path";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { mkdir } from "node:fs/promises";
+import { NodeIO } from "@gltf-transform/core";
+import { ALL_EXTENSIONS } from "@gltf-transform/extensions";
+import { dedup, prune, resample, simplify, weld } from "@gltf-transform/functions";
+import { MeshoptSimplifier } from "meshoptimizer";
 
-const [, , inputPath, outputPath] = process.argv;
+const [, , inputPath, outputPath, ...args] = process.argv;
 if (!inputPath || !outputPath) {
-  console.error("Usage: node compress-glb.mjs <input.glb> <output.glb>");
+  console.error("Usage: node scripts/compress-glb.mjs <input.glb> <output.glb> [--ratio 0.35]");
   process.exit(1);
 }
+
+const ratio = numberArg(args, "--ratio", 0.35);
+const error = numberArg(args, "--error", 1e-2);
 
 await MeshoptSimplifier.ready;
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
 const document = await io.read(inputPath);
-
 const beforeBytes = readFileSync(inputPath).length;
-console.log(`Input: ${inputPath} (${(beforeBytes / 1048576).toFixed(2)} MB)`);
+const beforeVertices = countVertices(document);
 
 await document.transform(
   dedup(),
   weld({ tolerance: 1e-4 }),
-  simplify({ simplifier: MeshoptSimplifier, ratio: 0.02, error: 1.0 }),
-  dequantize(),   // convert quantized int16 → float32, removes KHR_mesh_quantization
+  simplify({ simplifier: MeshoptSimplifier, ratio, error }),
   resample(),
   prune(),
 );
 
-// Resize embedded textures to 512×512 max using sharp.
-const root = document.getRoot();
-for (const texture of root.listTextures()) {
-  const data = texture.getImage();
-  if (!data) continue;
-  const mimeType = texture.getMimeType();
-  const isWebP = mimeType === "image/webp";
-  const resized = await sharp(Buffer.from(data))
-    .resize(512, 512, { fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 80 })
-    .toBuffer();
-  texture.setImage(new Uint8Array(resized));
-  texture.setMimeType("image/jpeg");
+const afterVertices = countVertices(document);
+const glb = await io.writeBinary(document);
+await mkdir(dirname(outputPath), { recursive: true });
+writeFileSync(outputPath, glb);
+
+console.log(JSON.stringify({
+  input: inputPath,
+  output: outputPath,
+  beforeBytes,
+  afterBytes: glb.byteLength,
+  beforeVertices,
+  afterVertices,
+  byteReductionPct: pct(beforeBytes, glb.byteLength),
+  vertexReductionPct: pct(beforeVertices, afterVertices),
+}));
+
+function numberArg(args, name, fallback) {
+  const index = args.indexOf(name);
+  if (index < 0) return fallback;
+  const value = Number(args[index + 1]);
+  return Number.isFinite(value) ? value : fallback;
 }
 
-const glb = await io.writeBinary(document);
-writeFileSync(outputPath, glb);
-const afterBytes = glb.byteLength;
-console.log(`Output: ${outputPath} (${(afterBytes / 1048576).toFixed(2)} MB)`);
-console.log(`Reduced by ${((1 - afterBytes / beforeBytes) * 100).toFixed(1)}%`);
+function countVertices(document) {
+  let total = 0;
+  for (const mesh of document.getRoot().listMeshes()) {
+    for (const primitive of mesh.listPrimitives()) {
+      total += primitive.getAttribute("POSITION")?.getCount() ?? 0;
+    }
+  }
+  return total;
+}
+
+function pct(before, after) {
+  if (before <= 0) return 0;
+  return Number(((1 - after / before) * 100).toFixed(1));
+}

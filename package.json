@@ -12,6 +12,7 @@
     "dev": "wrangler dev --ip 127.0.0.1 --port 8787",
     "start": "npm run dev",
     "gen:art": "node scripts/gen-art.mjs",
+    "optimize:glbs": "node scripts/optimize-glbs.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:client": "tsc --noEmit -p tsconfig.client.json",
     "test:profile": "node --experimental-strip-types src/server/loot/profile.test.ts",
@@ -31,6 +32,9 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@gltf-transform/core": "^4.4.1",
+    "@gltf-transform/extensions": "^4.4.1",
+    "@gltf-transform/functions": "^4.4.1",
     "@types/node": "^26.0.0",
     "@types/three": "^0.184.1",
     "esbuild": "^0.28.1",
