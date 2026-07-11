@@ -225,13 +225,13 @@ function carvePirateStage(
     ry: clampInt(Math.floor(gh * 0.13), 5, 8),
   };
   const island = {
-    x: clampInt(Math.floor(gw * (0.48 + (random() - 0.5) * 0.12)), 14, gw - 15),
+    x: clampInt(Math.floor(gw * (0.44 + (random() - 0.5) * 0.08)), 18, gw - 21),
     y: clampInt(Math.floor(gh * (0.48 + (random() - 0.5) * 0.16)), 12, gh - 13),
-    rx: clampInt(Math.floor(gw * 0.16), 7, 14),
-    ry: clampInt(Math.floor(gh * 0.16), 6, 13),
+    rx: clampInt(Math.floor(gw * 0.27), 12, 24),
+    ry: clampInt(Math.floor(gh * 0.27), 11, 23),
   };
   const cave = {
-    x: clampInt(Math.floor(gw * (0.76 + random() * 0.08)), 20, gw - 9),
+    x: clampInt(Math.floor(gw * (0.84 + random() * 0.05)), 20, gw - 9),
     y: clampInt(Math.floor(gh * (0.50 + (random() - 0.5) * 0.22)), 10, gh - 11),
     rx: clampInt(Math.floor(gw * 0.13), 6, 12),
     ry: clampInt(Math.floor(gh * 0.17), 7, 14),
@@ -617,21 +617,32 @@ function addDockFingerPiers(
   const minX = Math.min(shipExit.x, dockJoin.x);
   const maxX = Math.max(shipExit.x, dockJoin.x);
   const span = Math.max(1, maxX - minX);
-  for (let i = 0; i < 4; i++) {
-    const x = clampInt(minX + Math.floor(span * ((i + 1) / 5)), 2, w - 3);
-    const baseY = i % 2 === 0 ? shipExit.y : dockJoin.y;
+  for (let i = 0; i < 10; i++) {
+    const x = clampInt(minX + Math.floor(span * ((i + 1) / 11)), 2, w - 3);
+    const baseY = i % 3 === 0 ? shipExit.y : dockJoin.y;
     const dir = i % 2 === 0 ? -1 : 1;
-    const len = 3 + Math.floor(random() * 4);
+    const len = 5 + Math.floor(random() * 7);
     carvePier(solid, terrain, 1, w, h, { x, y: baseY }, { x, y: clampInt(baseY + dir * len, 2, h - 3) }, 0);
   }
   const minY = Math.min(shipExit.y, dockJoin.y);
   const maxY = Math.max(shipExit.y, dockJoin.y);
   const ySpan = Math.max(1, maxY - minY);
-  for (let i = 0; i < 4; i++) {
-    const y = clampInt(minY + Math.floor(ySpan * ((i + 1) / 5)), 2, h - 3);
+  for (let i = 0; i < 8; i++) {
+    const y = clampInt(minY + Math.floor(ySpan * ((i + 1) / 9)), 2, h - 3);
     const dir = i % 2 === 0 ? -1 : 1;
-    const len = 3 + Math.floor(random() * 4);
+    const len = 5 + Math.floor(random() * 7);
     carvePier(solid, terrain, 1, w, h, { x: dockJoin.x, y }, { x: clampInt(dockJoin.x + dir * len, 2, w - 3), y }, 0);
+  }
+  for (const side of [-1, 1]) {
+    const y = clampInt(Math.round((shipExit.y + dockJoin.y) * 0.5) + side * (3 + Math.floor(random() * 3)), 2, h - 3);
+    const x0 = clampInt(minX + Math.floor(span * 0.18), 2, w - 3);
+    const x1 = clampInt(maxX - Math.floor(span * 0.12), 2, w - 3);
+    carvePier(solid, terrain, 1, w, h, { x: x0, y }, { x: x1, y }, 0);
+    for (let i = 0; i < 3; i++) {
+      const x = clampInt(x0 + Math.floor((x1 - x0) * ((i + 1) / 4)), 2, w - 3);
+      const len = 3 + Math.floor(random() * 5);
+      carvePier(solid, terrain, 1, w, h, { x, y }, { x, y: clampInt(y + side * len, 2, h - 3) }, 0);
+    }
   }
   const beachLanding = { x: island.x - island.rx + 1, y: island.y };
   carvePier(solid, terrain, 1, w, h, dockJoin, beachLanding, 0);

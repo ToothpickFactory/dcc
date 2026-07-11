@@ -66,7 +66,9 @@ import { generateFloor } from "./index.ts";
   const opaque = pirate.collision.opaque ?? pirate.collision.solid;
   let dockWaterEdges = 0;
   let dockWaterCells = 0;
+  let dockOpenCells = 0;
   let beachOceanEdges = 0;
+  let beachOpenCells = 0;
   let shipWalls = 0;
   const w = pirate.collision.w;
   const h = pirate.collision.h;
@@ -76,11 +78,15 @@ import { generateFloor } from "./index.ts";
       if (terrain[i] === 1 && pirate.collision.solid[i] === 1 && opaque[i] === 0) dockWaterCells++;
       if (pirate.collision.solid[i] !== 0) continue;
       if (terrain[i] === 1) {
+        dockOpenCells++;
         for (const ni of [i - w, i + 1, i + w, i - 1]) {
           if (terrain[ni] === 1 && pirate.collision.solid[ni] === 1 && opaque[ni] === 0) dockWaterEdges++;
         }
       }
-      if (terrain[i] === 2 && terrain[i + w] === 2 && pirate.collision.solid[i + w] === 1 && opaque[i + w] === 0) beachOceanEdges++;
+      if (terrain[i] === 2) {
+        beachOpenCells++;
+        if (terrain[i + w] === 2 && pirate.collision.solid[i + w] === 1 && opaque[i + w] === 0) beachOceanEdges++;
+      }
       if (terrain[i] === 0) {
         for (const ni of [i - w, i + 1, i + w, i - 1]) {
           if (terrain[ni] === 0 && pirate.collision.solid[ni] === 1 && opaque[ni] === 1) shipWalls++;
@@ -89,7 +95,9 @@ import { generateFloor } from "./index.ts";
     }
   }
   assert.ok(dockWaterCells >= 30, `pirate docks should include flat water around walkways, got ${dockWaterCells}`);
+  assert.ok(dockOpenCells >= 300, `pirate docks should feel expanded, got ${dockOpenCells} open dock cells`);
   assert.ok(dockWaterEdges >= 18, `pirate dock walkways should border flat water, got ${dockWaterEdges}`);
+  assert.ok(beachOpenCells >= 900, `pirate beach should feel expanded, got ${beachOpenCells} open beach cells`);
   assert.ok(beachOceanEdges > 8, `pirate beach should expose a shoreline to flat ocean, got ${beachOceanEdges}`);
   assert.ok(shipWalls > 30, `pirate ship should have opaque wooden wall boundaries, got ${shipWalls}`);
 }

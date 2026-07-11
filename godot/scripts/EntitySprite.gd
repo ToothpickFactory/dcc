@@ -71,7 +71,8 @@ const ICE_GOLEM_MODEL_PATH := "res://assets/Bosses/IceGolem/IceGolem.glb"
 const ICE_GOLEM_MODEL_SCALE := 180.0
 const KRAKEN_NAME := "Kraken"
 const KRAKEN_MODEL_PATH := "res://assets/Bosses/Kraken/Kraken.glb"
-const KRAKEN_MODEL_SCALE := 520.0
+const KRAKEN_MODEL_SCALE := 260.0
+const KRAKEN_MODEL_Y := 60.0
 const KRAKEN_ANIM_ALIASES := {
 	"idle": ["Idle"],
 	"run": ["Walk"],
@@ -1129,6 +1130,7 @@ func _model_profile_for_entity() -> Dictionary:
 	if kind == "boss":
 		var boss_model_path := ""
 		var boss_model_scale := JAILOR_MODEL_SCALE
+		var boss_model_y := 200.0
 		var boss_anim_aliases: Dictionary = {}
 		if _entity_name == JAILOR_NAME:
 			boss_model_path = JAILOR_MODEL_PATH
@@ -1148,6 +1150,7 @@ func _model_profile_for_entity() -> Dictionary:
 		elif _entity_name == KRAKEN_NAME:
 			boss_model_path = KRAKEN_MODEL_PATH
 			boss_model_scale = KRAKEN_MODEL_SCALE
+			boss_model_y = KRAKEN_MODEL_Y
 			boss_anim_aliases = KRAKEN_ANIM_ALIASES
 		if boss_model_path != "":
 			return {
@@ -1155,7 +1158,7 @@ func _model_profile_for_entity() -> Dictionary:
 				"path": boss_model_path,
 				"anim_aliases": boss_anim_aliases,
 				"scale": boss_model_scale,
-				"model_y": 200.0,
+				"model_y": boss_model_y,
 				"light_energy": JAILOR_LIGHT_ENERGY,
 				"light_range": 520.0,
 				"light_y": 180.0,

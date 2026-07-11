@@ -1227,11 +1227,11 @@ func _place_terrain_zones(theme: String) -> void:
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 		mat.texture_repeat = true
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.render_priority = 1
 		var node := MeshInstance3D.new()
 		node.name = "PirateTerrain_%s" % zone_name
 		node.mesh = mesh
 		node.material_override = mat
-		node.render_priority = 1
 		add_child(node)
 		_terrain_nodes.append(node)
 		if zone_name == "cave":
@@ -1241,11 +1241,11 @@ func _place_terrain_zones(theme: String) -> void:
 				void_mat.albedo_color = Color.BLACK
 				void_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 				void_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+				void_mat.render_priority = 1
 				var void_node := MeshInstance3D.new()
 				void_node.name = "PirateTerrain_cave_void"
 				void_node.mesh = void_mesh
 				void_node.material_override = void_mat
-				void_node.render_priority = 1
 				add_child(void_node)
 				_terrain_nodes.append(void_node)
 	if theme == "pirate" or theme == "cyberpunk":
@@ -1267,6 +1267,7 @@ func _place_zone_wall_skins(theme: String) -> void:
 		if sheet == null:
 			continue
 		var mat := world.make_fog_wall_material(sheet)
+		mat.render_priority = 2
 		for cy0 in range(0, int(world.grid["h"]), WALL_SKIN_CHUNK_CELLS):
 			for cx0 in range(0, int(world.grid["w"]), WALL_SKIN_CHUNK_CELLS):
 				var mesh := _zone_wall_skin_mesh(theme, zid, cx0, min(cx0 + WALL_SKIN_CHUNK_CELLS, int(world.grid["w"])), cy0, min(cy0 + WALL_SKIN_CHUNK_CELLS, int(world.grid["h"])))
@@ -1276,7 +1277,6 @@ func _place_zone_wall_skins(theme: String) -> void:
 				node.name = "%sWallSkin_%s_%d_%d" % [theme.capitalize(), zone_name, cx0, cy0]
 				node.mesh = mesh
 				node.material_override = mat
-				node.render_priority = 2
 				add_child(node)
 				_terrain_nodes.append(node)
 
@@ -1401,6 +1401,7 @@ func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 	var h: int = world.grid["h"]
 	var cell: float = world.grid["cell"]
 	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	var indices := PackedInt32Array()
 	for cy in h:
@@ -1423,6 +1424,10 @@ func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z0) + TERRAIN_OVERLAY_Y, z0))
 			verts.append(Vector3(x1, Geo.ground_height(world.grid, x1, z1) + TERRAIN_OVERLAY_Y, z1))
 			verts.append(Vector3(x0, Geo.ground_height(world.grid, x0, z1) + TERRAIN_OVERLAY_Y, z1))
+			normals.append(Vector3.UP)
+			normals.append(Vector3.UP)
+			normals.append(Vector3.UP)
+			normals.append(Vector3.UP)
 			var tile := _pirate_tile_index(zone_id, cx, cy)
 			var col := tile % PIRATE_SHEET_COLS
 			var row := tile / PIRATE_SHEET_COLS
@@ -1440,6 +1445,7 @@ func _terrain_zone_mesh(zone_id: int, void_only: bool = false) -> ArrayMesh:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()

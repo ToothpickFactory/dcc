@@ -75,7 +75,7 @@ func _draw() -> void:
 
 			"boss":
 				var boss_r := float(e.get("r", DccConst.BOSS_RADIUS))
-				var reach_r := 118.0 if boss_r >= DccConst.KRAKEN_BOSS_RADIUS else 70.0
+				var reach_r := 100.0 if boss_r >= DccConst.KRAKEN_BOSS_RADIUS else 70.0
 				_draw_circle_w(ex, ey, boss_r, COLOR_BOSS,  3.0)
 				_draw_circle_w(ex, ey, reach_r, COLOR_REACH, 1.5)
 				if _windups.get(eid, 0) > now:

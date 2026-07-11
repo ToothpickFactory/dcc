@@ -30,7 +30,7 @@ const BOSS_MODEL_PATHS: Record<string, string> = {
   Kraken: "/assets/Bosses/Kraken/Kraken.glb",
 };
 const BOSS_MODEL_TARGET_SIZE: Record<string, number> = {
-  Kraken: 260,
+  Kraken: 130,
 };
 const BOLT_MODEL_PATHS: Record<string, string> = {
   fire: "/assets/Bolt/Fire.glb",
