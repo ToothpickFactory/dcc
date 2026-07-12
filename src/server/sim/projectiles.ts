@@ -55,7 +55,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
   caster.cds[idx] = ctx.now + (isMelee && !isFinisher ? cdBase * COMBO_LIGHT_CD_MULT : cdBase);
   caster.aim = aim;
   const dmg = ab.dmg < 0 ? ab.dmg * caster.derived.healPower : ab.dmg * caster.derived.spellPower;
-  ctx.pushFx({ e: "cast", x: caster.x, y: caster.y, ability: idx });
+  ctx.pushFx({ e: "cast", x: caster.x, y: caster.y, ability: idx, abilityId: ab.id, fromTalent: ab.fromTalent === true });
 
   // Taunt: instant — yank nearby foes' aggro onto the caster (tank tool).
   if (ab.taunt) {
@@ -152,7 +152,7 @@ export function castAbility(ctx: WorldCtx, caster: PlayerState, idx: number, aim
     // Queue delayed hit — weapon range scaling + swing timing applied here.
     const rangeMult  = weaponType ? (WEAPON_MELEE_RANGE_MULT[weaponType] ?? 1.0) : FIST_RANGE_MULT;
     const delayMs    = weaponType ? (WEAPON_SWING_DELAY_MS[weaponType]  ?? 120)  : FIST_SWING_DELAY_MS;
-    const swingCount = ab.id === "whirlwind" ? 3 : 1;
+    const swingCount = isMultiHitWhirlwind(ab) ? 3 : 1;
     for (let i = 0; i < swingCount; i++) {
       ctx.pendingSwings.push({
         fireAt:    ctx.now + delayMs + i * 250,
@@ -267,6 +267,10 @@ function isAreaAbility(ab: Ability): boolean {
 function isNovaArea(ab: Ability): boolean {
   const title = abilityTitle(ab);
   return /\b(nova|whirlwind)\b/i.test(title) || (!ab.projectile && (ab.cone ?? 0) >= Math.PI * 1.8);
+}
+
+function isMultiHitWhirlwind(ab: Ability): boolean {
+  return ab.id === "whirlwind" && ab.fromTalent === true;
 }
 
 function abilityTitle(ab: Ability): string {

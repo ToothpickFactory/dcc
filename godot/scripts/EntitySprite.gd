@@ -1795,11 +1795,12 @@ func queue_action(action: String, now_ms: float, frame_start: int = 0, frame_cou
 		_action_until = now_ms + 650.0
 		_play_model_anim(model_action)
 		if action == "whirlwind" and _model_anim != null:
-			# 3x faster, loops 3 times in the space of one normal rotation
+			var loop_count := frame_count if frame_count > 0 else 3
+			loop_count = maxi(1, loop_count)
 			var ww_anim := _model_anim.get_animation(_model_anim_name)
 			if ww_anim != null:
 				ww_anim.loop_mode = Animation.LOOP_LINEAR
-			_model_anim.speed_scale = 3.0
+			_model_anim.speed_scale = float(loop_count)
 			_action_until = now_ms + _model_anim_duration_ms("whirlwind", 800.0)
 		elif action == "strike" and _weapon_inst != null and _weapon_inst.has_method("swing"):
 			_weapon_inst.call("swing")

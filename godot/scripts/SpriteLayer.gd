@@ -256,7 +256,10 @@ func handle_events(events: Array, ents: Array, you_id: String, _self_pos: Vector
 			if spr == null:
 				continue
 			if cid == you_id:
-				spr.queue_action(_self_action_for_ability(int(event.get("ability", 0))), now_ms)
+				var ability_idx := int(event.get("ability", 0))
+				var action := _self_action_for_ability(ability_idx)
+				var play_count := _self_action_play_count(ability_idx, event)
+				spr.queue_action(action, now_ms, 0, play_count)
 				continue
 			# A remote caster plays the "bolt" cast pose.
 			spr.queue_action("bolt", now_ms)
@@ -296,6 +299,24 @@ func _self_action_for_ability(ability_idx: int) -> String:
 			if main_hand is Dictionary and str((main_hand as Dictionary).get("weaponType", "")) == "bow":
 				return "bow"
 	return "strike" if is_melee else "cast"
+
+func _self_action_play_count(ability_idx: int, event: Dictionary) -> int:
+	if str(event.get("abilityId", "")) == "whirlwind":
+		return 3 if bool(event.get("fromTalent", false)) else 1
+	if _net == null:
+		return 0
+	var abilities: Variant = _net.self_dto.get("abilities", [])
+	if not (abilities is Array):
+		return 0
+	if ability_idx < 0 or ability_idx >= (abilities as Array).size():
+		return 0
+	var ability: Variant = (abilities as Array)[ability_idx]
+	if not (ability is Dictionary):
+		return 0
+	var ab := ability as Dictionary
+	if str(ab.get("id", "")) != "whirlwind":
+		return 0
+	return 3 if bool(ab.get("fromTalent", false)) else 1
 
 # ---------------------------------------------------------------------------
 # Interpolation: blend a remote entity between its prev-snapshot and cur-snapshot

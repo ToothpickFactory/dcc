@@ -3,7 +3,7 @@
 // buffs the group. Drives the real castAbility/stepProjectiles against a minimal
 // hand-built WorldCtx (no Durable Object needed).
 //   node --experimental-strip-types src/server/sim/projectiles.test.ts
-import { castAbility, stepProjectiles } from "./projectiles.ts";
+import { castAbility, stepPendingSwings, stepProjectiles } from "./projectiles.ts";
 import { updateMonsters } from "./monsters.ts";
 import { recomputePlayer } from "./stats.ts";
 import { ABILITY_NODES } from "../../shared/skills.ts";
@@ -207,6 +207,22 @@ function ctxOf(players: PlayerState[], monsters: MonsterState[], events: GameEve
   check("frost nova hit around the caster", close.hp < 60 && close.ccKind === "freeze", `hp=${close.hp} cc=${close.ccKind}`);
   check("frost nova did not hit at max range", far.hp === 60, `far.hp=${far.hp}`);
   check("frost nova spawned radial visual bolts", ctx.projectiles.length === 16 && ctx.projectiles.every((p) => p.visualOnly === true), `projectiles=${ctx.projectiles.length}`);
+}
+
+// ---- whirlwind source behavior: evolved weapon once, talent/class triple ----
+{
+  const weaponUser = player("weaponWhirl", 100, 100, { abilities: [{ ...ABILITY_NODES.whirlwind, tier: 2, xp: 0 }] });
+  const talentUser = player("talentWhirl", 100, 100, { abilities: [{ ...ABILITY_NODES.whirlwind, tier: 0, xp: 0, fromTalent: true }] });
+  const weaponCtx = ctxOf([weaponUser], [monster("m1", 150, 100)]);
+  const talentCtx = ctxOf([talentUser], [monster("m2", 150, 100)]);
+  check("weapon-tree whirlwind queues one hit", castAbility(weaponCtx, weaponUser, 0, 0) && weaponCtx.pendingSwings.length === 1, `${weaponCtx.pendingSwings.length}`);
+  check("talent whirlwind queues three hits", castAbility(talentCtx, talentUser, 0, 0) && talentCtx.pendingSwings.length === 3, `${talentCtx.pendingSwings.length}`);
+  weaponCtx.now = 1300;
+  talentCtx.now = 1800;
+  stepPendingSwings(weaponCtx);
+  stepPendingSwings(talentCtx);
+  check("weapon-tree whirlwind damages once", weaponCtx.monsters[0]!.hp === 60 - ABILITY_NODES.whirlwind.dmg, `${weaponCtx.monsters[0]!.hp}`);
+  check("talent whirlwind damages three times", talentCtx.monsters[0]!.hp === 60 - ABILITY_NODES.whirlwind.dmg * 3, `${talentCtx.monsters[0]!.hp}`);
 }
 
 // ---- build depth: attribute points feed derived stats (spendAttr core) -----

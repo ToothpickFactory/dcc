@@ -1193,9 +1193,14 @@ export class Renderer {
         if (!caster) continue;
         const root = caster.kind === "player" ? HERO_ROOT : caster.kind === "boss" ? BOSS_ROOT : this.enemyRoot(caster.id);
         if (caster.id === selfId) {
-          const ability = DEFAULT_ABILITIES[event.ability];
-          if (ability?.id === "mend") this.queueAction(caster.id, root, "cast", now);
-          else if (ability?.id === "cleave") {
+          const abilityId = event.abilityId ?? DEFAULT_ABILITIES[event.ability]?.id;
+          if (abilityId === "mend") this.queueAction(caster.id, root, "cast", now);
+          else if (abilityId === "whirlwind") {
+            const repeats = event.fromTalent ? 3 : 1;
+            for (let i = 0; i < repeats; i++) {
+              window.setTimeout(() => this.queueAction(caster.id, root, "strike", performance.now()), i * 250);
+            }
+          } else if (abilityId === "cleave") {
             const frameStart = this.heroAttackToggle ? 8 : 0;
             this.heroAttackToggle = !this.heroAttackToggle;
             this.queueAction(caster.id, root, "punch", now, frameStart, 8);

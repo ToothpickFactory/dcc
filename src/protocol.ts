@@ -137,7 +137,7 @@ export type GameEvent =
   | { e: "dmg"; x: number; y: number; amount: number; by?: string; crit?: boolean; status?: StatusEffect }
   | { e: "heal"; x: number; y: number; amount: number }
   | { e: "death"; x: number; y: number; id: string }
-  | { e: "cast"; x: number; y: number; ability: number }
+  | { e: "cast"; x: number; y: number; ability: number; abilityId?: string; fromTalent?: boolean }
   | { e: "melee"; by: string }
   | { e: "hit"; x: number; y: number; ability: number }
   | { e: "windup"; by: string; x: number; y: number; ms: number } // attack tell: `by` winds up, damage lands in `ms`
