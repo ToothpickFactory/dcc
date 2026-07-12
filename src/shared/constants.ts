@@ -1,7 +1,7 @@
 // Tunable constants shared by client prediction and the server simulation.
 // Keeping them in ONE place is what lets client-side prediction match the
 // authoritative server (see ROADMAP.md M3).
-import type { MonsterKind } from "./types";
+import type { MonsterKind, Rarity } from "./types";
 
 export const TICK_MS = 50; // server simulation step (20 Hz)
 export const INPUT_HZ = 30; // client -> server input rate (higher = server tracks input closely = smoother movement)
@@ -38,6 +38,23 @@ export const MONSTER_DMG = 6;
 export const MONSTER_RESPAWN_MS = 6000; // monsters respawn so kills keep accruing (boss trigger)
 export const LOOT_BAG_TTL = 120000; // ms a dropped loot bag lingers before despawning
 export const LOOT_REACH = 90; // px a player must be within to loot a bag
+
+// Rarity scales the power budget of a loot roll (never the category). Shared by
+// the loot engine (heuristic.ts) and the same-category merge math (abilities.ts).
+export const RARITY_MULT: Record<Rarity, number> = {
+  common: 1,
+  uncommon: 1.18,
+  rare: 1.4,
+  epic: 1.7,
+  legendary: 2.1,
+};
+
+// ---- Ability merge (same-category loot dedup, see mergeDuplicateAbility) ----
+export const MERGE_XP_FRACTION = 0.55; // xp = evolveCost(target.tier) * this * RARITY_MULT[rarity]
+export const MERGE_STAT_BUMP = 0.16; // terminal abilities: dmg *= 1 + this * RARITY_MULT[rarity]
+export const MERGE_RANGE_BUMP_RATIO = 0.35; // range grows at this fraction of the dmg bump
+export const MERGE_CD_BUMP_RATIO = 0.25; // cd shrinks at this fraction of the dmg bump
+export const MERGE_CD_FLOOR_RATIO = 0.5; // cd never drops below this fraction of its pre-merge value
 // Loot etiquette: whoever earned the kill owns the bag for this window — others can't take from it
 // yet (avoids ninja-looting). After the window, it's free-for-all until it despawns.
 export const LOOT_OWNER_MS = 8000;

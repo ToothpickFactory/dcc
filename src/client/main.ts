@@ -117,6 +117,13 @@ net.onEvents = (events) => {
     }
   }
 };
+net.onLoot = (grant) => {
+  // A normal pickup is already visible as a new bar/bench slot; only the merge
+  // case is otherwise silent, so that's the only one worth a toast.
+  if (!grant.merged) return;
+  const label = grant.statBump ? "empowered" : `+${grant.xpGain ?? 0} XP`;
+  showToast(`${grant.ability.icon ?? "✨"} ${grant.ability.name} merged (${label})`, "#9be7ff");
+};
 
 function start() {
   if (playBtn.disabled) return;

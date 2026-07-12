@@ -1,4 +1,5 @@
 import type { Ability, AbilityCategory, PlaystyleProfile, Rarity, Theme } from "../../shared/types";
+import { RARITY_MULT } from "../../shared/constants";
 
 export interface LootContext {
   trigger: "kill" | "chest" | "floorEnd";
@@ -11,15 +12,6 @@ export interface LootContext {
 export interface LootEngine {
   grant(profile: PlaystyleProfile, ctx: LootContext): Ability;
 }
-
-// Rarity scales the power budget (never the category — that's playstyle-driven).
-const RARITY_MULT: Record<Rarity, number> = {
-  common: 1,
-  uncommon: 1.18,
-  rare: 1.4,
-  epic: 1.7,
-  legendary: 2.1,
-};
 
 const PRESENTATION: Record<AbilityCategory, { icon: string; color: string; noun: string }> = {
   ranged: { icon: "🏹", color: "#ff6a3d", noun: "Bolt" },

@@ -1,5 +1,6 @@
 import type { Ability } from "./types";
-import { ABILITY_NODES } from "./skills";
+import { ABILITY_NODES, EVOLUTIONS, evolveCost } from "./skills";
+import { MERGE_CD_BUMP_RATIO, MERGE_CD_FLOOR_RATIO, MERGE_RANGE_BUMP_RATIO, MERGE_STAT_BUMP, MERGE_XP_FRACTION } from "./constants";
 
 // Every hero starts with this action bar: a melee Wooden Sword in slot 1 (the
 // AUTO-CAST slot — it auto-swings at the nearest foe) and throwable Rocks with
@@ -50,4 +51,58 @@ export function addAbilityToKit(abilities: Ability[], ability: Ability, max: num
   }
   if (target < 0) return; // every bench slot is protected — keep the kit as-is
   abilities[target] = ability;
+}
+
+export interface AbilityMerge {
+  targetId: string;
+  xpGain: number; // evolution xp added; 0 when statBump is true
+  statBump: boolean; // true = a terminal ability got an immediate dmg/range/cd bump + tier++
+}
+
+// The existing ability (hotbar or bench, starter/talent/loot — doesn't matter) that a
+// same-category grant should strengthen: highest |dmg| wins the tie-break. Never matches
+// a hotbar consumable slot (usesItem isn't a real ability).
+export function findMergeTarget(abilities: Ability[], incoming: Ability): Ability | null {
+  let best: Ability | null = null;
+  let bestAbs = -1;
+  for (const a of abilities) {
+    if (a.usesItem) continue;
+    if (a.category !== incoming.category) continue;
+    const abs = Math.abs(a.dmg);
+    if (abs > bestAbs) {
+      bestAbs = abs;
+      best = a;
+    }
+  }
+  return best;
+}
+
+// If `incoming` shares a category with an ability the player already has, fold its
+// rolled power into that ability instead of handing back a new kit slot. Mutates the
+// matched ability in place. Returns null when there's nothing to merge into yet (first
+// ability of that category) — the caller should fall through to addAbilityToKit.
+//
+// Abilities with an evolution branch (EVOLUTIONS[id] non-empty) bank the power as xp
+// toward the existing evolve system (evolveCost) — the player still evolves manually.
+// Terminal abilities (no branch — most loot-rolled ids and catalog leaves like
+// executioner/boulder/scattershot/whirlwind/taunt/bloodlust/shieldbash/concussive/
+// hamstring/frostnova/wavemend) can never spend that xp, so they get an immediate
+// proportional dmg/range/cd bump and `tier` increments as a plain power-level counter.
+export function mergeDuplicateAbility(abilities: Ability[], incoming: Ability, rarityMult: number): AbilityMerge | null {
+  const target = findMergeTarget(abilities, incoming);
+  if (!target) return null;
+
+  const opts = EVOLUTIONS[target.id];
+  if (opts && opts.length > 0) {
+    const xpGain = Math.round(evolveCost(target.tier ?? 0) * MERGE_XP_FRACTION * rarityMult);
+    target.xp = (target.xp ?? 0) + xpGain;
+    return { targetId: target.id, xpGain, statBump: false };
+  }
+
+  const bump = MERGE_STAT_BUMP * rarityMult;
+  target.dmg = target.dmg === 0 ? 0 : Math.round(target.dmg * (1 + bump)); // sign-preserving: heals (negative dmg) get stronger too
+  target.range = Math.round(target.range * (1 + bump * MERGE_RANGE_BUMP_RATIO));
+  target.cd = Math.round(target.cd * Math.max(1 - bump * MERGE_CD_BUMP_RATIO, MERGE_CD_FLOOR_RATIO));
+  target.tier = (target.tier ?? 0) + 1;
+  return { targetId: target.id, xpGain: 0, statBump: true };
 }

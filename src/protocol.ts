@@ -11,7 +11,7 @@ import type { Ability, AbilityFlavor, CcKind, CompanionClass, DamageType, EnemyV
 import type { AttrKey, Attributes, DerivedStats, EquipSlot, Inventory, Item, WeaponType, WeaponVisualRarity } from "./shared/items";
 import type { HazardSpec, PortalSpec, TerrainZoneKind } from "./procgen/types";
 
-export const PROTOCOL_VERSION = 28; // was 27 - optional opaque mask for see-through blocked cells
+export const PROTOCOL_VERSION = 29; // was 28 - loot merge fields on LootGrantDTO
 
 // ---------- Client -> Server ----------
 export type ClientMsg =
@@ -201,4 +201,10 @@ export interface LootGrantDTO {
   ability: Ability;
   flavor?: AbilityFlavor; // arrives later if the LLM is in the loop
   rarity: string;
+  // Present only when this grant merged into an existing same-category ability
+  // instead of landing as a new kit slot (see mergeDuplicateAbility).
+  merged?: boolean;
+  targetId?: string; // id of the ability that absorbed this grant
+  xpGain?: number; // evolution xp added (0 when statBump is true)
+  statBump?: boolean; // true = a terminal ability got an immediate stat bump instead
 }

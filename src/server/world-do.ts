@@ -38,6 +38,7 @@ import {
   PLAYER_MAX_HP,
   PLAYER_SPEED,
   POTION_PRICE,
+  RARITY_MULT,
   SHOP_GEAR_COUNT,
   SHOP_POTION_COUNT,
   TICK_MS,
@@ -74,7 +75,7 @@ import { recomputeMonster, recomputePlayer } from "./sim/stats";
 import { generateItem, generatePotion, rollGearRarity } from "./loot/itemgen";
 import { HeuristicLootEngine, type LootContext, type LootEngine } from "./loot/heuristic";
 import { AiFlavorService, tableFlavor, type WorkersAiBinding } from "./loot/flavor";
-import { addAbilityToKit, potionHotbarSlot, starterAbilities } from "../shared/abilities";
+import { addAbilityToKit, mergeDuplicateAbility, potionHotbarSlot, starterAbilities } from "../shared/abilities";
 import { ABILITY_NODES, EVOLUTIONS, HIT_XP, MONSTER_XP, PVP_KILL_XP, canEvolve, charLevelOf, evolveCost } from "../shared/skills";
 import { CLASS_KIT, CLASS_MAIN_STAT, KLASSES } from "../shared/classes";
 import { TALENT_TREES, canSpendTalent, pointsForLevel, talentSpent } from "../shared/talents";
@@ -1947,8 +1948,20 @@ export class MyDurableObject extends DurableObject<Env> implements WorldCtx {
     ability.name = tf.name;
     ability.flavor = tf.flavor;
     ability.twist = tf.twist;
-    this.slotLoot(p, ability);
+    // Same-category dedup: fold into the strongest existing ability of this category
+    // instead of handing over a new bench slot.
+    const merge = mergeDuplicateAbility(p.abilities, ability, RARITY_MULT[rarity]);
     this._dirtyPlayers.add(p.id); // write on next heartbeat, not inline
+    if (merge) {
+      if (!p.linkdead) {
+        this.send(p.ws, {
+          t: "loot",
+          grant: { id: ability.id, ability, rarity, flavor: tf, merged: true, targetId: merge.targetId, xpGain: merge.xpGain, statBump: merge.statBump },
+        });
+      }
+      return; // the merged-into ability keeps its own name/flavor — nothing to flavorize
+    }
+    this.slotLoot(p, ability);
     if (!p.linkdead) this.send(p.ws, { t: "loot", grant: { id: ability.id, ability, rarity, flavor: tf } });
     // Optional LLM upgrade — OFF the tick, fail-open, sends a follow-up if better.
     if (this.flavorEnabled) this.flavorize(p, ability, rarity);

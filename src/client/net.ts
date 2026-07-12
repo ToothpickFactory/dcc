@@ -4,6 +4,7 @@ import type {
   FloorClientInfo,
   FloorState,
   GameEvent,
+  LootGrantDTO,
   RunState,
   SelfDTO,
   ServerMsg,
@@ -47,6 +48,7 @@ export class Net {
   onClose: () => void = () => {};
   onInv: (s: InvState) => void = () => {};
   onBag: (s: BagState) => void = () => {};
+  onLoot: (grant: LootGrantDTO) => void = () => {};
 
   connect(name: string, token?: string) {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -85,6 +87,9 @@ export class Net {
         break;
       case "bag":
         this.onBag({ id: m.id, items: m.items });
+        break;
+      case "loot":
+        this.onLoot(m.grant);
         break;
     }
   }

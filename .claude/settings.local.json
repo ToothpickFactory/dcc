@@ -252,7 +252,10 @@
       "Bash(rm -f \"godot/DCC.apk\")",
       "Bash(cp -f \"godot/build/android/DCC.apk\" \"godot/DCC.apk\")",
       "Bash(/c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe logcat *)",
-      "Bash(timeout 240 /c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe logcat -v time)"
+      "Bash(timeout 240 /c/Users/dalla/AppData/Local/Android/Sdk/platform-tools/adb.exe logcat -v time)",
+      "Bash(cat -A /dev/null 2>/dev/null; grep -n \"^import\" \"d:/Projects/dcc/src/server/loot/heuristic.ts\")",
+      "Read(//dev/**)",
+      "Bash(npm test *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Dallas\\Project\\dcc\\assets"
